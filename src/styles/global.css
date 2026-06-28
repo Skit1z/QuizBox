@@ -1,0 +1,283 @@
+/* ===================================================================
+   设计系统 — 留白卡片流
+   =================================================================== */
+:root {
+  /* 主题色（默认 indigo，由 data-theme-color 覆盖） */
+  --brand: #4f6bed;
+  --brand-soft: #eef1fe;
+  --brand-rgb: 79, 107, 237;
+
+  /* 中性色 */
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --text: #1d2129;
+  --text-2: #4e5969;
+  --text-3: #86909c;
+  --border: #f0f1f3;
+  --border-strong: #e5e6eb;
+  --success: #00b42a;
+  --danger: #f53f3f;
+  --warning: #ff7d00;
+
+  /* 间距尺度（8px 栅格） */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* 圆角 */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* 阴影（柔和） */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-brand: 0 8px 24px rgba(var(--brand-rgb), 0.18);
+
+  /* 布局 */
+  --content-max: 680px;
+  --sidebar-w: 232px;
+
+  /* Vant 主色对齐 */
+  --van-primary-color: var(--brand);
+}
+
+/* 主题色：蓝灰 */
+:root[data-theme-color='indigo'] {
+  --brand: #4f6bed;
+  --brand-soft: #eef1fe;
+  --brand-rgb: 79, 107, 237;
+}
+/* 主题色：墨绿 */
+:root[data-theme-color='green'] {
+  --brand: #2d6a4f;
+  --brand-soft: #e8f3ee;
+  --brand-rgb: 45, 106, 79;
+}
+/* 主题色：橙 */
+:root[data-theme-color='orange'] {
+  --brand: #ff6b35;
+  --brand-soft: #fff0e8;
+  --brand-rgb: 255, 107, 53;
+}
+
+/* ===== 暗黑模式 ===== */
+.dark {
+  --bg: #16181d;
+  --surface: #202329;
+  --surface-2: #262932;
+  --text: #f0f1f3;
+  --text-2: #c9cdd4;
+  --text-3: #86909c;
+  --border: #2b2e36;
+  --border-strong: #363a44;
+  --brand-soft: rgba(var(--brand-rgb), 0.14);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-brand: 0 8px 24px rgba(var(--brand-rgb), 0.3);
+
+  --van-background: #16181d;
+  --van-background-2: #202329;
+  --van-text-color: #f0f1f3;
+  --van-cell-background: #202329;
+  --van-cell-text-color: #f0f1f3;
+  --van-cell-value-color: #86909c;
+  --van-cell-border-color: #2b2e36;
+  --van-nav-bar-background: #202329;
+  --van-nav-bar-title-text-color: #f0f1f3;
+  --van-nav-bar-icon-color: #f0f1f3;
+  --van-tabbar-background: #202329;
+  --van-tabs-nav-background: #202329;
+  --van-popup-background: #202329;
+  --van-field-input-text-color: #f0f1f3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg: #16181d;
+    --surface: #202329;
+    --surface-2: #262932;
+    --text: #f0f1f3;
+    --text-2: #c9cdd4;
+    --text-3: #86909c;
+    --border: #2b2e36;
+    --border-strong: #363a44;
+    --brand-soft: rgba(var(--brand-rgb), 0.14);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-brand: 0 8px 24px rgba(var(--brand-rgb), 0.3);
+  }
+}
+
+/* ===== 基础 ===== */
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s, color 0.2s;
+}
+#app {
+  min-height: 100vh;
+}
+
+/* ===== 布局壳 ===== */
+.app-shell--mobile {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  min-height: 100vh;
+  padding-bottom: 56px;
+}
+.app-shell--desktop {
+  display: flex;
+  min-height: 100vh;
+}
+.app-sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: var(--sp-6) var(--sp-3);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.app-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3) var(--sp-5);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--text);
+}
+.app-sidebar__brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: var(--brand);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.app-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3);
+  margin-bottom: var(--sp-1);
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.app-sidebar__item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.app-sidebar__item--active {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.app-content {
+  flex: 1;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-4);
+}
+
+/* ===== 通用组件类 ===== */
+.page {
+  padding: var(--sp-4);
+}
+.page-head {
+  margin-bottom: var(--sp-5);
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--sp-1);
+  color: var(--text);
+}
+.page-sub {
+  font-size: 13px;
+  color: var(--text-3);
+  margin: 0;
+}
+.card {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  padding: var(--sp-5);
+  box-shadow: var(--shadow-sm);
+}
+.card--clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.card--clickable:active {
+  transform: scale(0.98);
+}
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: var(--sp-5) 0 var(--sp-3);
+  padding: 0 var(--sp-1);
+}
+.placeholder {
+  padding: var(--sp-8) var(--sp-5);
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 3px var(--sp-2);
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+/* Vant 组件圆角/阴影对齐 */
+:root {
+  --van-cell-border-color: var(--border);
+  --van-cell-vertical-padding: 14px;
+  --van-cell-group-inset-padding: 0 var(--sp-4);
+  --van-cell-group-inset-radius: var(--r-lg);
+  --van-border-radius-lg: var(--r-md);
+  --van-button-default-height: 44px;
+  --van-button-primary-background: var(--brand);
+  --van-button-primary-border-color: var(--brand);
+  --van-button-border-radius: var(--r-md);
+  --van-tabbar-item-active-color: var(--brand);
+  --van-tabbar-height: 56px;
+  --van-nav-bar-height: 52px;
+  --van-tag-border-radius: var(--r-sm);
+}

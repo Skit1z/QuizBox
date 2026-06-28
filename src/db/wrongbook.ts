@@ -1,0 +1,117 @@
+import { db, uid, isDeleted } from '@/db'
+import { sm2Next, qualityFromResult } from '@/utils/sm2'
+import { autoSync } from '@/services/sync'
+import type { WrongItem, WrongStatus } from '@/types'
+
+export const wrongBookRepo = {
+  /** 记录一次做题结果，错则加入/更新错题本，对则按 SM-2 更新 */
+  async recordAttempt(opts: {
+    questionId: string
+    isCorrect: boolean
+    selfRating?: number
+    reason?: string
+  }): Promise<WrongItem | undefined> {
+    const existing = await db.wrongBook
+      .where('questionId')
+      .equals(opts.questionId)
+      .first()
+    const now = Date.now()
+
+    if (!opts.isCorrect) {
+      if (existing && !isDeleted(existing.deletedAt)) {
+        const updated: Partial<WrongItem> = {
+          status: 'pending',
+          reason: opts.reason || existing.reason,
+          lastReviewAt: now,
+          updatedAt: now,
+          revision: (existing.revision || 0) + 1,
+        }
+        await db.wrongBook.update(existing.id, updated)
+        autoSync()
+        return { ...existing, ...updated } as WrongItem
+      }
+      const item: WrongItem = {
+        id: uid('w_'),
+        questionId: opts.questionId,
+        reason: opts.reason,
+        status: 'pending',
+        reviewCount: 0,
+        lastReviewAt: now,
+        nextReviewAt: now,
+        easiness: 2.5,
+        interval: 0,
+        updatedAt: now,
+        deletedAt: 0,
+        revision: 1,
+      }
+      await db.wrongBook.put(item)
+      autoSync()
+      return item
+    }
+
+    if (existing && !isDeleted(existing.deletedAt)) {
+      const q = qualityFromResult(true, opts.selfRating)
+      const next = sm2Next(existing, q)
+      const mastered = next.interval >= 21
+      const patch: Partial<WrongItem> = {
+        easiness: next.easiness,
+        interval: next.interval,
+        reviewCount: next.reviewCount,
+        lastReviewAt: now,
+        nextReviewAt: next.nextReviewAt,
+        status: (mastered ? 'mastered' : 'pending') as WrongStatus,
+        updatedAt: now,
+        revision: (existing.revision || 0) + 1,
+      }
+      await db.wrongBook.update(existing.id, patch)
+      autoSync()
+      return { ...existing, ...patch } as WrongItem
+    }
+    return undefined
+  },
+
+  /** 到期需复习的错题：用 [status+nextReviewAt] 复合索引 */
+  async listPending(): Promise<WrongItem[]> {
+    const now = Date.now()
+    try {
+      // status='pending' 且 nextReviewAt <= now
+      const arr = await db.wrongBook
+        .where('[status+nextReviewAt]')
+        .between(['pending', 0], ['pending', now], true, true)
+        .toArray()
+      return arr.filter((w) => !isDeleted(w.deletedAt)).sort((a, b) => (a.nextReviewAt || 0) - (b.nextReviewAt || 0))
+    } catch {
+      const all = await db.wrongBook.toArray()
+      return all
+        .filter((w) => !isDeleted(w.deletedAt) && w.status === 'pending')
+        .filter((w) => !w.nextReviewAt || w.nextReviewAt <= now)
+        .sort((a, b) => (a.nextReviewAt || 0) - (b.nextReviewAt || 0))
+    }
+  },
+
+  /** 所有待复习错题（不论是否到期） */
+  async listAll(): Promise<WrongItem[]> {
+    try {
+      const arr = await db.wrongBook.where('status').equals('pending').toArray()
+      return arr.filter((w) => !isDeleted(w.deletedAt))
+    } catch {
+      const all = await db.wrongBook.toArray()
+      return all.filter((w) => !isDeleted(w.deletedAt) && w.status === 'pending')
+    }
+  },
+
+  /** 按题目 id 批量取错题记录 */
+  async listByQuestionIds(ids: string[]): Promise<WrongItem[]> {
+    if (ids.length === 0) return []
+    const map = new Map<string, WrongItem>()
+    await db.wrongBook.where('questionId').anyOf(ids).each((w) => {
+      if (!isDeleted(w.deletedAt)) map.set(w.questionId, w)
+    })
+    return [...map.values()]
+  },
+
+  async setStatus(id: string, status: WrongStatus): Promise<void> {
+    await db.wrongBook.update(id, { status, updatedAt: Date.now() })
+    autoSync()
+  },
+}
