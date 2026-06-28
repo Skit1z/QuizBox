@@ -33,6 +33,11 @@ const RE_ANSWER = /^[\s　]*(?:【?答案】?|答案|Answer|answer|正确答案)
 // 解析标记
 const RE_ANALYSIS = /^[\s　]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
 
+// 判断题改错格式：「错：零和博弈改为合作共赢」→ 答案=F，解析=改错内容
+const RE_JUDGE_CORRECTION = /^[\s　]*(对|错|正确|错误)\s*[：:]\s*(.*)/
+// 判断题独立答案行：「对」「错」「正确」「错误」单独成行
+const RE_JUDGE_STANDALONE = /^[\s　]*(对|错|正确|错误)[。．.\s　]*$/
+
 // 题干中嵌入的答案：（ B ）、（ABC）、（ ABCD ）
 const RE_STEM_ANSWER = /[（(]\s*([A-Ha-h]{1,8})\s*[）)]/
 // 题干中嵌入的判断答案：（√）（×）（对）（错）
@@ -155,6 +160,25 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
       continue
     }
 
+    // 判断题改错行：「错：xxx」「对」
+    if (phase === 'stem' || phase === 'option') {
+      const corrMatch = trimmed.match(RE_JUDGE_CORRECTION)
+      if (corrMatch) {
+        const verdict = corrMatch[1]
+        answerRaw = verdict
+        const correction = corrMatch[2].trim()
+        if (correction) analysis = correction
+        phase = 'analysis'
+        continue
+      }
+      const standaloneMatch = trimmed.match(RE_JUDGE_STANDALONE)
+      if (standaloneMatch) {
+        answerRaw = standaloneMatch[1]
+        phase = 'answer'
+        continue
+      }
+    }
+
     if (phase === 'answer') {
       answerRaw += '\n' + trimmed
       continue
@@ -224,14 +248,28 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
 /** 判断是否为垃圾块（标题、分隔线、非题目内容） */
 function isJunkBlock(text: string): boolean {
   const t = text.trim()
-  // 纯分隔线
+  // 纯分隔线/符号
   if (/^[=\-_─━═~·•●■□▪▫◆◇\s　]+$/.test(t)) return true
-  // 书名号标题行（如 《供应链管理基础》习题1）
-  if (/^《[^》]+》/.test(t) && t.length < 50) return true
   // 过短且无题号
   if (t.length < 6 && !RE_QUESTION_NUM.test(t)) return true
   // 纯数字/标点
   if (/^[\d.、．\s　:：()（）]+$/.test(t)) return true
+
+  // 多行块：逐行剥离垃圾行和标题行，看剩余是否有实质内容
+  const contentLines = t.split(/\r?\n/).filter((line) => {
+    const l = line.trim()
+    if (!l) return false
+    if (RE_JUNK_LINE.test(l)) return false
+    if (/^《[^》]+》/.test(l)) return false
+    // 纯短乱码/非汉字内容（如 "双几"）
+    if (l.length <= 4 && !/[一-鿿]{2,}/.test(l)) return false
+    return true
+  })
+  if (contentLines.length === 0) return true
+
+  // 无题号 + 无选项 + 含书名号标题 → 文档标题块
+  if (!RE_QUESTION_NUM.test(t) && /《[^》]+》/.test(t) && !RE_OPTION_HEAD.test(t)) return true
+
   return false
 }
 
@@ -282,7 +320,8 @@ function detectType(
 
   // 判断题特征
   if (RE_JUDGE_TRUE.test(answer) || RE_JUDGE_FALSE.test(answer)) return 'judge'
-  if (/[√✓×✗对错]/.test(answer)) return 'judge'
+  if (/[√✓×✗]/.test(answer)) return 'judge'
+  if (/^(对|错|正确|错误)$/.test(answer.trim())) return 'judge'
 
   // 填空特征
   if (RE_BLANK.test(stem)) return 'fill'
@@ -309,8 +348,8 @@ function normalizeAnswer(
       return letters ? [...new Set(letters.map((l) => l.toUpperCase()))].sort() : [raw]
     }
     case 'judge': {
-      if (/[√✓对TtYy]/.test(raw)) return 'T'
-      if (/[×✗错FfNn]/.test(raw)) return 'F'
+      if (/^(对|正确)$/.test(raw.trim()) || /[√✓]/.test(raw) || /^[TtYy]$/.test(raw.trim())) return 'T'
+      if (/^(错|错误)$/.test(raw.trim()) || /[×✗]/.test(raw) || /^[FfNn]$/.test(raw.trim())) return 'F'
       return raw
     }
     case 'fill': {
