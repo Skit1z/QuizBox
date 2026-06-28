@@ -30,7 +30,7 @@ const DEFAULT_AI: AiSettings = {
 
 const DEFAULT_WEBDAV: WebdavSettings = {
   enabled: false,
-  url: '',
+  url: 'https://dav.jianguoyun.com/dav/',
   username: '',
   password: '',
   remotePath: '/QuizBox',

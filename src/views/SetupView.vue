@@ -11,7 +11,7 @@ const syncStore = useSyncStore()
 
 const webdav = ref<WebdavSettings>({
   enabled: true,
-  url: '',
+  url: 'https://dav.jianguoyun.com/dav/',
   username: '',
   password: '',
   remotePath: '/QuizBox',
