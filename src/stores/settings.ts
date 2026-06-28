@@ -65,6 +65,7 @@ export const useSettingsStore = defineStore('settings', {
   }),
   actions: {
     async load() {
+      if (this.loaded) return // 避免重复加载（含解密开销）
       const [aiMeta, wdMeta, themeMeta, colorMeta] = await Promise.all([
         db.syncMeta.get(META_KEY_AI),
         db.syncMeta.get(META_KEY_WEBDAV),

@@ -9,6 +9,8 @@ import {
 import { useSyncStore } from '@/stores/sync'
 import { AI_PROVIDERS, findProvider } from '@/services/ai-providers'
 import { THEME_COLORS, type ThemeColor } from '@/themes/tokens'
+import ThemedSelect from '@/components/ThemedSelect.vue'
+import type { SelectOption } from '@/components/ThemedSelect.vue'
 
 const settings = useSettingsStore()
 const syncStore = useSyncStore()
@@ -20,12 +22,23 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const currentProvider = computed(() => findProvider(ai.value.providerId) || AI_PROVIDERS[AI_PROVIDERS.length - 1])
 const isCustom = computed(() => currentProvider.value.custom)
 
+const providerOptions = computed<SelectOption[]>(() =>
+  AI_PROVIDERS.map((p) => ({ value: p.id, label: p.label })),
+)
+const modelOptions = computed<SelectOption[]>(() => {
+  if (currentProvider.value.models?.length) {
+    return currentProvider.value.models.map((m) => ({ value: m, label: m }))
+  }
+  return []
+})
+
 function onSelectProvider(id: string) {
   const p = findProvider(id)
   if (!p) return
+  const wasCustom = isCustom.value
   ai.value.providerId = id
   ai.value.baseUrl = p.baseUrl
-  if (p.model && (isCustom.value || !ai.value.model || ai.value.model === currentProvider.value.model)) {
+  if (p.model && (wasCustom || !ai.value.model || ai.value.model === currentProvider.value.model)) {
     ai.value.model = p.model
   }
 }
@@ -107,9 +120,12 @@ onMounted(async () => {
       <div class="field-group">
         <div class="field">
           <label class="field__label">供应商</label>
-          <select class="field__select" :value="ai.providerId" @change="onSelectProvider(($event.target as HTMLSelectElement).value)">
-            <option v-for="p in AI_PROVIDERS" :key="p.id" :value="p.id">{{ p.label }}</option>
-          </select>
+          <ThemedSelect
+            :model-value="ai.providerId"
+            :options="providerOptions"
+            placeholder="选择供应商"
+            @change="onSelectProvider"
+          />
         </div>
 
         <!-- 自定义才显示 Base URL -->
@@ -132,25 +148,23 @@ onMounted(async () => {
           />
         </div>
 
-        <!-- 模型：有预设则下拉，否则输入 -->
+        <!-- 模型：有预设则下拉（可清空转自定义输入），否则直接输入 -->
         <div class="field">
           <label class="field__label">模型</label>
-          <select v-if="currentProvider.models?.length" v-model="ai.model" class="field__select">
-            <option v-for="m in currentProvider.models" :key="m" :value="m">{{ m }}</option>
-            <option value="">自定义…</option>
-          </select>
-          <input
-            v-else
+          <ThemedSelect
+            v-if="modelOptions.length"
             v-model="ai.model"
-            class="field__input"
-            placeholder="模型名"
+            :options="modelOptions"
+            clearable
+            clear-label="自定义…"
+            placeholder="选择模型"
           />
           <input
-            v-if="currentProvider.models?.length && !ai.model"
+            v-if="!modelOptions.length || !ai.model"
             v-model="ai.model"
             class="field__input"
-            style="margin-top: 8px"
-            placeholder="输入自定义模型名"
+            :style="modelOptions.length ? 'margin-top: 8px' : ''"
+            placeholder="输入模型名"
           />
         </div>
       </div>

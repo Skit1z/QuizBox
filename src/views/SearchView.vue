@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { questionsRepo } from '@/db/questions'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -35,6 +35,10 @@ watch(keyword, () => {
 function subjectName(id: string): string {
   return subjectsStore.list.find((s) => s.id === id)?.name || ''
 }
+
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
+})
 </script>
 
 <template>

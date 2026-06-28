@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'
 import { wrongBookRepo } from '@/db/wrongbook'
-import { db } from '@/db'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
+import ThemedSelect from '@/components/ThemedSelect.vue'
+import type { SelectOption } from '@/components/ThemedSelect.vue'
 import {
   DIFFICULTY_LABELS,
   QUESTION_TYPE_LABELS,
@@ -15,6 +16,8 @@ import {
   type Question,
   type QuestionType,
 } from '@/types'
+
+defineOptions({ name: 'PracticeView' })
 
 const route = useRoute()
 const router = useRouter()
@@ -32,7 +35,11 @@ const onlyWrong = ref(false)
 const allTypes: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
 const allDiffs: Difficulty[] = ['easy', 'medium', 'hard']
 
-// 来自错题本的指定题目（#8：复习具体错题）
+const subjectOptions = computed<SelectOption[]>(() =>
+  subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
+)
+
+// 来自错题本的指定题目
 const presetQuestionIds = ref<string[]>(
   route.query.questionIds ? (route.query.questionIds as string).split(',').filter(Boolean) : [],
 )
@@ -47,13 +54,11 @@ async function start() {
   let qs: Question[]
 
   if (presetQuestionIds.value.length) {
-    // 直接用指定的错题 id（按 id 索引批量查）
     qs = await questionsRepo.findByIds(presetQuestionIds.value)
   } else if (!subjectId.value) {
     showFailToast('请选择科目')
     return
   } else if (onlyWrong.value) {
-    // 仅错题：先取该科目错题 id，再用 id 索引直查题目，避免全表取交集
     const wrongs = await wrongBookRepo.listAll()
     const wrongQids = wrongs.map((w) => w.questionId)
     qs = (await questionsRepo.findByIds(wrongQids)).filter(
@@ -96,74 +101,81 @@ onMounted(async () => {
 
     <QuizRunner v-if="started" mode="practice" :questions="questions" @finish="started = false" />
 
-    <div v-else style="padding: 16px">
+    <div v-else class="setup-body">
       <div v-if="presetQuestionIds.length" class="preset-banner">
         <van-icon name="warning-o" /> 本次练习将针对 {{ presetQuestionIds.length }} 道指定错题
       </div>
 
-      <van-cell-group inset title="练习设置">
-        <van-field label="科目" is-link readonly :disabled="!!presetQuestionIds.length">
-          <template #input>
-            <select v-model="subjectId" :disabled="!!presetQuestionIds.length" style="border: none; flex: 1">
-              <option value="">请选择</option>
-              <option v-for="s in subjectsStore.list" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
-          </template>
-        </van-field>
+      <div class="card">
+        <div class="field">
+          <label class="field__label">科目</label>
+          <ThemedSelect
+            v-model="subjectId"
+            :options="subjectOptions"
+            placeholder="选择科目"
+            :disabled="!!presetQuestionIds.length"
+          />
+        </div>
+      </div>
 
-        <van-cell title="题型">
-          <div class="chips">
-            <van-tag
+      <div class="card">
+        <!-- 题型多选 -->
+        <div class="field">
+          <label class="field__label">题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label>
+          <div class="multi-chips">
+            <button
               v-for="t in allTypes"
               :key="t"
-              :type="types.includes(t) ? 'primary' : 'default'"
-              class="chip"
-              @click="toggleType(t)"
-            >{{ QUESTION_TYPE_LABELS[t] }}</van-tag>
+              :class="['mchip', types.includes(t) && 'mchip--active']"
+              @click="!presetQuestionIds.length && toggleType(t)"
+              :disabled="!!presetQuestionIds.length"
+            >{{ QUESTION_TYPE_LABELS[t] }}</button>
           </div>
-        </van-cell>
+        </div>
 
-        <van-cell title="难度">
-          <div class="chips">
-            <van-tag
+        <!-- 难度单选 -->
+        <div class="field">
+          <label class="field__label">难度</label>
+          <div class="multi-chips">
+            <button
               v-for="d in allDiffs"
               :key="d"
-              :type="difficulty === d ? 'primary' : 'default'"
-              class="chip"
+              :class="['mchip', difficulty === d && 'mchip--active']"
               @click="difficulty = difficulty === d ? '' : d"
-            >{{ DIFFICULTY_LABELS[d] }}</van-tag>
-            <van-tag :type="!difficulty ? 'primary' : 'default'" class="chip" @click="difficulty = ''">不限</van-tag>
+              :disabled="!!presetQuestionIds.length"
+            >{{ DIFFICULTY_LABELS[d] }}</button>
+            <button
+              :class="['mchip', !difficulty && 'mchip--active']"
+              @click="difficulty = ''"
+              :disabled="!!presetQuestionIds.length"
+            >不限</button>
           </div>
-        </van-cell>
-
-        <van-cell title="仅错题">
-          <template #right-icon>
-            <van-switch v-model="onlyWrong" />
-          </template>
-        </van-cell>
-        <van-cell title="随机顺序">
-          <template #right-icon>
-            <van-switch v-model="random" />
-          </template>
-        </van-cell>
-      </van-cell-group>
-
-      <div style="padding: 16px">
-        <van-button type="primary" block @click="start">开始自测</van-button>
+        </div>
       </div>
+
+      <div class="card">
+        <div class="switch-row" :class="{ 'switch-row--disabled': !!presetQuestionIds.length }">
+          <div>
+            <div class="switch-row__title">仅错题</div>
+            <div class="switch-row__desc">只做错题本里的题</div>
+          </div>
+          <van-switch v-model="onlyWrong" :disabled="!!presetQuestionIds.length" />
+        </div>
+        <div class="switch-row">
+          <div>
+            <div class="switch-row__title">随机顺序</div>
+            <div class="switch-row__desc">打乱题目顺序练习</div>
+          </div>
+          <van-switch v-model="random" />
+        </div>
+      </div>
+
+      <van-button type="primary" round block @click="start">开始自测</van-button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.chip {
-  cursor: pointer;
-}
 .page-head--row {
   display: flex;
   align-items: center;
@@ -180,12 +192,81 @@ onMounted(async () => {
   font-size: 18px;
   margin: 0;
 }
+
+.setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.field__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.multi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.mchip {
+  padding: 6px var(--sp-3);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mchip--active {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+.mchip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) 0;
+}
+.switch-row + .switch-row {
+  border-top: 1px solid var(--border);
+}
+.switch-row--disabled {
+  opacity: 0.5;
+}
+.switch-row__title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+.switch-row__desc {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
 .preset-banner {
   background: var(--brand-soft);
   color: var(--brand);
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-md);
   font-size: 13px;
-  margin-bottom: var(--sp-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 </style>

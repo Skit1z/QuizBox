@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import QuestionCard from './QuestionCard.vue'
@@ -258,14 +258,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopTimer()
+  // 清理未完成的持久化定时器，避免卸载后写库
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
   // 考试模式中途退出标记为放弃
   if (session.value && props.mode === 'exam') {
     examSessionsRepo.abandon(session.value.id).catch(() => {})
   }
 })
 
-// 监听 answers 持久化
-watch(answers, () => persistAnswers(), { deep: true })
+// 注：各 setter 已显式调用 persistAnswers()，无需 watch(answers, deep) 重复触发
 </script>
 
 <template>

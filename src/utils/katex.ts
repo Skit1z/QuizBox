@@ -7,6 +7,10 @@ import 'katex/dist/katex.min.css'
  */
 export function renderRichText(text: string): string {
   if (!text) return ''
+  // 性能优化：不含 $ 的纯文本无需走公式解析，直接转义返回
+  if (!text.includes('$')) {
+    return escapeHtml(text).replace(/\n/g, '<br/>')
+  }
   // 先把公式占位提取出来
   const blocks: string[] = []
   let working = text

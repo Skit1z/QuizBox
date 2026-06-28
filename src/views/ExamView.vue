@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -8,6 +8,8 @@ import { wrongBookRepo } from '@/db/wrongbook'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
 import ExamResult from '@/components/ExamResult.vue'
+import ThemedSelect from '@/components/ThemedSelect.vue'
+import type { SelectOption } from '@/components/ThemedSelect.vue'
 import type { ExamSubMode } from '@/types'
 import type { Question } from '@/types'
 
@@ -23,6 +25,10 @@ const subjectId = ref('')
 const subMode = ref<ExamSubMode>('classic')
 const count = ref(20)
 const durationMin = ref(30)
+
+const subjectOptions = computed<SelectOption[]>(() =>
+  subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
+)
 
 const subModes: { value: ExamSubMode; label: string; desc: string }[] = [
   { value: 'classic', label: '传统限时', desc: '设定题量时长，做完交卷出分' },
@@ -113,60 +119,53 @@ onMounted(async () => {
       @finish="onFinish"
     />
 
-    <div v-else style="padding: 16px">
-      <van-cell-group inset title="科目">
-        <van-field label="科目" is-link readonly>
-          <template #input>
-            <select v-model="subjectId" style="border: none; flex: 1">
-              <option value="">请选择</option>
-              <option v-for="s in subjectsStore.list" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
-          </template>
-        </van-field>
-      </van-cell-group>
-
-      <van-cell-group inset title="考试模式" style="margin-top: 12px">
-        <van-radio-group v-model="subMode">
-          <van-cell
-            v-for="m in subModes"
-            :key="m.value"
-            clickable
-            @click="subMode = m.value"
-          >
-            <template #title>
-              <van-radio :name="m.value">
-                <strong>{{ m.label }}</strong>
-                <div style="font-size: 12px; color: var(--text-3)">{{ m.desc }}</div>
-              </van-radio>
-            </template>
-          </van-cell>
-        </van-radio-group>
-      </van-cell-group>
-
-      <van-cell-group inset title="题量与时长" style="margin-top: 12px">
-        <van-cell title="题量">
-          <van-stepper v-model="count" :min="1" :max="100" />
-        </van-cell>
-        <van-field label="时长(分钟)" type="digit">
-          <template #input>
-            <input v-model="durationMin" type="number" class="inline-input" />
-          </template>
-        </van-field>
-      </van-cell-group>
-
-      <div style="padding: 16px">
-        <van-button type="primary" block @click="start">开始考试</van-button>
+    <div v-else class="setup-body">
+      <!-- 科目 -->
+      <div class="card">
+        <div class="field">
+          <label class="field__label">科目</label>
+          <ThemedSelect v-model="subjectId" :options="subjectOptions" placeholder="选择科目" />
+        </div>
       </div>
+
+      <!-- 考试模式 -->
+      <div class="section-title">考试模式</div>
+      <div class="card mode-list">
+        <div
+          v-for="m in subModes"
+          :key="m.value"
+          :class="['mode-item', subMode === m.value && 'mode-item--active']"
+          @click="subMode = m.value"
+        >
+          <div class="mode-item__radio">
+            <div class="mode-item__dot"></div>
+          </div>
+          <div class="mode-item__body">
+            <div class="mode-item__label">{{ m.label }}</div>
+            <div class="mode-item__desc">{{ m.desc }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 题量与时长 -->
+      <div class="section-title">题量与时长</div>
+      <div class="card">
+        <div class="num-row">
+          <span class="num-row__label">题量</span>
+          <van-stepper v-model="count" :min="1" :max="100" />
+        </div>
+        <div class="num-row">
+          <span class="num-row__label">时长（分钟）</span>
+          <van-stepper v-model="durationMin" :min="1" :max="300" />
+        </div>
+      </div>
+
+      <van-button type="primary" round block @click="start">开始考试</van-button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.inline-input {
-  border: none;
-  flex: 1;
-  background: transparent;
-}
 .page-head--row {
   display: flex;
   align-items: center;
@@ -182,5 +181,97 @@ onMounted(async () => {
 .page-title--sm {
   font-size: 18px;
   margin: 0;
+}
+
+.setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.field__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.mode-list {
+  padding: var(--sp-2);
+}
+.mode-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.mode-item:active {
+  background: var(--surface-2);
+}
+.mode-item--active {
+  background: var(--brand-soft);
+}
+.mode-item__radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: border-color 0.15s;
+}
+.mode-item--active .mode-item__radio {
+  border-color: var(--brand);
+}
+.mode-item__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  transform: scale(0);
+  transition: transform 0.15s;
+}
+.mode-item--active .mode-item__dot {
+  transform: scale(1);
+}
+.mode-item__body {
+  flex: 1;
+}
+.mode-item__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mode-item--active .mode-item__label {
+  color: var(--brand);
+}
+.mode-item__desc {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.num-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) 0;
+}
+.num-row + .num-row {
+  border-top: 1px solid var(--border);
+}
+.num-row__label {
+  font-size: 15px;
+  color: var(--text);
 }
 </style>

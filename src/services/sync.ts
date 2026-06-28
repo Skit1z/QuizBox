@@ -197,9 +197,12 @@ async function uploadSyncFile(c: WebDAVClient, merged: SyncFileData) {
 // ===== 附件同步 =====
 
 async function syncAttachments(c: WebDAVClient) {
-  const local = await db.attachments.toArray()
+  // 只取未同步项（用 synced 索引，避免全量 Blob 载入内存）
+  const local = await db.attachments.where('synced').equals(0 as any).toArray().catch(async () => {
+    const all = await db.attachments.toArray()
+    return all.filter((a) => !a.synced)
+  })
   for (const att of local) {
-    if (att.synced) continue
     const remoteFile = remotePath(`${ATTACH_DIR}/${att.hash}`)
     try {
       const exists = await c.exists(remoteFile)
