@@ -90,7 +90,7 @@ onMounted(async () => {
     <aside v-if="isDesktop" class="app-sidebar">
       <div class="app-sidebar__brand" @click="go('home')">
         <div class="app-sidebar__brand-icon">
-          <van-icon name="bookmark-o" size="18" />
+          <img src="/favicon.svg" alt="" />
         </div>
         <span>题盒</span>
       </div>

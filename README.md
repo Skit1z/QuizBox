@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="public/favicon.svg" alt="题盒图标" width="96" height="96">
+
 # 题盒 · QuizBox
 
 **一套代码，四端一致的刷题应用**

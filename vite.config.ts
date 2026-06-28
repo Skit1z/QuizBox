@@ -21,7 +21,7 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'app-icons/180x180.png', 'app-icons/192x192.png', 'app-icons/512x512.png'],
       manifest: {
         name: '题盒 · QuizBox',
         short_name: '题盒',
@@ -29,8 +29,20 @@ export default defineConfig({
         start_url: '/',
         display: 'standalone',
         background_color: '#f7f8fa',
-        theme_color: '#1989fa',
+        theme_color: '#4f6bed',
         icons: [
+          {
+            src: '/app-icons/192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+          {
+            src: '/app-icons/512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
           {
             src: '/favicon.svg',
             sizes: 'any',

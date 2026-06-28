@@ -43,6 +43,7 @@ onMounted(loadStats)
   <div class="page">
     <!-- 头部问候 -->
     <div class="page-head">
+      <img class="home-icon" src="/favicon.svg" alt="题盒图标" />
       <p class="page-sub">{{ greeting }}</p>
       <h1 class="page-title">题盒</h1>
     </div>
@@ -95,6 +96,24 @@ onMounted(loadStats)
 </template>
 
 <style scoped>
+.page-head {
+  position: relative;
+  min-height: 56px;
+  padding-left: 68px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.home-icon {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  transform: translateY(-50%);
+  box-shadow: var(--shadow-brand);
+}
 .stat-row {
   display: flex;
   align-items: center;

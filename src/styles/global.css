@@ -172,11 +172,16 @@ body {
   width: 32px;
   height: 32px;
   border-radius: var(--r-sm);
-  background: var(--brand);
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  box-shadow: var(--shadow-brand);
+}
+.app-sidebar__brand-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 .app-sidebar__item {
   display: flex;
