@@ -14,6 +14,7 @@ const settings = useSettingsStore()
 const syncStore = useSyncStore()
 const ai = ref<AiSettings>({ ...settings.ai })
 const webdav = ref<WebdavSettings>({ ...settings.webdav })
+const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1'
 
 const currentProvider = computed(() => findProvider(ai.value.providerId) || AI_PROVIDERS[AI_PROVIDERS.length - 1])
 const isCustom = computed(() => currentProvider.value.custom)
@@ -199,7 +200,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="about">题盒 QuizBox v0.1.0 · 本地存储 · WebDAV 同步</div>
+    <div class="about">题盒 QuizBox v{{ version }} · 本地存储 · WebDAV 同步</div>
   </div>
 </template>
 
