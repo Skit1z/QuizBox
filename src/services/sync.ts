@@ -18,9 +18,43 @@ const ATTACH_DIR = 'attachments'
 
 let client: WebDAVClient | null = null
 let syncing = false
-// 并发排队：正在进行同步时，后续调用排队等待，而非静默丢弃
-let syncQueue: Promise<{ pulled: number; pushed: number; ok: boolean }>[] = []
 let currentSync: Promise<{ pulled: number; pushed: number; ok: boolean }> | null = null
+
+/**
+ * 判断是否运行在浏览器网页环境（非 Tauri 桌面端）。
+ * 网页环境受 CORS 限制，需走 /api/webdav 代理；Tauri 桌面端可直连。
+ */
+function isWebEnv(): boolean {
+  return typeof window !== 'undefined' && !(window as any).__TAURI__
+}
+
+/**
+ * 根据原始 WebDAV 地址，返回实际应连接的地址 + 额外请求头。
+ * - 网页环境：走 /api/webdav 代理，真实地址放 X-WebDAV-Target 头
+ * - Tauri 桌面端：直连原地址
+ */
+function resolveWebdavEndpoint(rawUrl: string): {
+  url: string
+  headers: Record<string, string>
+} {
+  if (isWebEnv()) {
+    return {
+      url: '/api/webdav',
+      headers: { 'X-WebDAV-Target': rawUrl.replace(/\/$/, '') },
+    }
+  }
+  return { url: rawUrl, headers: {} }
+}
+
+/** 用指定配置创建 WebDAV client（内部用） */
+function makeClient(rawUrl: string, username: string, password: string): WebDAVClient {
+  const { url, headers } = resolveWebdavEndpoint(rawUrl)
+  const c = createClient(url, { username, password })
+  if (Object.keys(headers).length) {
+    c.setHeaders(headers as any)
+  }
+  return c
+}
 
 /** #15: 重置 client，使修改后的 WebDAV 配置生效 */
 export function resetSyncClient() {
@@ -38,10 +72,7 @@ export async function testWebdav(config: {
 }): Promise<void> {
   if (!config.url) throw new Error('请先填写服务器地址')
   if (!config.username) throw new Error('请先填写账号')
-  const c = createClient(config.url, {
-    username: config.username,
-    password: config.password,
-  })
+  const c = makeClient(config.url, config.username, config.password)
   // 尝试列目录，验证连通性与凭据
   await c.getDirectoryContents('/')
 }
@@ -50,10 +81,7 @@ function getClient(): WebDAVClient | null {
   const s = useSettingsStore()
   if (!s.webdav.enabled || !s.webdav.url) return null
   if (!client) {
-    client = createClient(s.webdav.url, {
-      username: s.webdav.username,
-      password: s.webdav.password,
-    })
+    client = makeClient(s.webdav.url, s.webdav.username, s.webdav.password)
   }
   return client
 }
