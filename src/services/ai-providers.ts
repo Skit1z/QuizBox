@@ -22,8 +22,8 @@ export const AI_PROVIDERS: AiProvider[] = [
     id: 'deepseek',
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
+    model: 'deepseek-v4-flash',
+    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
     keyHelp: 'https://platform.deepseek.com/api_keys',
   },
   {

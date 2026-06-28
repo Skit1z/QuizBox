@@ -22,10 +22,10 @@ export interface WebdavSettings {
 }
 
 const DEFAULT_AI: AiSettings = {
-  providerId: 'glm',
-  baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  providerId: 'deepseek',
+  baseUrl: 'https://api.deepseek.com/v1',
   apiKey: '',
-  model: 'glm-4-flash',
+  model: 'deepseek-v4-flash',
 }
 
 const DEFAULT_WEBDAV: WebdavSettings = {
