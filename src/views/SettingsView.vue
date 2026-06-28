@@ -42,6 +42,33 @@ async function saveAi() {
   showSuccessToast('AI 设置已保存')
 }
 
+const testing = ref(false)
+async function testModel() {
+  if (testing.value) return
+  if (!ai.value.apiKey.trim()) {
+    showFailToast('请先填写 API Key')
+    return
+  }
+  if (isCustom.value && !ai.value.baseUrl.trim()) {
+    showFailToast('请先填写 Base URL')
+    return
+  }
+  testing.value = true
+  try {
+    const { testConnection } = await import('@/services/ai')
+    const reply = await testConnection({
+      baseUrl: ai.value.baseUrl,
+      apiKey: ai.value.apiKey,
+      model: ai.value.model,
+    })
+    showSuccessToast(`检测通过，模型回复：${reply.slice(0, 30)}`)
+  } catch (e: any) {
+    showFailToast(e?.message || '检测失败')
+  } finally {
+    testing.value = false
+  }
+}
+
 async function saveWebdav() {
   await settings.saveWebdav(webdav.value)
   showSuccessToast('同步设置已保存')
@@ -133,8 +160,11 @@ onMounted(async () => {
         <van-icon name="question-o" /> 如何获取 {{ currentProvider.label }} 的 API Key？
       </a>
 
-      <div style="margin-top: var(--sp-4)">
-        <van-button type="primary" block round @click="saveAi">保存 AI 设置</van-button>
+      <div class="btn-row">
+        <van-button type="primary" round @click="saveAi">保存</van-button>
+        <van-button plain type="primary" round :loading="testing" @click="testModel">
+          {{ testing ? '检测中…' : '检测模型' }}
+        </van-button>
       </div>
     </div>
 
@@ -210,6 +240,14 @@ onMounted(async () => {
   border-radius: var(--r-lg);
   padding: var(--sp-5);
   box-shadow: var(--shadow-sm);
+}
+.btn-row {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.btn-row :deep(.van-button) {
+  flex: 1;
 }
 .field-group {
   display: flex;

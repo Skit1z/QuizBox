@@ -66,3 +66,56 @@ export async function chatJson<T = any>(
     throw new Error('AI 返回的不是有效 JSON')
   }
 }
+
+/**
+ * 用指定配置（无需先保存到 store）发起一次最小请求，检测连通性与模型可用性。
+ * 返回模型实际返回的内容（用于展示）。
+ */
+export async function testConnection(config: {
+  baseUrl: string
+  apiKey: string
+  model: string
+}): Promise<string> {
+  if (!config.apiKey) throw new Error('请先填写 API Key')
+  if (!config.baseUrl) throw new Error('请先填写 Base URL')
+  if (!config.model) throw new Error('请先选择/填写模型')
+
+  const url = config.baseUrl.replace(/\/$/, '') + '/chat/completions'
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [{ role: 'user', content: '请回复"OK"两个字' }],
+      temperature: 0,
+      max_tokens: 16,
+    }),
+  })
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    // 提取常见错误信息
+    let detail = txt.slice(0, 200)
+    try {
+      const j = JSON.parse(txt)
+      detail = j?.error?.message || j?.message || detail
+    } catch {
+      // 非 JSON，用原始文本
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error('认证失败（401/403）：API Key 无效或无权访问')
+    }
+    if (res.status === 404) {
+      throw new Error('接口地址或模型不存在（404）：请检查 Base URL 与模型名')
+    }
+    throw new Error(`接口错误 (${res.status})：${detail}`)
+  }
+
+  const data = await res.json()
+  const content = data?.choices?.[0]?.message?.content
+  if (!content) throw new Error('接口可达但返回内容为空')
+  return content as string
+}
