@@ -86,7 +86,7 @@ onMounted(async () => {
         <div class="app-sidebar__brand-icon">
           <van-icon name="bookmark-o" size="18" />
         </div>
-        <span>刷题系统</span>
+        <span>题盒</span>
       </div>
       <div
         v-for="item in navItems"

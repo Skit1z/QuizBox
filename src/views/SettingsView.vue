@@ -159,7 +159,7 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label class="field__label">远端目录</label>
-          <input v-model="webdav.remotePath" class="field__input" placeholder="/QAsystem" />
+          <input v-model="webdav.remotePath" class="field__input" placeholder="/QuizBox" />
         </div>
       </div>
       <div style="margin-top: var(--sp-4); display: flex; gap: var(--sp-3)">
@@ -199,7 +199,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="about">刷题系统 v0.1.0 · 本地存储 · WebDAV 同步</div>
+    <div class="about">题盒 QuizBox v0.1.0 · 本地存储 · WebDAV 同步</div>
   </div>
 </template>
 

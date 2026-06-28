@@ -38,13 +38,13 @@ function getClient(): WebDAVClient | null {
 
 function remotePath(file: string): string {
   const s = useSettingsStore()
-  const base = (s.webdav.remotePath || '/QAsystem').replace(/\/$/, '')
+  const base = (s.webdav.remotePath || '/QuizBox').replace(/\/$/, '')
   return `${base}/${file}`
 }
 
 async function ensureDirs(c: WebDAVClient) {
   const s = useSettingsStore()
-  const base = (s.webdav.remotePath || '/QAsystem').replace(/\/$/, '')
+  const base = (s.webdav.remotePath || '/QuizBox').replace(/\/$/, '')
   await ensureDir(c, base)
   await ensureDir(c, `${base}/${ATTACH_DIR}`)
 }

@@ -70,7 +70,7 @@ const router = createRouter({
 })
 
 router.afterEach((to) => {
-  const title = (to.meta.title as string) || '刷题系统'
+  const title = (to.meta.title as string) || '题盒 · QuizBox'
   document.title = title
 })
 

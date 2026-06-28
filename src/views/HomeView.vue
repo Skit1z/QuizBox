@@ -43,7 +43,7 @@ onMounted(loadStats)
     <!-- 头部问候 -->
     <div class="page-head">
       <p class="page-sub">{{ greeting }}</p>
-      <h1 class="page-title">刷题系统</h1>
+      <h1 class="page-title">题盒</h1>
     </div>
 
     <!-- 数据概览 -->

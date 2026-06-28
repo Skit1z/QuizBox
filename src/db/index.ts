@@ -25,7 +25,7 @@ export class QADatabase extends Dexie {
   syncMeta!: Table<SyncMeta, string>
 
   constructor() {
-    super('QAsystemDB')
+    super('QuizBoxDB')
     // version 1：原始（deletedAt 用 null）
     this.version(1).stores({
       subjects: 'id, order, updatedAt, deletedAt',

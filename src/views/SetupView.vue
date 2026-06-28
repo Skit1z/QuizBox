@@ -14,7 +14,7 @@ const webdav = ref<WebdavSettings>({
   url: '',
   username: '',
   password: '',
-  remotePath: '/QAsystem',
+  remotePath: '/QuizBox',
 })
 
 async function saveAndSync() {
@@ -44,7 +44,7 @@ onMounted(async () => {
       <div class="setup__logo">
         <van-icon name="cloud-o" size="36" color="#fff" />
       </div>
-      <h1 class="setup__title">欢迎使用刷题系统</h1>
+      <h1 class="setup__title">欢迎使用题盒</h1>
       <p class="setup__desc">首次使用请配置 WebDAV 云盘，<br />用于多端同步你的题库数据</p>
     </div>
 
@@ -64,7 +64,7 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label class="field__label">目录</label>
-          <input v-model="webdav.remotePath" class="field__input" placeholder="/QAsystem" />
+          <input v-model="webdav.remotePath" class="field__input" placeholder="/QuizBox" />
         </div>
       </div>
 

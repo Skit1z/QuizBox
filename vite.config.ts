@@ -16,9 +16,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: '刷题系统',
-        short_name: '刷题',
-        description: '主观题与客观题刷题系统',
+        name: '题盒 · QuizBox',
+        short_name: '题盒',
+        description: '主观题与客观题刷题应用',
         start_url: '/',
         display: 'standalone',
         background_color: '#f7f8fa',

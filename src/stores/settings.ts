@@ -33,7 +33,7 @@ const DEFAULT_WEBDAV: WebdavSettings = {
   url: '',
   username: '',
   password: '',
-  remotePath: '/QAsystem',
+  remotePath: '/QuizBox',
 }
 
 const META_KEY_AI = 'ai_settings'
@@ -89,7 +89,7 @@ export const useSettingsStore = defineStore('settings', {
           url: raw.url,
           username: raw.username,
           password: await decryptSecret(raw.password),
-          remotePath: raw.remotePath || '/QAsystem',
+          remotePath: raw.remotePath || '/QuizBox',
         }
       }
       if (themeMeta) this.theme = JSON.parse(themeMeta.value)
