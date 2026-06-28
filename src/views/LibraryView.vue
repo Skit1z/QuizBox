@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+defineOptions({ name: 'LibraryView' })
 import { showConfirmDialog, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'

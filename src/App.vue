@@ -6,6 +6,12 @@ import { showToast } from 'vant'
 const route = useRoute()
 const router = useRouter()
 
+/** 路由切换时的 key，用于强制过渡；tab 页走 keep-alive，不在此列 */
+const routeKey = computed(() => String(route.name) + String(route.params.subjectId || ''))
+
+/** 需要缓存的页面（tab 主页 + 题库列表），切回时保留滚动与状态 */
+const cachedViews = ['HomeView', 'LibraryView', 'WrongBookView']
+
 const isDesktop = ref(window.innerWidth >= 768)
 const updateLayout = () => {
   isDesktop.value = window.innerWidth >= 768
@@ -101,7 +107,13 @@ onMounted(async () => {
 
     <!-- 主内容区 -->
     <main :class="isDesktop ? 'app-content' : 'app-main-mobile'">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="page-fade" mode="out-in">
+          <keep-alive :include="cachedViews">
+            <component :is="Component" :key="routeKey" />
+          </keep-alive>
+        </transition>
+      </router-view>
     </main>
 
     <!-- 移动端底部 tabbar -->

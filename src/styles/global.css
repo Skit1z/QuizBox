@@ -206,6 +206,18 @@ body {
   padding: var(--sp-5) var(--sp-4);
 }
 
+/* ===== 路由过渡：淡入，掩盖懒加载 chunk 下载间隙 ===== */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.page-fade-enter-from {
+  opacity: 0;
+}
+.page-fade-leave-to {
+  opacity: 0;
+}
+
 /* ===== 通用组件类 ===== */
 .page {
   padding: var(--sp-4);

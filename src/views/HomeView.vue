@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+defineOptions({ name: 'HomeView' })
 import { useRouter } from 'vue-router'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'

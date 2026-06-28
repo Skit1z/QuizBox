@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+defineOptions({ name: 'WrongBookView' })
 import { showConfirmDialog, showSuccessToast } from 'vant'
 import { db } from '@/db'
 import { wrongBookRepo } from '@/db/wrongbook'
