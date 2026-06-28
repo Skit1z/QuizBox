@@ -27,6 +27,25 @@ export function resetSyncClient() {
   client = null
 }
 
+/**
+ * 用指定配置（无需先保存）测试 WebDAV 连通性。
+ * 尝试访问根目录，成功即视为连接正常。
+ */
+export async function testWebdav(config: {
+  url: string
+  username: string
+  password: string
+}): Promise<void> {
+  if (!config.url) throw new Error('请先填写服务器地址')
+  if (!config.username) throw new Error('请先填写账号')
+  const c = createClient(config.url, {
+    username: config.username,
+    password: config.password,
+  })
+  // 尝试列目录，验证连通性与凭据
+  await c.getDirectoryContents('/')
+}
+
 function getClient(): WebDAVClient | null {
   const s = useSettingsStore()
   if (!s.webdav.enabled || !s.webdav.url) return null

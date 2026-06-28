@@ -91,6 +91,40 @@ async function saveWebdav() {
   showSuccessToast('同步设置已保存')
 }
 
+const wdTesting = ref(false)
+const wdResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
+async function testWebdav() {
+  if (wdTesting.value) return
+  if (!webdav.value.url) {
+    wdResult.value = { type: 'error', msg: '请先填写服务器地址' }
+    return
+  }
+  wdTesting.value = true
+  wdResult.value = null
+  try {
+    const { testWebdav: test } = await import('@/services/sync')
+    await test({
+      url: webdav.value.url,
+      username: webdav.value.username,
+      password: webdav.value.password,
+    })
+    wdResult.value = { type: 'success', msg: '连接成功' }
+  } catch (e: any) {
+    const msg = e?.message || '连接失败'
+    if (/401|403|unauthorized|auth/i.test(msg)) {
+      wdResult.value = { type: 'error', msg: '认证失败：账号或密码错误' }
+    } else if (/404|not found/i.test(msg)) {
+      wdResult.value = { type: 'error', msg: '地址不存在：请检查服务器地址' }
+    } else if (/cors|fetch|network/i.test(msg)) {
+      wdResult.value = { type: 'error', msg: '网络错误：地址不通或服务不支持跨域' }
+    } else {
+      wdResult.value = { type: 'error', msg: '连接失败' }
+    }
+  } finally {
+    wdTesting.value = false
+  }
+}
+
 async function manualSync() {
   if (!webdav.value.enabled || !webdav.value.url) {
     showFailToast('请先启用同步并填写地址')
@@ -216,9 +250,19 @@ onMounted(async () => {
           <input v-model="webdav.remotePath" class="field__input" placeholder="/QuizBox" />
         </div>
       </div>
-      <div style="margin-top: var(--sp-4); display: flex; gap: var(--sp-3)">
-        <van-button block plain round @click="saveWebdav">保存</van-button>
-        <van-button v-if="webdav.enabled" block plain round :loading="syncStore.syncing" @click="manualSync">
+      <div v-if="wdResult" :class="['test-result', wdResult.type === 'success' ? 'test-result--ok' : 'test-result--err']">
+        <van-icon :name="wdResult.type === 'success' ? 'success' : 'cross'" />
+        <span>{{ wdResult.msg }}</span>
+      </div>
+
+      <div class="btn-row">
+        <van-button type="primary" round @click="saveWebdav">保存</van-button>
+        <van-button plain type="primary" round :loading="wdTesting" @click="testWebdav">
+          {{ wdTesting ? '检测中…' : '检测连接' }}
+        </van-button>
+      </div>
+      <div v-if="webdav.enabled" style="margin-top: var(--sp-3)">
+        <van-button block plain round :loading="syncStore.syncing" @click="manualSync">
           {{ syncStore.syncing ? '同步中…' : '立即同步' }}
         </van-button>
       </div>
