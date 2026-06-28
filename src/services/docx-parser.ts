@@ -21,7 +21,6 @@ export interface DocxParseResult {
 export async function parseDocx(file: File): Promise<DocxParseResult> {
   const arrayBuffer = await file.arrayBuffer()
 
-  const textResult = await mammoth.extractRawText({ arrayBuffer })
   const htmlResult = await mammoth.convertToHtml({ arrayBuffer })
 
   // 从 HTML 中提取 base64 图片
@@ -29,7 +28,6 @@ export async function parseDocx(file: File): Promise<DocxParseResult> {
   let html = htmlResult.value
   const placeholders: string[] = []
   let idx = 0
-  // 用 matchAll 避免手动管理 lastIndex；提取与替换用同一份匹配结果
   const matches = [...html.matchAll(/<img[^>]+src="data:([^;]+);base64,([^"]+)"[^>]*\/?>/g)]
   for (const m of matches) {
     const mime = m[1]
@@ -41,14 +39,30 @@ export async function parseDocx(file: File): Promise<DocxParseResult> {
     placeholders.push(`[IMG_${idx}]`)
     idx++
   }
-  // 用新的正则做替换，避免与上面共用 lastIndex
   let imgIdx = 0
   html = html.replace(
     /<img[^>]+src="data:([^;]+);base64,([^"]+)"[^>]*\/?>/g,
     () => placeholders[imgIdx++] || '',
   )
 
-  return { text: textResult.value, html, images }
+  // 从 HTML 提取纯文本，避免二次解析
+  const text = htmlToText(html)
+
+  return { text, html, images }
+}
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim()
 }
 
 function base64ToBytes(b64: string): Uint8Array {

@@ -15,3 +15,26 @@ declare module 'vue-virtual-scroller' {
   export const DynamicScrollerItem: DefineComponent<any, any, any>
   export const RecycleScroller: DefineComponent<any, any, any>
 }
+
+declare module 'word-extractor' {
+  class Document {
+    getBody(options?: { filterUnicode?: boolean }): string;
+    getFootnotes(options?: { filterUnicode?: boolean }): string;
+    getEndnotes(options?: { filterUnicode?: boolean }): string;
+    getHeaders(options?: { filterUnicode?: boolean; includeFooters?: boolean }): string;
+    getFooters(options?: { filterUnicode?: boolean }): string;
+    getAnnotations(options?: { filterUnicode?: boolean }): string;
+    getTextboxes(options?: {
+      filterUnicode?: boolean;
+      includeHeadersAndFooters?: boolean;
+      includeBody?: boolean;
+    }): string;
+  }
+
+  class WordExtractor {
+    constructor();
+    extract(source: string | ArrayBuffer | Buffer): Promise<Document>;
+  }
+
+  export default WordExtractor;
+}

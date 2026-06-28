@@ -196,7 +196,7 @@ body {
   cursor: pointer;
   transition: all 0.15s;
 }
-.app-sidebar__item:hover {
+.app-sidebar__item:not(.app-sidebar__item--active):hover {
   background: var(--surface-2);
   color: var(--text);
 }

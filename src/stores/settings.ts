@@ -21,6 +21,15 @@ export interface WebdavSettings {
   remotePath: string
 }
 
+export interface OcrSettings {
+  /** PaddleOCR 云 API Token */
+  token: string
+}
+
+const DEFAULT_OCR: OcrSettings = {
+  token: '',
+}
+
 const DEFAULT_AI: AiSettings = {
   providerId: 'deepseek',
   baseUrl: 'https://api.deepseek.com/v1',
@@ -38,6 +47,7 @@ const DEFAULT_WEBDAV: WebdavSettings = {
 
 const META_KEY_AI = 'ai_settings'
 const META_KEY_WEBDAV = 'webdav_settings'
+const META_KEY_OCR = 'ocr_settings'
 const META_KEY_THEME = 'theme'
 const META_KEY_COLOR = 'theme_color'
 
@@ -59,6 +69,7 @@ export const useSettingsStore = defineStore('settings', {
   state: () => ({
     ai: { ...DEFAULT_AI },
     webdav: { ...DEFAULT_WEBDAV },
+    ocr: { ...DEFAULT_OCR },
     theme: 'auto' as 'light' | 'dark' | 'auto',
     themeColor: DEFAULT_THEME_COLOR,
     loaded: false,
@@ -66,9 +77,10 @@ export const useSettingsStore = defineStore('settings', {
   actions: {
     async load() {
       if (this.loaded) return // 避免重复加载（含解密开销）
-      const [aiMeta, wdMeta, themeMeta, colorMeta] = await Promise.all([
+      const [aiMeta, wdMeta, ocrMeta, themeMeta, colorMeta] = await Promise.all([
         db.syncMeta.get(META_KEY_AI),
         db.syncMeta.get(META_KEY_WEBDAV),
+        db.syncMeta.get(META_KEY_OCR),
         db.syncMeta.get(META_KEY_THEME),
         db.syncMeta.get(META_KEY_COLOR),
       ])
@@ -93,6 +105,10 @@ export const useSettingsStore = defineStore('settings', {
           password: await decryptSecret(raw.password),
           remotePath: raw.remotePath || '/QuizBox',
         }
+      }
+      if (ocrMeta) {
+        const raw = JSON.parse(ocrMeta.value) as { token: string }
+        this.ocr = { token: await decryptSecret(raw.token) }
       }
       if (themeMeta) this.theme = JSON.parse(themeMeta.value)
       if (colorMeta) this.themeColor = JSON.parse(colorMeta.value) as ThemeColor
@@ -133,6 +149,14 @@ export const useSettingsStore = defineStore('settings', {
       await db.syncMeta.put({ key: META_KEY_WEBDAV, value: JSON.stringify(stored) })
       const { resetSyncClient } = await import('@/services/sync')
       resetSyncClient()
+    },
+
+    async saveOcr(settings: Partial<OcrSettings>) {
+      this.ocr = { ...this.ocr, ...settings }
+      const stored = {
+        token: this.ocr.token ? await encryptSecret(this.ocr.token) : '',
+      }
+      await db.syncMeta.put({ key: META_KEY_OCR, value: JSON.stringify(stored) })
     },
 
     async setTheme(theme: 'light' | 'dark' | 'auto') {

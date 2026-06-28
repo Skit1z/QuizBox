@@ -3,10 +3,13 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
+import { useSettingsStore } from '@/stores/settings'
 import { questionsRepo, type QuestionInput } from '@/db/questions'
 import { sha256 } from '@/utils/hash'
-import { parseDocx, saveImages, type ParsedImage } from '@/services/docx-parser'
+import { parseFile, getFileExt, ACCEPT_EXTENSIONS, EXT_LABELS } from '@/services/file-parser'
+import { saveImages, type ParsedImage } from '@/services/docx-parser'
 import { parseQuestionsWithAI, type ParsedQuestion } from '@/services/importer'
+import { parseWithRules } from '@/services/rule-parser'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 import { QUESTION_TYPE_LABELS, type QuestionType } from '@/types'
@@ -16,6 +19,7 @@ defineOptions({ name: 'ImportView' })
 const route = useRoute()
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
+const settingsStore = useSettingsStore()
 
 const step = ref<1 | 2 | 3>(1) // 1上传 2解析 3预览
 const selectedSubjectId = ref((route.query.subjectId as string) || '')
@@ -26,13 +30,15 @@ const parseError = ref('')
 const parsed = ref<ParsedQuestion[]>([])
 const images: ParsedImage[] = []
 const hint = ref('')
+const pdfProgress = ref('')
+const parseMode = ref<'rule' | 'ai'>('rule')
 const editingIdx = ref<number | null>(null)
 
 const types: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
 
 const steps = [
   { n: 1, label: '选择文档' },
-  { n: 2, label: 'AI 解析' },
+  { n: 2, label: '解析配置' },
   { n: 3, label: '预览导入' },
 ]
 
@@ -71,10 +77,17 @@ function removeOption(p: ParsedQuestion, i: number) {
   p.options?.splice(i, 1)
 }
 
+const fileExt = computed(() => fileRef.value ? getFileExt(fileRef.value.name) : null)
+
 function onFileRead(file: any) {
   const f: File = file.file || file
-  if (!f.name.toLowerCase().endsWith('.docx')) {
-    showFailToast('请上传 .docx 文件')
+  const ext = getFileExt(f.name)
+  if (!ext) {
+    showFailToast('支持 .docx / .doc / .md / .pdf 格式')
+    return
+  }
+  if (ext === 'pdf' && !settingsStore.ocr.token) {
+    showFailToast('PDF 导入需先在设置中配置 PaddleOCR Token')
     return
   }
   fileRef.value = f
@@ -95,12 +108,33 @@ async function doParse() {
   parsing.value = true
   parseError.value = ''
   try {
-    const result = await parseDocx(fileRef.value)
+    pdfProgress.value = ''
+    const result = await parseFile(fileRef.value, {
+      ocrToken: settingsStore.ocr.token,
+      onPdfProgress: (p) => {
+        if (p.state === 'pending') pdfProgress.value = 'OCR 排队中…'
+        else if (p.state === 'running') {
+          const pg = p.extractedPages && p.totalPages
+            ? ` (${p.extractedPages}/${p.totalPages} 页)`
+            : ''
+          pdfProgress.value = `OCR 识别中${pg}`
+        } else if (p.state === 'done') pdfProgress.value = 'OCR 完成，正在解析…'
+      },
+    })
     images.length = 0
     images.push(...result.images)
-    const qs = await parseQuestionsWithAI(result.text, hint.value || undefined)
+
+    let qs: ParsedQuestion[]
+    if (parseMode.value === 'rule') {
+      qs = parseWithRules(result.text)
+    } else {
+      qs = await parseQuestionsWithAI(result.text, hint.value || undefined)
+    }
+
     if (qs.length === 0) {
-      parseError.value = 'AI 未识别出题目，请检查文档或添加解析提示后重试'
+      parseError.value = parseMode.value === 'rule'
+        ? '规则未识别出题目，请检查文档格式或切换到 AI 解析'
+        : 'AI 未识别出题目，请检查文档或添加解析提示后重试'
     } else {
       parsed.value = qs
       step.value = 3
@@ -223,13 +257,13 @@ onMounted(async () => {
 
       <!-- 拖拽上传区 -->
       <div class="upload-zone">
-        <van-uploader :after-read="onFileRead" accept=".docx" :max-count="1">
+        <van-uploader :after-read="onFileRead" :accept="ACCEPT_EXTENSIONS" :max-count="1">
           <div class="upload-zone__inner">
             <div class="upload-zone__icon">
               <van-icon name="description" size="32" />
             </div>
-            <div class="upload-zone__title">选择 Word 文档</div>
-            <div class="upload-zone__desc">点击选择 .docx 文件，AI 将自动解析题型与答案</div>
+            <div class="upload-zone__title">选择文档</div>
+            <div class="upload-zone__desc">支持 .docx / .doc / .md / .pdf，自动解析题型与答案</div>
           </div>
         </van-uploader>
       </div>
@@ -249,8 +283,38 @@ onMounted(async () => {
         <van-icon name="cross" size="16" color="var(--text-3)" @click="reselectFile" />
       </div>
 
-      <!-- 解析提示 -->
+      <!-- 解析方式 -->
       <div class="card">
+        <div class="field">
+          <label class="field__label">解析方式</label>
+          <div class="mode-seg">
+            <button
+              :class="['mode-seg__btn', parseMode === 'rule' && 'mode-seg__btn--active']"
+              @click="parseMode = 'rule'"
+            >
+              <van-icon name="records" size="16" />
+              <span>规则解析</span>
+              <span class="mode-seg__badge">免费</span>
+            </button>
+            <button
+              :class="['mode-seg__btn', parseMode === 'ai' && 'mode-seg__btn--active']"
+              @click="parseMode = 'ai'"
+            >
+              <van-icon name="fire-o" size="16" />
+              <span>AI 解析</span>
+            </button>
+          </div>
+          <p class="field__desc" v-if="parseMode === 'rule'">
+            使用规则匹配题号、选项、答案标记，适合格式规范的题库文档
+          </p>
+          <p class="field__desc" v-else>
+            调用 AI 智能识别题目结构，适合格式不规范或混排的文档（消耗 Token）
+          </p>
+        </div>
+      </div>
+
+      <!-- AI 解析提示（仅 AI 模式） -->
+      <div v-if="parseMode === 'ai'" class="card">
         <div class="field">
           <label class="field__label">解析提示（可选）</label>
           <textarea
@@ -268,8 +332,8 @@ onMounted(async () => {
 
       <!-- 解析按钮 -->
       <div class="btn-center">
-        <van-button type="primary" round block :loading="parsing" loading-text="AI 解析中…" @click="doParse">
-          开始 AI 解析
+        <van-button type="primary" round block :loading="parsing" :loading-text="pdfProgress || (parseMode === 'ai' ? 'AI 解析中…' : '规则解析中…')" @click="doParse">
+          开始{{ parseMode === 'ai' ? ' AI ' : '规则' }}解析
         </van-button>
         <transition name="page-fade">
           <div v-if="parseError" class="parse-error">
@@ -550,6 +614,47 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-3);
   margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* ===== 解析模式切换 ===== */
+.mode-seg {
+  display: flex;
+  gap: 8px;
+}
+.mode-seg__btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.mode-seg__btn--active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.mode-seg__badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--success);
+  color: #fff;
+  font-weight: 600;
+}
+.field__desc {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 0;
   line-height: 1.5;
 }
 

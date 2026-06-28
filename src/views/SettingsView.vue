@@ -135,10 +135,47 @@ async function manualSync() {
   else showFailToast('同步失败，请检查 WebDAV 设置')
 }
 
+const ocrToken = ref('')
+const ocrTesting = ref(false)
+const ocrResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+async function saveOcr() {
+  await settings.saveOcr({ token: ocrToken.value.trim() })
+  showSuccessToast('OCR 设置已保存')
+}
+async function testOcr() {
+  if (ocrTesting.value) return
+  const tk = ocrToken.value.trim()
+  if (!tk) {
+    ocrResult.value = { type: 'error', msg: '请先填写 Token' }
+    return
+  }
+  ocrTesting.value = true
+  ocrResult.value = null
+  try {
+    // 用 jobs 接口做一个空的 GET 请求验证 Token 有效性
+    const res = await fetch('https://paddleocr.aistudio-app.com/api/v2/ocr/jobs', {
+      headers: { Authorization: `bearer ${tk}` },
+    })
+    if (res.ok || res.status === 404) {
+      ocrResult.value = { type: 'success', msg: 'Token 验证通过' }
+    } else if (res.status === 401 || res.status === 403) {
+      ocrResult.value = { type: 'error', msg: 'Token 无效或已过期' }
+    } else {
+      ocrResult.value = { type: 'error', msg: `服务返回 ${res.status}` }
+    }
+  } catch {
+    ocrResult.value = { type: 'error', msg: '网络连接失败' }
+  } finally {
+    ocrTesting.value = false
+  }
+}
+
 onMounted(async () => {
   await settings.load()
   ai.value = { ...settings.ai }
   webdav.value = { ...settings.webdav }
+  ocrToken.value = settings.ocr.token
 })
 </script>
 
@@ -268,6 +305,28 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- ===== OCR 服务 ===== -->
+    <div class="section-title">OCR 服务（PDF 导入）</div>
+    <div class="card">
+      <div class="field-group">
+        <div class="field">
+          <label class="field__label">PaddleOCR Token</label>
+          <input v-model="ocrToken" class="field__input" type="password" placeholder="飞桨 PaddleOCR API Token" />
+          <p class="field__desc">在飞桨 PaddleOCR 平台获取 Token，用于 PDF 文档的文字与图片识别</p>
+        </div>
+      </div>
+      <div v-if="ocrResult" :class="['test-result', ocrResult.type === 'success' ? 'test-result--ok' : 'test-result--err']">
+        <van-icon :name="ocrResult.type === 'success' ? 'success' : 'cross'" />
+        <span>{{ ocrResult.msg }}</span>
+      </div>
+      <div class="btn-row">
+        <van-button type="primary" round @click="saveOcr">保存</van-button>
+        <van-button plain type="primary" round :loading="ocrTesting" @click="testOcr">
+          {{ ocrTesting ? '检测中…' : '检测连接' }}
+        </van-button>
+      </div>
+    </div>
+
     <!-- ===== 外观 ===== -->
     <div class="section-title">外观</div>
     <div class="card">
@@ -353,6 +412,12 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-2);
+}
+.field__desc {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 0;
+  line-height: 1.5;
 }
 .field__input,
 .field__select {
