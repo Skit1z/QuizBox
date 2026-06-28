@@ -87,7 +87,8 @@ export const useSettingsStore = defineStore('settings', {
         const raw = JSON.parse(wdMeta.value) as StoredWebdav
         this.webdav = {
           enabled: raw.enabled,
-          url: raw.url,
+          // url 为空时回退默认值（坚果云），兼容旧版存了空字符串的用户
+          url: raw.url || DEFAULT_WEBDAV.url,
           username: raw.username,
           password: await decryptSecret(raw.password),
           remotePath: raw.remotePath || '/QuizBox',
