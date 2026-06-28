@@ -14,7 +14,8 @@ const settings = useSettingsStore()
 const syncStore = useSyncStore()
 const ai = ref<AiSettings>({ ...settings.ai })
 const webdav = ref<WebdavSettings>({ ...settings.webdav })
-const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1'
+// 版本号由 vite define 在构建期从 package.json 注入
+const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
 const currentProvider = computed(() => findProvider(ai.value.providerId) || AI_PROVIDERS[AI_PROVIDERS.length - 1])
 const isCustom = computed(() => currentProvider.value.custom)
@@ -43,27 +44,30 @@ async function saveAi() {
 }
 
 const testing = ref(false)
+// 检测结果状态行：type=success|error|空，msg=展示文本
+const testResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 async function testModel() {
   if (testing.value) return
   if (!ai.value.apiKey.trim()) {
-    showFailToast('请先填写 API Key')
+    testResult.value = { type: 'error', msg: '请先填写 API Key' }
     return
   }
   if (isCustom.value && !ai.value.baseUrl.trim()) {
-    showFailToast('请先填写 Base URL')
+    testResult.value = { type: 'error', msg: '请先填写 Base URL' }
     return
   }
   testing.value = true
+  testResult.value = null
   try {
     const { testConnection } = await import('@/services/ai')
-    const reply = await testConnection({
+    await testConnection({
       baseUrl: ai.value.baseUrl,
       apiKey: ai.value.apiKey,
       model: ai.value.model,
     })
-    showSuccessToast(`检测通过，模型回复：${reply.slice(0, 30)}`)
+    testResult.value = { type: 'success', msg: '连接成功' }
   } catch (e: any) {
-    showFailToast(e?.message || '检测失败')
+    testResult.value = { type: 'error', msg: '连接失败' }
   } finally {
     testing.value = false
   }
@@ -160,6 +164,11 @@ onMounted(async () => {
         <van-icon name="question-o" /> 如何获取 {{ currentProvider.label }} 的 API Key？
       </a>
 
+      <div v-if="testResult" :class="['test-result', testResult.type === 'success' ? 'test-result--ok' : 'test-result--err']">
+        <van-icon :name="testResult.type === 'success' ? 'success' : 'cross'" />
+        <span>{{ testResult.msg }}</span>
+      </div>
+
       <div class="btn-row">
         <van-button type="primary" round @click="saveAi">保存</van-button>
         <van-button plain type="primary" round :loading="testing" @click="testModel">
@@ -230,7 +239,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="about">题盒 QuizBox v{{ version }} · 本地存储 · WebDAV 同步</div>
+    <div class="about">题盒 QuizBox v{{ version }}</div>
   </div>
 </template>
 
@@ -248,6 +257,24 @@ onMounted(async () => {
 }
 .btn-row :deep(.van-button) {
   flex: 1;
+}
+.test-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.test-result--ok {
+  color: var(--success);
+  background: rgba(0, 180, 42, 0.08);
+}
+.test-result--err {
+  color: var(--danger);
+  background: rgba(245, 63, 63, 0.08);
 }
 .field-group {
   display: flex;

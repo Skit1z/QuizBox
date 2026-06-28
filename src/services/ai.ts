@@ -115,7 +115,27 @@ export async function testConnection(config: {
   }
 
   const data = await res.json()
-  const content = data?.choices?.[0]?.message?.content
-  if (!content) throw new Error('接口可达但返回内容为空')
-  return content as string
+
+  // 标准路径：choices[0].message.content
+  const msg = data?.choices?.[0]?.message
+  let content = msg?.content
+
+  // 部分模型（如带 reasoning 的）会把内容放在 reasoning_content / thinking 字段
+  if (!content) content = msg?.reasoning_content || msg?.thinking
+
+  // content 存在（含空字符串）即视为连通成功
+  if (content !== undefined && content !== null) {
+    return content as string
+  }
+
+  // 兜底：确实没拿到内容，把响应结构摘要出来便于排查
+  const keys = data && typeof data === 'object' ? Object.keys(data).join(', ') : String(data)
+  const choiceKeys =
+    data?.choices?.[0] && typeof data.choices[0] === 'object'
+      ? Object.keys(data.choices[0]).join(', ')
+      : ''
+  throw new Error(
+    `接口已连通但返回结构异常（顶层字段: ${keys}；choice 字段: ${choiceKeys}）。` +
+      `若使用推理模型，可能内容在 reasoning 字段。`,
+  )
 }
