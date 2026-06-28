@@ -1,5 +1,7 @@
 # 刷题系统 (QAsystem)
 
+![CI](https://github.com/OWNER/QAsystem/actions/workflows/ci.yml/badge.svg)
+
 跨端一致的刷题应用：Mac / Windows 桌面端 + 移动端网页，一套代码，数据本地存储，WebDAV 多端同步。
 
 ## 功能

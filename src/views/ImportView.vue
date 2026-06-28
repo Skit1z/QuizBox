@@ -165,7 +165,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <van-steps :active="step - 1" active-color="#1989fa">
+    <van-steps :active="step - 1" :active-color="'var(--brand)'">
       <van-step>上传文档</van-step>
       <van-step>AI 解析</van-step>
       <van-step>预览确认</van-step>
@@ -189,7 +189,7 @@ onMounted(async () => {
       <van-uploader :after-read="onFileRead" accept=".docx" :max-count="1">
         <van-button icon="upload" type="primary">选择 Word 文档</van-button>
       </van-uploader>
-      <p v-if="!selectedSubjectId" style="color: #ee0a24; font-size: 13px; margin-top: 12px">
+      <p v-if="!selectedSubjectId" style="color: var(--danger); font-size: 13px; margin-top: var(--sp-3)">
         请先选择科目，或前往题库页新建科目
       </p>
     </div>
@@ -218,7 +218,7 @@ onMounted(async () => {
         >
           开始 AI 解析
         </van-button>
-        <div v-if="parseError" style="color: #ee0a24; margin-top: 12px; font-size: 13px">
+        <div v-if="parseError" style="color: var(--danger); margin-top: var(--sp-3); font-size: 13px">
           {{ parseError }}
         </div>
       </div>
@@ -228,14 +228,14 @@ onMounted(async () => {
     <div v-else style="padding: 12px">
       <van-notice-bar
         v-if="lowConfidenceCount > 0"
-        color="#ee0a24"
-        background="#fff1f0"
+        color="var(--danger)"
+        background="var(--surface)"
         left-icon="warning-o"
       >
         有 {{ lowConfidenceCount }} 道题解析把握较低，已标红，请重点检查
       </van-notice-bar>
 
-      <div style="margin: 12px 0; color: #969799; font-size: 13px">
+      <div style="margin: var(--sp-3) 0; color: var(--text-3); font-size: 13px">
         共识别 {{ parsed.length }} 道题，{{ images.length }} 张图片
       </div>
 
@@ -297,7 +297,7 @@ onMounted(async () => {
                     @update:model-value="(v:string) => editOption(p, oi, v)"
                     class="opt-input"
                   />
-                  <van-icon name="cross" color="#ee0a24" @click="removeOption(p, oi)" />
+                  <van-icon name="cross" color="var(--danger)" @click="removeOption(p, oi)" />
                 </div>
                 <van-button size="small" plain icon="plus" @click="addOption(p)">添加选项</van-button>
               </template>
@@ -333,38 +333,40 @@ onMounted(async () => {
 
 <style scoped>
 .parsed-item {
-  background: #fff;
-  border-radius: 8px;
-  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  box-shadow: var(--shadow-sm);
 }
 .parsed-item--low {
-  border-left: 3px solid #ee0a24;
+  border-left: 3px solid var(--danger);
 }
 .parsed-item__meta {
   display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 .parsed-item__stem {
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
+  color: var(--text);
 }
 .parsed-item__options {
   font-size: 13px;
-  color: #646566;
-  margin-top: 6px;
+  color: var(--text-2);
+  margin-top: var(--sp-2);
 }
 .parsed-item__answer {
-  margin-top: 6px;
+  margin-top: var(--sp-2);
   font-size: 13px;
-  color: #07c160;
+  color: var(--success);
 }
 .opt-edit {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 0;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
 }
 .opt-input {
   flex: 1;

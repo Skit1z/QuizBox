@@ -181,11 +181,11 @@ onMounted(async () => {
   margin: 0;
 }
 .preset-banner {
-  background: #fff7e8;
-  color: #ffb400;
-  padding: 10px 14px;
-  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
   font-size: 13px;
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
 }
 </style>

@@ -136,7 +136,7 @@ onMounted(async () => {
             <template #title>
               <van-radio :name="m.value">
                 <strong>{{ m.label }}</strong>
-                <div style="font-size: 12px; color: #969799">{{ m.desc }}</div>
+                <div style="font-size: 12px; color: var(--text-3)">{{ m.desc }}</div>
               </van-radio>
             </template>
           </van-cell>

@@ -17,12 +17,10 @@ const props = defineProps<{
 
 const typeLabel = computed(() => QUESTION_TYPE_LABELS[props.question.type])
 const diffLabel = computed(() => DIFFICULTY_LABELS[props.question.difficulty])
-const diffColor = computed(
-  () =>
-    ({ easy: '#07c160', medium: '#ff976a', hard: '#ee0a24' })[
-      props.question.difficulty
-    ] || '#969799',
-)
+const diffColor = computed(() => {
+  const map = { easy: 'var(--success)', medium: 'var(--warning)', hard: 'var(--danger)' } as const
+  return map[props.question.difficulty] || 'var(--text-3)'
+})
 
 const answerText = computed(() => {
   const a = props.question.answer

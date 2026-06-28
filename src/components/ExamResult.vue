@@ -28,6 +28,8 @@ const durationText = computed(() => {
   return `${m}分${s}秒`
 })
 
+const wrongCount = computed(() => props.result.detail.filter((d) => d.correct === false).length)
+
 const qMap = computed(() => {
   const m = new Map<string, Question>()
   for (const q of props.questions) m.set(q.id, q)
@@ -43,99 +45,173 @@ const wrongQuestions = computed(() =>
 </script>
 
 <template>
-  <div style="padding: 16px">
-    <h2 class="page-title" style="text-align: center">考试完成</h2>
-
-    <div class="score-ring">
-      <div v-if="accuracy !== null" class="score-num">{{ accuracy }}<span>分</span></div>
-      <div v-else class="score-num">--<span>主观题</span></div>
-      <div class="score-label">正确率</div>
+  <div class="result">
+    <div class="result__hero">
+      <div class="result__emoji">{{ accuracy !== null && accuracy >= 60 ? '🎉' : '💪' }}</div>
+      <h2 class="result__title">考试完成</h2>
     </div>
 
-    <van-grid :column-num="3" :gutter="8" style="margin: 16px 0">
-      <van-grid-item icon="notes-o" :text="`${result.total} 题`" />
-      <van-grid-item icon="success" :text="`${result.correct} 对`" />
-      <van-grid-item icon="cross" :text="`${result.answered - result.correct} 错`" />
-      <van-grid-item icon="clock-o" :text="durationText" />
-      <van-grid-item icon="edit" :text="`${result.answered} 作答`" />
-      <van-grid-item icon="warning-o" :text="`${wrongQuestions.length} 错题`" />
-    </van-grid>
+    <!-- 成绩环 -->
+    <div class="score-ring">
+      <div v-if="accuracy !== null" class="score-num">{{ accuracy }}<span>分</span></div>
+      <div v-else class="score-num">--<span></span></div>
+      <div class="score-label">{{ accuracy !== null ? '正确率' : '主观题为主' }}</div>
+    </div>
 
-    <div v-if="wrongQuestions.length" style="margin-top: 12px">
-      <div class="section-title">错题回顾（{{ wrongQuestions.length }}）</div>
-      <div
-        v-for="(q, i) in wrongQuestions"
-        :key="q.id"
-        class="wrong-item"
-      >
-        <div class="wrong-item__head">
-          <van-tag type="danger" plain>错</van-tag>
-          <van-tag plain>{{ QUESTION_TYPE_LABELS[q.type] }}</van-tag>
-          <span class="wrong-item__idx">第 {{ i + 1 }} 题</span>
-        </div>
-        <div class="wrong-item__stem">{{ q.stem.slice(0, 80) }}</div>
+    <!-- 统计 -->
+    <div class="stat-grid">
+      <div class="stat-item">
+        <div class="stat-item__num">{{ result.total }}</div>
+        <div class="stat-item__label">总题数</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-item__num stat-item__num--success">{{ result.correct }}</div>
+        <div class="stat-item__label">答对</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-item__num stat-item__num--danger">{{ wrongCount }}</div>
+        <div class="stat-item__label">答错</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-item__num">{{ durationText }}</div>
+        <div class="stat-item__label">用时</div>
       </div>
     </div>
 
-    <div style="display: flex; gap: 12px; margin-top: 24px">
-      <van-button block @click="emit('back')">返回首页</van-button>
-      <van-button block type="primary" plain @click="emit('restart')">再来一次</van-button>
+    <!-- 错题回顾 -->
+    <div v-if="wrongQuestions.length">
+      <div class="section-title">错题回顾 · {{ wrongQuestions.length }}</div>
+      <div class="wrong-list">
+        <div v-for="(q, i) in wrongQuestions" :key="q.id" class="wrong-item card">
+          <div class="wrong-item__head">
+            <span class="chip chip--danger">错</span>
+            <van-tag plain>{{ QUESTION_TYPE_LABELS[q.type] }}</van-tag>
+            <span class="wrong-item__idx">第 {{ i + 1 }} 题</span>
+          </div>
+          <div class="wrong-item__stem">{{ q.stem.slice(0, 80) }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result__actions">
+      <van-button block round @click="emit('back')">返回首页</van-button>
+      <van-button block round type="primary" plain @click="emit('restart')">再来一次</van-button>
     </div>
   </div>
 </template>
 
 <style scoped>
+.result {
+  padding: var(--sp-5) var(--sp-4);
+}
+.result__hero {
+  text-align: center;
+  margin-bottom: var(--sp-5);
+}
+.result__emoji {
+  font-size: 40px;
+  line-height: 1;
+}
+.result__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: var(--sp-3) 0 0;
+}
+
 .score-ring {
-  width: 140px;
-  height: 140px;
+  width: 132px;
+  height: 132px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1989fa, #07c160);
-  margin: 0 auto;
+  background: linear-gradient(135deg, var(--brand), rgba(var(--brand-rgb), 0.75));
+  margin: 0 auto var(--sp-6);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   color: #fff;
+  box-shadow: var(--shadow-brand);
 }
 .score-num {
   font-size: 40px;
   font-weight: 700;
   line-height: 1;
+  letter-spacing: -0.03em;
 }
 .score-num span {
   font-size: 14px;
   margin-left: 2px;
+  font-weight: 500;
 }
 .score-label {
-  font-size: 13px;
+  font-size: 12px;
   opacity: 0.9;
   margin-top: 4px;
 }
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 10px;
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+.stat-item {
+  text-align: center;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-2);
+  box-shadow: var(--shadow-sm);
+}
+.stat-item__num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+.stat-item__num--success {
+  color: var(--success);
+}
+.stat-item__num--danger {
+  color: var(--danger);
+}
+.stat-item__label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+.wrong-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 .wrong-item {
-  background: #fff;
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 8px;
+  padding: var(--sp-4) var(--sp-5);
 }
 .wrong-item__head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.chip--danger {
+  background: rgba(245, 63, 63, 0.1);
+  color: var(--danger);
 }
 .wrong-item__idx {
   margin-left: auto;
   font-size: 12px;
-  color: #969799;
+  color: var(--text-3);
 }
 .wrong-item__stem {
   font-size: 14px;
   line-height: 1.6;
-  color: #323233;
+  color: var(--text);
+}
+
+.result__actions {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
 }
 </style>

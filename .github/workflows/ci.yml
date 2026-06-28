@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 同分支并发时取消旧运行
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 类型检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查 (vue-tsc)
+        run: npm run type-check
+
+      - name: 生产构建 (vite build)
+        run: npm run build
+        env:
+          # 构建即验证：类型检查通过 + 产物可生成
+          NODE_ENV: production
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7

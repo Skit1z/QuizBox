@@ -420,31 +420,32 @@ watch(answers, () => persistAnswers(), { deep: true })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin: 12px 0;
-  color: #969799;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
+  color: var(--text-3);
   font-size: 14px;
 }
 .answer-area {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 .subjective-grade {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
 }
 .self-rate {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   font-size: 13px;
+  color: var(--text-2);
 }
 .ai-feedback {
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
 }
 .feedback-tag {
   text-align: center;
-  padding: 12px;
+  padding: var(--sp-3);
 }
 </style>

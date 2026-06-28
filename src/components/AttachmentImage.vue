@@ -37,7 +37,7 @@ onBeforeUnmount(release)
   <div class="att-img">
     <van-loading v-if="loading" size="20" />
     <img v-else-if="url" :src="url" loading="lazy" @click="emit('preview', url)" />
-    <van-icon v-else name="photo-fail" color="#dcdee0" size="32" />
+    <van-icon v-else name="photo-fail" color="var(--border-strong)" size="32" />
   </div>
 </template>
 
