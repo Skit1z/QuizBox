@@ -9,12 +9,3 @@ export async function sha256(data: string | Blob): Promise<string> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
 }
-
-/** 防抖 */
-export function debounce<T extends (...args: any[]) => void>(fn: T, wait = 5000) {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  return (...args: Parameters<T>) => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => fn(...args), wait)
-  }
-}

@@ -5,6 +5,8 @@ import { showConfirmDialog, showSuccessToast } from 'vant'
 import { questionsRepo } from '@/db/questions'
 import { useSubjectsStore } from '@/stores/subjects'
 import QuestionCard from '@/components/QuestionCard.vue'
+import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import type { Question } from '@/types'
 
 const route = useRoute()
@@ -12,6 +14,7 @@ const router = useRouter()
 const subjectsStore = useSubjectsStore()
 
 const subjectId = route.params.subjectId as string
+const focusId = (route.query.focus as string) || ''
 const questions = ref<Question[]>([])
 const loading = ref(true)
 const subjectName = ref('')
@@ -65,7 +68,7 @@ onMounted(load)
     <!-- 题量大时用虚拟滚动；少量时直接渲染 -->
     <div v-else-if="questions.length <= 30">
       <van-swipe-cell v-for="(q, i) in questions" :key="q.id">
-        <QuestionCard :question="q" :index="i" :show-answer="true" />
+        <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
         <template #right>
           <van-button square type="danger" text="删除" style="height: 100%" @click="removeQuestion(q.id)" />
         </template>
@@ -82,7 +85,7 @@ onMounted(load)
       <template #default="{ item, index, active }">
         <DynamicScrollerItem :item="item" :active="active" :data-index="index">
           <van-swipe-cell>
-            <QuestionCard :question="item" :index="index" :show-answer="true" />
+            <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
             <template #right>
               <van-button square type="danger" text="删除" style="height: 100%" @click="removeQuestion(item.id)" />
             </template>
@@ -142,12 +145,3 @@ onMounted(load)
   margin: 0;
 }
 </style>
-
-<script lang="ts">
-import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
-
-export default {
-  components: { DynamicScroller, DynamicScrollerItem },
-}
-</script>

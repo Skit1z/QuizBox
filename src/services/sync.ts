@@ -1,7 +1,7 @@
 import { createClient, type WebDAVClient } from 'webdav'
 import { db, isDeleted } from '@/db'
 import { useSettingsStore } from '@/stores/settings'
-import { debounce } from '@/utils/hash'
+import { debounce } from '@/utils/debounce'
 import type { SyncRecord } from '@/types'
 
 // 需要参与同步的 Dexie 表名（带 updatedAt/deletedAt 的）
@@ -18,6 +18,9 @@ const ATTACH_DIR = 'attachments'
 
 let client: WebDAVClient | null = null
 let syncing = false
+// 并发排队：正在进行同步时，后续调用排队等待，而非静默丢弃
+let syncQueue: Promise<{ pulled: number; pushed: number; ok: boolean }>[] = []
+let currentSync: Promise<{ pulled: number; pushed: number; ok: boolean }> | null = null
 
 /** #15: 重置 client，使修改后的 WebDAV 配置生效 */
 export function resetSyncClient() {
@@ -58,27 +61,33 @@ async function ensureDir(c: WebDAVClient, path: string) {
   }
 }
 
-/** 主同步入口 */
+/** 主同步入口（并发安全：进行中的同步会让后续调用排队等待结果） */
 export async function sync(): Promise<{ pulled: number; pushed: number; ok: boolean }> {
   const c = getClient()
-  if (!c || syncing) return { pulled: 0, pushed: 0, ok: false }
+  if (!c) return { pulled: 0, pushed: 0, ok: false }
+  // 已有同步进行中：复用其结果，避免并发写冲突
+  if (currentSync) return currentSync
   syncing = true
-  try {
-    await ensureDirs(c)
-    const remote = await fetchRemote(c)
-    const local = await exportLocal()
-    const merged = mergeAll(local, remote)
-    await importLocal(merged)
-    await uploadSyncFile(c, merged)
-    await syncAttachments(c)
-    await db.syncMeta.put({ key: 'lastSyncAt', value: String(Date.now()) })
-    return { pulled: merged.stats.pulled, pushed: merged.stats.pushed, ok: true }
-  } catch (e) {
-    console.warn('[sync] failed', e)
-    return { pulled: 0, pushed: 0, ok: false }
-  } finally {
-    syncing = false
-  }
+  currentSync = (async () => {
+    try {
+      await ensureDirs(c)
+      const remote = await fetchRemote(c)
+      const local = await exportLocal()
+      const merged = mergeAll(local, remote)
+      await importLocal(merged)
+      await uploadSyncFile(c, merged)
+      await syncAttachments(c)
+      await db.syncMeta.put({ key: 'lastSyncAt', value: String(Date.now()) })
+      return { pulled: merged.stats.pulled, pushed: merged.stats.pushed, ok: true }
+    } catch (e) {
+      console.warn('[sync] failed', e)
+      return { pulled: 0, pushed: 0, ok: false }
+    } finally {
+      syncing = false
+      currentSync = null
+    }
+  })()
+  return currentSync
 }
 
 /** 防抖自动同步 */
@@ -111,24 +120,21 @@ async function fetchRemote(c: WebDAVClient): Promise<SyncFileData> {
 }
 
 /**
- * 导出本地数据。#14：增量优化——
- * 若有 lastSyncAt，则只导出 updatedAt > lastSyncAt 的变化记录，
- * 避免每次序列化全库。
+ * 导出本地全量数据。
+ * 注：曾尝试基于 lastSyncAt 做增量导出以减少序列化体积，但 WebDAV 同步
+ * 是无条件 PUT 整个 sync.json（不支持按记录增量传输），增量导出反而带来
+ * 数据丢失风险（D1：未变化但远端缺失的记录会被合并逻辑丢弃）。
+ * 因此 export 始终全量，用 updatedAt 索引范围查询降低首次扫描成本，
+ * 数据安全优先于微小的序列化开销。
  */
 async function exportLocal(): Promise<SyncFileData> {
-  const lastMeta = await db.syncMeta.get('lastSyncAt')
-  const since = lastMeta ? Number(lastMeta.value) : 0
-
   const tables: Record<SyncTable, Record<string, any>> = {} as any
   for (const t of SYNC_TABLES) {
-    const all = await (db as any)[t].toArray()
-    const changed: Record<string, any> = {}
-    for (const r of all) {
-      // 无 lastSync（首次）或该记录变化时间晚于上次同步 → 导出
-      const ut = (r as SyncRecord).updatedAt || 0
-      if (since === 0 || ut > since) changed[r.id] = r
-    }
-    tables[t] = changed
+    // 全量读取：sync.json 需包含本地所有同步表记录
+    const rows = await (db as any)[t].toArray()
+    const map: Record<string, any> = {}
+    for (const r of rows) map[r.id] = r
+    tables[t] = map
   }
   return { version: 1, tables }
 }

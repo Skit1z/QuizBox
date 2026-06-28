@@ -10,24 +10,16 @@ export const useSubjectsStore = defineStore('subjects', {
   }),
   actions: {
     async load() {
-      // deletedAt=0 表示未删除，用 [deletedAt+order] 复合索引高效查询
+      // deletedAt=0 表示未删除，用单字段索引查询并按 order 排序
       let arr: Subject[]
       try {
-        arr = await db.subjects
-          .where('[deletedAt+order]')
-          .equals([0 as any, -Infinity as any])
-          .toArray()
-          .catch(async () => [])
-        if (arr.length === 0) {
-          // 该复合索引不便于按 deletedAt=0 全取，改用 filter
-          const all = await db.subjects.toArray()
-          arr = all.filter((s) => !isDeleted(s.deletedAt))
-        }
+        arr = await db.subjects.where('deletedAt').equals(0 as any).sortBy('order')
       } catch {
+        // 兜底：旧数据 deletedAt 可能为 null
         const all = await db.subjects.toArray()
-        arr = all.filter((s) => !isDeleted(s.deletedAt))
+        arr = all.filter((s) => !isDeleted(s.deletedAt)).sort((a, b) => a.order - b.order)
       }
-      this.list = arr.sort((a, b) => a.order - b.order)
+      this.list = arr
       this.loaded = true
     },
     async reload() {

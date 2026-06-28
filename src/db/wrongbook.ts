@@ -114,4 +114,18 @@ export const wrongBookRepo = {
     await db.wrongBook.update(id, { status, updatedAt: Date.now() })
     autoSync()
   },
+
+  /** 批量更新状态（单次事务，避免 N 次写入） */
+  async setStatusBulk(ids: string[], status: WrongStatus): Promise<void> {
+    const now = Date.now()
+    await db.wrongBook.bulkUpdate(ids.map((id) => ({ key: id, changes: { status, updatedAt: now } })))
+    autoSync()
+  },
+
+  /** 把所有待复习错题标记为已掌握（单次 modify） */
+  async markAllMastered(): Promise<void> {
+    const now = Date.now()
+    await db.wrongBook.where('status').equals('pending').modify({ status: 'mastered', updatedAt: now })
+    autoSync()
+  },
 }

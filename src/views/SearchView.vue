@@ -67,7 +67,7 @@ function subjectName(id: string): string {
         v-for="q in results"
         :key="q.id"
         class="result-card card card--clickable"
-        @click="router.push({ name: 'subject-detail', params: { subjectId: q.subjectId } })"
+        @click="router.push({ name: 'subject-detail', params: { subjectId: q.subjectId }, query: { focus: q.id } })"
       >
         <div class="result-card__meta">
           <van-tag plain>{{ QUESTION_TYPE_LABELS[q.type] }}</van-tag>

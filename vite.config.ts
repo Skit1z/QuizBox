@@ -28,7 +28,7 @@ export default defineConfig({
         description: '主观题与客观题刷题应用',
         start_url: '/',
         display: 'standalone',
-        background_color: '#f7f8fa',
+        background_color: '#f5f6f8',
         theme_color: '#4f6bed',
         icons: [
           {

@@ -47,20 +47,20 @@ async function start() {
   let qs: Question[]
 
   if (presetQuestionIds.value.length) {
-    // 直接用指定的错题 id
-    const got = await db.questions.bulkGet(presetQuestionIds.value)
-    qs = got.filter((q): q is Question => !!q)
+    // 直接用指定的错题 id（按 id 索引批量查）
+    qs = await questionsRepo.findByIds(presetQuestionIds.value)
   } else if (!subjectId.value) {
     showFailToast('请选择科目')
     return
   } else if (onlyWrong.value) {
+    // 仅错题：先取该科目错题 id，再用 id 索引直查题目，避免全表取交集
     const wrongs = await wrongBookRepo.listAll()
-    const wrongQids = new Set(wrongs.map((w) => w.questionId))
-    qs = (await questionsRepo.filter({
-      subjectId: subjectId.value,
-      types: types.value.length ? types.value : undefined,
-      difficulty: difficulty.value || undefined,
-    })).filter((q) => wrongQids.has(q.id))
+    const wrongQids = wrongs.map((w) => w.questionId)
+    qs = (await questionsRepo.findByIds(wrongQids)).filter(
+      (q) => q.subjectId === subjectId.value,
+    )
+    if (types.value.length) qs = qs.filter((q) => types.value.includes(q.type))
+    if (difficulty.value) qs = qs.filter((q) => q.difficulty === difficulty.value)
   } else {
     qs = await questionsRepo.filter({
       subjectId: subjectId.value,

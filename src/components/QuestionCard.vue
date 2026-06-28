@@ -13,6 +13,8 @@ const props = defineProps<{
   index?: number
   /** 是否显示答案与解析 */
   showAnswer?: boolean
+  /** 是否高亮（如从搜索结果定位） */
+  highlight?: boolean
 }>()
 
 const typeLabel = computed(() => QUESTION_TYPE_LABELS[props.question.type])
@@ -30,7 +32,7 @@ const answerText = computed(() => {
 </script>
 
 <template>
-  <div class="q-card">
+  <div class="q-card" :class="{ 'q-card--highlight': highlight }">
     <div class="q-card__meta">
       <van-tag plain>{{ typeLabel }}</van-tag>
       <van-tag plain :color="diffColor">{{ diffLabel }}</van-tag>
@@ -77,6 +79,10 @@ const answerText = computed(() => {
   padding: var(--sp-5);
   margin-bottom: var(--sp-3);
   box-shadow: var(--shadow-sm);
+}
+.q-card--highlight {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 .q-card__meta {
   display: flex;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 defineOptions({ name: 'WrongBookView' })
 import { showConfirmDialog, showSuccessToast } from 'vant'
@@ -12,12 +12,16 @@ const router = useRouter()
 const subjectsStore = useSubjectsStore()
 
 const items = ref<(WrongItem & { question?: Question })[]>([])
+const filter = ref<'pending' | 'all'>('pending')
 
 async function load() {
-  const wrongs = await wrongBookRepo.listAll()
+  // pending：仅到期需复习；all：所有未掌握（含未到期）
+  const wrongs = filter.value === 'pending' ? await wrongBookRepo.listPending() : await wrongBookRepo.listAll()
   const questions = await db.questions.bulkGet(wrongs.map((w) => w.questionId))
   items.value = wrongs.map((w, i) => ({ ...w, question: questions[i] as Question }))
 }
+
+watch(filter, load)
 
 function review(item: WrongItem & { question?: Question }) {
   if (!item.question) return
@@ -43,8 +47,8 @@ async function markMastered(id: string) {
 
 async function clearAll() {
   await showConfirmDialog({ title: '清空', message: '确定把所有错题标记为已掌握？' })
-  const all = await wrongBookRepo.listAll()
-  for (const w of all) await wrongBookRepo.setStatus(w.id, 'mastered')
+  await wrongBookRepo.markAllMastered()
+  showSuccessToast('已清空')
   await load()
 }
 
@@ -58,7 +62,17 @@ onMounted(async () => {
   <div class="page">
     <div class="page-head">
       <h1 class="page-title">错题本</h1>
-      <p class="page-sub">{{ items.length }} 道待复习</p>
+    </div>
+
+    <div class="filter-tabs">
+      <button
+        :class="['filter-tab', filter === 'pending' && 'filter-tab--active']"
+        @click="filter = 'pending'"
+      >待复习</button>
+      <button
+        :class="['filter-tab', filter === 'all' && 'filter-tab--active']"
+        @click="filter = 'all'"
+      >全部</button>
     </div>
 
     <div v-if="items.length === 0" class="empty">
@@ -115,6 +129,27 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.filter-tabs {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.filter-tab {
+  padding: 6px var(--sp-4);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-tab--active {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
 .empty {
   display: flex;
   flex-direction: column;

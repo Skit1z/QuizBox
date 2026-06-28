@@ -28,12 +28,15 @@ const features = [
 
 async function loadStats() {
   await subjectsStore.load()
-  const w = await wrongBookRepo.listAll()
-  let totalQ = 0
-  for (const s of subjectsStore.list) {
-    totalQ += await questionsRepo.countBySubject(s.id)
+  const [w, totalQ] = await Promise.all([
+    wrongBookRepo.listAll(),
+    questionsRepo.countAll(),
+  ])
+  stats.value = {
+    subjects: subjectsStore.list.length,
+    questions: totalQ,
+    wrong: w.length,
   }
-  stats.value = { subjects: subjectsStore.list.length, questions: totalQ, wrong: w.length }
 }
 
 onMounted(loadStats)

@@ -12,11 +12,13 @@ const routeKey = computed(() => String(route.name) + String(route.params.subject
 /** 需要缓存的页面（tab 主页 + 题库列表），切回时保留滚动与状态 */
 const cachedViews = ['HomeView', 'LibraryView', 'WrongBookView']
 
-const isDesktop = ref(window.innerWidth >= 768)
+const isDesktop = ref(typeof window !== 'undefined' && window.innerWidth >= 768)
 const updateLayout = () => {
   isDesktop.value = window.innerWidth >= 768
 }
-window.addEventListener('resize', updateLayout)
+onMounted(() => {
+  window.addEventListener('resize', updateLayout)
+})
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateLayout)
 })
@@ -53,20 +55,13 @@ onMounted(async () => {
   } catch (e) {
     showToast('数据库初始化失败')
   }
-  // 尽早应用主题
+  // 一次性加载设置：应用主题 + 判断是否需要首启引导
   try {
     const { useSettingsStore } = await import('@/stores/settings')
     const settings = useSettingsStore()
     await settings.load()
     settings.applyAll()
-  } catch {
-    // ignore
-  }
-  // 移动端首次启动引导：未配置 WebDAV 则跳转初始化页
-  try {
-    const { useSettingsStore } = await import('@/stores/settings')
-    const settings = useSettingsStore()
-    await settings.load()
+    // 移动端首次启动引导：未配置 WebDAV 则跳转初始化页
     const isMobile = !isDesktop.value
     if (isMobile && (!settings.webdav.enabled || !settings.webdav.url)) {
       if (route.name !== 'setup') router.replace({ name: 'setup' })

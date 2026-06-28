@@ -67,6 +67,13 @@ export const questionsRepo = {
     return q && !isDeleted(q.deletedAt) ? q : undefined
   },
 
+  /** 按 id 批量查询未删除题目 */
+  async findByIds(ids: string[]): Promise<Question[]> {
+    if (ids.length === 0) return []
+    const rows = await db.questions.where('id').anyOf(ids).toArray()
+    return rows.filter((q) => !isDeleted(q.deletedAt))
+  },
+
   async create(input: QuestionInput): Promise<Question> {
     const now = Date.now()
     const sourceHash = await sha256(
@@ -134,20 +141,38 @@ export const questionsRepo = {
     }
   },
 
-  /** 搜索题干（全表 like 过滤，题量大时仍优于前端手动） */
+  /** 全库未删除题目总数（单次索引 count，避免 N+1） */
+  async countAll(): Promise<number> {
+    try {
+      return await db.questions.where('deletedAt').equals(0 as any).count()
+    } catch {
+      const all = await db.questions.toArray()
+      return all.filter((q) => !isDeleted(q.deletedAt)).length
+    }
+  },
+
+  /**
+   * 搜索题干（按 stem/选项/解析 模糊匹配）。
+   * 用 updatedAt 索引降序遍历，命中即收，最多 100 条，避免全量实例化。
+   */
   async search(keyword: string): Promise<Question[]> {
     const kw = keyword.trim().toLowerCase()
     if (!kw) return []
-    const all = await db.questions.toArray()
-    return all
-      .filter((q) => !isDeleted(q.deletedAt))
-      .filter(
-        (q) =>
+    const results: Question[] = []
+    await db.questions
+      .orderBy('updatedAt')
+      .reverse()
+      .until(() => results.length >= 100)
+      .each((q) => {
+        if (isDeleted(q.deletedAt)) return
+        if (
           q.stem.toLowerCase().includes(kw) ||
           (q.analysis || '').toLowerCase().includes(kw) ||
-          (q.options || []).some((o) => o.toLowerCase().includes(kw)),
-      )
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 100)
+          (q.options || []).some((o) => o.toLowerCase().includes(kw))
+        ) {
+          results.push(q)
+        }
+      })
+    return results
   },
 }
