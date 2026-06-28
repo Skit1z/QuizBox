@@ -22,26 +22,59 @@ const SECTION_TYPE_MAP: Record<string, QuestionType> = {
 // 题号：1. / 1、/ 1) / (1) / 1．
 const RE_QUESTION_NUM = /^[\s　]*[(\[（【]?(\d{1,4})[)\]）】]?[.、．)\s]/m
 
-// 选项行：A. / A、/ A) / (A) / A．
-const RE_OPTION = /^[\s　]*[(\[（]?([A-Ha-h])[)\]）]?[.、．)]\s*/
+// 选项行开头：A. / A、/ A) / (A) / A．/ A（空格）
+const RE_OPTION_HEAD = /^[\s　]*[(\[（]?([A-Ha-h])[)\]）]?[.、．)]\s*/
+
+// 同一行内的后续选项标记：用于拆分 "A xxx B.xxx C.xxx"
+const RE_INLINE_OPT_SPLIT = /\s+(?=[A-H][.、．)\s])/
 
 // 答案标记
 const RE_ANSWER = /^[\s　]*(?:【?答案】?|答案|Answer|answer|正确答案)\s*[:：]\s*/i
 // 解析标记
 const RE_ANALYSIS = /^[\s　]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
 
+// 题干中嵌入的答案：（ B ）、（ABC）、（ ABCD ）
+const RE_STEM_ANSWER = /[（(]\s*([A-Ha-h]{1,8})\s*[）)]/
+// 题干中嵌入的判断答案：（√）（×）（对）（错）
+const RE_STEM_JUDGE = /[（(]\s*([√✓×✗对错TF])\s*[）)]/
+
 // 判断题答案
 const RE_JUDGE_TRUE = /^[（(]?\s*[√✓对正确TtYy]\s*[）)]?$/
 const RE_JUDGE_FALSE = /^[（(]?\s*[×✗错误FfNn]\s*[）)]?$/
 
-// 填空占位（不带 /g，用于 .test()；需要 matchAll 时现场加 /g）
+// 填空占位
 const RE_BLANK = /_{2,}|（\s*）|\(\s*\)/
+
+// 垃圾行：分隔线、纯符号
+const RE_JUNK_LINE = /^[\s　]*[=\-_─━═~·•●■□▪▫◆◇]{3,}[\s　]*$/
 
 export function parseWithRules(text: string): ParsedQuestion[] {
   const lines = text.split(/\r?\n/)
-  const blocks = splitIntoBlocks(lines)
+  const expanded = expandInlineOptions(lines)
+  const blocks = splitIntoBlocks(expanded)
   return blocks.map(parseBlock).filter((q): q is ParsedQuestion => q !== null)
 }
+
+// ===== 预处理：拆分同一行内的多个选项 =====
+
+function expandInlineOptions(lines: string[]): string[] {
+  const result: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    // 如果行首匹配选项头且行内还有其他选项标记 → 拆分
+    if (RE_OPTION_HEAD.test(trimmed)) {
+      const parts = trimmed.split(RE_INLINE_OPT_SPLIT)
+      if (parts.length >= 2) {
+        result.push(...parts.map((p) => p.trim()).filter(Boolean))
+        continue
+      }
+    }
+    result.push(line)
+  }
+  return result
+}
+
+// ===== 分块 =====
 
 interface RawBlock {
   lines: string[]
@@ -83,10 +116,15 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
   return blocks
 }
 
+// ===== 解析单个题目块 =====
+
 function parseBlock(block: RawBlock): ParsedQuestion | null {
   const { lines, sectionType } = block
   const text = lines.join('\n').trim()
   if (!text || text.length < 4) return null
+
+  // 过滤垃圾块：纯分隔线、书名号标题、过短无题号内容
+  if (isJunkBlock(text)) return null
 
   let stem = ''
   const options: string[] = []
@@ -100,6 +138,9 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
   for (const line of lines) {
     const trimmed = line.trim()
     if (!trimmed) continue
+
+    // 跳过垃圾行（分隔线等）
+    if (RE_JUNK_LINE.test(trimmed)) continue
 
     // 答案标记
     if (RE_ANSWER.test(trimmed)) {
@@ -124,9 +165,9 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
     }
 
     // 选项行
-    const optMatch = trimmed.match(RE_OPTION)
+    const optMatch = trimmed.match(RE_OPTION_HEAD)
     if (optMatch) {
-      const content = trimmed.replace(RE_OPTION, '').trim()
+      const content = trimmed.replace(RE_OPTION_HEAD, '').trim()
       options.push(content)
       phase = 'option'
       continue
@@ -150,6 +191,15 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
 
   if (!stem) return null
 
+  // 从题干括号中提取嵌入的答案（如果没有显式答案标记）
+  if (!answerRaw) {
+    const stemAnswer = extractStemAnswer(stem)
+    if (stemAnswer) {
+      answerRaw = stemAnswer.answer
+      stem = stemAnswer.cleanStem
+    }
+  }
+
   // 提取图片占位符
   const imgMatches = text.match(/\[IMG_\d+\]/g)
   if (imgMatches) imagePlaceholders.push(...imgMatches)
@@ -169,6 +219,43 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
   }
 }
 
+// ===== 辅助函数 =====
+
+/** 判断是否为垃圾块（标题、分隔线、非题目内容） */
+function isJunkBlock(text: string): boolean {
+  const t = text.trim()
+  // 纯分隔线
+  if (/^[=\-_─━═~·•●■□▪▫◆◇\s　]+$/.test(t)) return true
+  // 书名号标题行（如 《供应链管理基础》习题1）
+  if (/^《[^》]+》/.test(t) && t.length < 50) return true
+  // 过短且无题号
+  if (t.length < 6 && !RE_QUESTION_NUM.test(t)) return true
+  // 纯数字/标点
+  if (/^[\d.、．\s　:：()（）]+$/.test(t)) return true
+  return false
+}
+
+/** 从题干括号中提取嵌入的答案 */
+function extractStemAnswer(stem: string): { cleanStem: string; answer: string } | null {
+  // 先检查选择题答案：（ABC）、（ B ）
+  const choiceMatch = stem.match(RE_STEM_ANSWER)
+  if (choiceMatch) {
+    return {
+      cleanStem: stem.replace(choiceMatch[0], '（  ）'),
+      answer: choiceMatch[1].trim().toUpperCase(),
+    }
+  }
+  // 再检查判断题答案：（√）、（×）、（对）、（错）
+  const judgeMatch = stem.match(RE_STEM_JUDGE)
+  if (judgeMatch) {
+    return {
+      cleanStem: stem.replace(judgeMatch[0], '（  ）'),
+      answer: judgeMatch[1].trim(),
+    }
+  }
+  return null
+}
+
 function detectType(
   stem: string,
   options: string[],
@@ -186,9 +273,16 @@ function detectType(
     return 'single'
   }
 
+  // 答案本身含多个字母（从题干提取的） → 即使没解析到选项也是多选
+  if (answer) {
+    const letters = answer.match(/[A-Ha-h]/g)
+    if (letters && letters.length > 1) return 'multiple'
+    if (letters && letters.length === 1 && options.length <= 1) return 'single'
+  }
+
   // 判断题特征
   if (RE_JUDGE_TRUE.test(answer) || RE_JUDGE_FALSE.test(answer)) return 'judge'
-  if (/[（(]\s*[)\s）]/.test(stem) && stem.length < 80) return 'judge'
+  if (/[√✓×✗对错]/.test(answer)) return 'judge'
 
   // 填空特征
   if (RE_BLANK.test(stem)) return 'fill'
@@ -215,12 +309,11 @@ function normalizeAnswer(
       return letters ? [...new Set(letters.map((l) => l.toUpperCase()))].sort() : [raw]
     }
     case 'judge': {
-      if (RE_JUDGE_TRUE.test(raw)) return 'T'
-      if (RE_JUDGE_FALSE.test(raw)) return 'F'
+      if (/[√✓对TtYy]/.test(raw)) return 'T'
+      if (/[×✗错FfNn]/.test(raw)) return 'F'
       return raw
     }
     case 'fill': {
-      // 多个答案以分号/逗号/换行分隔
       const parts = raw.split(/[;；,，\n]/).map((s) => s.trim()).filter(Boolean)
       return parts.length > 0 ? parts : [raw]
     }
@@ -237,13 +330,8 @@ function computeConfidence(
 ): number {
   let score = 0.5
 
-  // 有题干 +0.2
   if (stem.length > 5) score += 0.2
-
-  // 有答案 +0.2
   if (answer) score += 0.2
-
-  // 选择题有足够选项 +0.1
   if ((type === 'single' || type === 'multiple') && options.length >= 3) score += 0.1
 
   return Math.min(score, 1)
