@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { db } from '@/db'
+import { fetchAttachment } from '@/services/sync'
 
 const props = defineProps<{
   hash: string
@@ -22,8 +23,12 @@ async function load() {
   release()
   loading.value = true
   const att = await db.attachments.get(props.hash)
-  if (att?.blob) {
-    url.value = URL.createObjectURL(att.blob)
+  let blob = att?.blob || null
+  if (!blob) {
+    blob = await fetchAttachment(props.hash)
+  }
+  if (blob) {
+    url.value = URL.createObjectURL(blob)
   }
   loading.value = false
 }

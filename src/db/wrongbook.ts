@@ -23,6 +23,9 @@ export const wrongBookRepo = {
           status: 'pending',
           reason: opts.reason || existing.reason,
           lastReviewAt: now,
+          nextReviewAt: now,
+          interval: 0,
+          reviewCount: 0,
           updatedAt: now,
           revision: (existing.revision || 0) + 1,
         }

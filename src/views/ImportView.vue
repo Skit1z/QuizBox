@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo, type QuestionInput } from '@/db/questions'
+import { sha256 } from '@/utils/hash'
 import { parseDocx, saveImages, type ParsedImage } from '@/services/docx-parser'
 import { parseQuestionsWithAI, type ParsedQuestion } from '@/services/importer'
 import ThemedSelect from '@/components/ThemedSelect.vue'
@@ -139,6 +140,14 @@ async function saveAll() {
       skipped++
       continue
     }
+
+    const hash = await sha256(stem + '|' + JSON.stringify(p.answer ?? ''))
+    const duplicate = await questionsRepo.findDuplicate(subjectId, hash)
+    if (duplicate) {
+      skipped++
+      continue
+    }
+
     const attachments = (p.imagePlaceholders || [])
       .map(toHash)
       .filter((h): h is string => !!h)

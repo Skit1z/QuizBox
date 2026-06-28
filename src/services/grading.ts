@@ -78,5 +78,8 @@ function matchFill(user: string, std: string, strategy: MatchStrategy): boolean 
   const nu = norm(u)
   const ns = norm(s)
   if (!ns) return false
+  if (ns.length <= 4) {
+    return nu === ns
+  }
   return nu === ns || nu.includes(ns)
 }

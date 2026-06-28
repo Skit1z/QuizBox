@@ -51,6 +51,7 @@ const remainingSec = ref(0)
 const startedAt = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
 const session = ref<ExamSession | null>(null)
+const durationMinVal = computed(() => Number(props.durationMin || 0))
 
 function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60)
@@ -59,8 +60,8 @@ function fmtTime(sec: number): string {
 }
 
 function startTimer() {
-  if (!props.classic || !props.durationMin) return
-  remainingSec.value = props.durationMin * 60
+  if (!props.classic || !durationMinVal.value) return
+  remainingSec.value = durationMinVal.value * 60
   timer = setInterval(() => {
     remainingSec.value--
     if (remainingSec.value <= 0) {
@@ -85,7 +86,7 @@ async function initSession() {
       {
         subjectId: props.questions[0]?.subjectId || '',
         count: total.value,
-        durationMin: props.durationMin,
+        durationMin: durationMinVal.value,
         subMode: props.classic ? 'classic' : 'wrong_redo',
       },
       props.questions.map((q) => q.id),
@@ -160,15 +161,24 @@ async function finishPractice(auto = false) {
   stopTimer()
   const durationMs = Date.now() - startedAt.value
 
-  // classic 模式：交卷时统一判分所有客观题
+  // classic 模式：交卷时统一判分所有客观题，主观题仅记录作答
   if (props.classic) {
     for (const q of props.questions) {
       const ans = answers.value[q.id]
-      if (ans != null && (!Array.isArray(ans) || ans.length > 0) && isObjective(q.type)) {
-        const res = gradeObjective(q, ans)
-        gradeMap.value[q.id] = res.isCorrect
-        submitted.value[q.id] = true
-        recordAttempt(q.id, ans, res.isCorrect)
+      if (ans != null && (!Array.isArray(ans) || ans.length > 0)) {
+        if (isObjective(q.type)) {
+          const res = gradeObjective(q, ans)
+          gradeMap.value[q.id] = res.isCorrect
+          submitted.value[q.id] = true
+          recordAttempt(q.id, ans, res.isCorrect)
+        } else {
+          submitted.value[q.id] = true
+          attemptsRepo.record({
+            questionId: q.id,
+            mode: props.mode,
+            userAnswer: ans,
+          })
+        }
       }
     }
   }
@@ -185,16 +195,18 @@ async function finishPractice(auto = false) {
   })
 
   // 持久化考试场次结果
-  if (session.value) {
+  const finalSession = session.value
+  if (finalSession) {
     const objectiveQuestions = props.questions.filter((q) => isObjective(q.type))
     const objectiveCorrect = objectiveQuestions.filter((q) => gradeMap.value[q.id]).length
     const score = objectiveQuestions.length
       ? Math.round((objectiveCorrect / objectiveQuestions.length) * 100)
-      : 0
-    await examSessionsRepo.finish(session.value.id, {
+      : null
+    await examSessionsRepo.finish(finalSession.id, {
       answers: { ...answers.value },
       score,
     })
+    session.value = null
   }
 
   emit('finish', {
@@ -202,7 +214,7 @@ async function finishPractice(auto = false) {
     correct,
     answered: Object.keys(submitted.value).length,
     durationMs,
-    session: session.value || undefined,
+    session: finalSession || undefined,
     detail,
   })
 }
@@ -294,7 +306,6 @@ onBeforeUnmount(() => {
       <template v-if="current.type === 'single'">
         <van-radio-group
           :model-value="(answers[current.id] as string)"
-          @update:model-value="setUserAnswerSingle($event as string)"
           :disabled="!classic && submitted[current.id]"
         >
           <van-cell-group inset>
@@ -316,7 +327,6 @@ onBeforeUnmount(() => {
       <template v-else-if="current.type === 'multiple'">
         <van-checkbox-group
           :model-value="(answers[current.id] as string[])"
-          @update:model-value="(v:any) => (answers[current.id] = v)"
           :disabled="!classic && submitted[current.id]"
         >
           <van-cell-group inset>
@@ -340,7 +350,6 @@ onBeforeUnmount(() => {
       <template v-else-if="current.type === 'judge'">
         <van-radio-group
           :model-value="(answers[current.id] as string)"
-          @update:model-value="setUserAnswerSingle($event as string)"
           :disabled="!classic && submitted[current.id]"
         >
           <van-cell-group inset>

@@ -23,7 +23,7 @@ export const examSessionsRepo = {
 
   async finish(
     id: string,
-    opts: { answers: Record<string, string | string[]>; score: number; status?: ExamStatus },
+    opts: { answers: Record<string, string | string[]>; score: number | null; status?: ExamStatus },
   ): Promise<void> {
     await db.examSessions.update(id, {
       answers: opts.answers,

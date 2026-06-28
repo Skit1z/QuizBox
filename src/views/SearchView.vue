@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { questionsRepo } from '@/db/questions'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -7,7 +7,10 @@ import { QUESTION_TYPE_LABELS, type Question } from '@/types'
 
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
-subjectsStore.load()
+
+onMounted(async () => {
+  await subjectsStore.load()
+})
 
 const keyword = ref('')
 const results = ref<Question[]>([])
