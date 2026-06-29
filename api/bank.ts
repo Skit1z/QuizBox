@@ -76,6 +76,8 @@ interface BankManifest {
   updatedAt: number
   meta: { path: string; hash: string; size: number }
   shards: ShardEntry[]
+  /** 旧版 bank.json 是否已清理（清理后不再每次 PUT 都 head/del 检查，省 Advanced Operations） */
+  legacyCleaned?: boolean
 }
 
 interface MetaShard {
@@ -298,6 +300,7 @@ async function handlePut(req: any, res: any) {
       updatedAt: 0,
       meta: { path: META_PATH, hash: '', size: 0 },
       shards: [],
+      legacyCleaned: false,
     }
   }
 
@@ -356,17 +359,23 @@ async function handlePut(req: any, res: any) {
     }
   }
 
-  // 4. 写入新 manifest
-  manifest.updatedAt = Date.now()
-  manifest.shards = shardEntries.sort(
-    (a, b) =>
-      a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : a.index - b.index,
-  )
-  await writeManifest(manifest)
-
-  // 推送后清理旧版 bank.json（新格式已生效）
-  if (await blobExists(LEGACY_BANK_PATH)) {
-    await del(LEGACY_BANK_PATH).catch(() => {})
+  // 4. 写入新 manifest（仅当有实际变更时；无变更则不写，省一次 put）
+  const hasChanges = !!parsed.meta || !!parsed.shards?.length || !!parsed.deletePaths?.length
+  if (hasChanges) {
+    manifest.updatedAt = Date.now()
+    manifest.shards = shardEntries.sort(
+      (a, b) =>
+        a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : a.index - b.index,
+    )
+    // 清理旧版 bank.json：仅首次迁移时做一次 head+del，之后用 legacyCleaned 标记跳过
+    // （head/del 都是 Advanced Operations，每次 PUT 都查会快速耗尽配额）
+    if (!manifest.legacyCleaned) {
+      if (await blobExists(LEGACY_BANK_PATH)) {
+        await del(LEGACY_BANK_PATH).catch(() => {})
+      }
+      manifest.legacyCleaned = true
+    }
+    await writeManifest(manifest)
   }
 
   res.status(200).json({ ok: true, manifest })

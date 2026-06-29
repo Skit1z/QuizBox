@@ -146,11 +146,12 @@ export async function sync(): Promise<{ pulled: number; pushed: number; ok: bool
   return currentSync
 }
 
-/** 防抖自动同步（WebDAV + 云端题库，按各自开关执行） */
+/** 防抖自动同步（WebDAV + 云端题库，按各自开关执行）。
+ *  拉长到 2 分钟：写操作频繁时合并为一次同步，降低 Vercel Blob 计费操作次数。 */
 export const autoSync = debounce(() => {
   void sync()
   void syncBank()
-}, 30000)
+}, 120000)
 
 /** 启动时拉取 */
 export async function syncOnStartup() {
@@ -725,27 +726,37 @@ export async function syncBank(): Promise<BankSyncResult> {
         shardsPulled++
       }
 
-      // 3. 检测本地变更并推送
-      const changes = await detectLocalChanges(remoteManifest)
+      // 3. 检测本地变更并推送（仅当本地确有自上次同步后的变更时才扫描，省 DB 开销）
+      const lastSync = await getLastBankSyncAt()
+      const hasLocalChanges =
+        lastSync === 0 ||
+        (await Promise.all([
+          db.subjects.where('updatedAt').above(lastSync).count(),
+          db.chapters.where('updatedAt').above(lastSync).count(),
+          db.questions.where('updatedAt').above(lastSync).count(),
+        ]).then((cs) => cs.some((c) => c > 0)))
+
       let pushed = 0
       let shardsPushed = 0
-
-      if (changes.shards.length || changes.meta || changes.deletePaths.length) {
-        // 乐观并发：失败时（409）重拉一次合并后重试
-        try {
-          const newManifest = await putShards({
-            version: 2,
-            baseManifestUpdatedAt: remoteManifest.updatedAt,
-            meta: changes.meta || undefined,
-            shards: changes.shards.map((c) => ({ path: shardPath(c.subjectId, c.index), content: c.content })),
-            deletePaths: changes.deletePaths,
-          })
-          remoteManifest = newManifest
-          pushed = changes.shards.length
-          shardsPushed = changes.shards.length
-        } catch (e: any) {
-          // 推送冲突：保留已拉取的合并结果，本次跳过推送，下次同步重试
-          console.warn('[bank-sync] push conflict, will retry next sync', e?.message)
+      if (hasLocalChanges) {
+        const changes = await detectLocalChanges(remoteManifest)
+        if (changes.shards.length || changes.meta || changes.deletePaths.length) {
+          // 乐观并发：失败时（409）重拉一次合并后重试
+          try {
+            const newManifest = await putShards({
+              version: 2,
+              baseManifestUpdatedAt: remoteManifest.updatedAt,
+              meta: changes.meta || undefined,
+              shards: changes.shards.map((c) => ({ path: shardPath(c.subjectId, c.index), content: c.content })),
+              deletePaths: changes.deletePaths,
+            })
+            remoteManifest = newManifest
+            pushed = changes.shards.length
+            shardsPushed = changes.shards.length
+          } catch (e: any) {
+            // 推送冲突：保留已拉取的合并结果，本次跳过推送，下次同步重试
+            console.warn('[bank-sync] push conflict, will retry next sync', e?.message)
+          }
         }
       }
 
