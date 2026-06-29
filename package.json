@@ -1,7 +1,7 @@
 {
   "name": "quizbox",
   "private": true,
-  "version": "1.42",
+  "version": "1.43",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@vercel/blob": "^0.27.0",
+    "@vercel/blob": "^0.27.3",
     "dexie": "^4.0.10",
     "katex": "^0.16.11",
     "mammoth": "^1.8.0",

@@ -63,7 +63,8 @@ onMounted(async () => {
     settings.applyAll()
     // 移动端首次启动引导：未配置 WebDAV 则跳转初始化页
     const isMobile = !isDesktop.value
-    if (isMobile && (!settings.webdav.enabled || !settings.webdav.url)) {
+    const hasSync = (settings.webdav.enabled && settings.webdav.url) || settings.bankSync.enabled
+    if (isMobile && !hasSync) {
       if (route.name !== 'setup') router.replace({ name: 'setup' })
     }
   } catch {

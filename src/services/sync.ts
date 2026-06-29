@@ -139,9 +139,10 @@ export async function sync(): Promise<{ pulled: number; pushed: number; ok: bool
   return currentSync
 }
 
-/** 防抖自动同步 */
+/** 防抖自动同步（WebDAV + 云端题库，按各自开关执行） */
 export const autoSync = debounce(() => {
   void sync()
+  void syncBank()
 }, 30000)
 
 /** 启动时拉取 */
@@ -149,6 +150,7 @@ export async function syncOnStartup() {
   const s = useSettingsStore()
   await s.load()
   if (s.webdav.enabled) await sync()
+  if (s.bankSync.enabled) await syncBank()
 }
 
 // ===== 数据导入导出 =====
@@ -300,6 +302,72 @@ async function syncAttachments(c: WebDAVClient) {
       console.warn('[sync] attachment upload failed', att.hash, e)
     }
   }
+}
+
+// ===== 云端题库同步（部署自带的 /api/bank，跨设备共享） =====
+
+function bankEndpoint(): string {
+  const s = useSettingsStore()
+  const base = (s.bankSync.baseUrl || '').replace(/\/$/, '')
+  return base ? `${base}/api/bank` : '/api/bank'
+}
+
+function bankAuthHeaders(): Record<string, string> {
+  const s = useSettingsStore()
+  return s.bankSync.key ? { Authorization: `Bearer ${s.bankSync.key}` } : {}
+}
+
+let bankSyncing: Promise<{ pulled: number; pushed: number; ok: boolean }> | null = null
+
+/**
+ * 云端题库同步：拉取远端快照 → 与本地逐条 last-write-wins 合并 → 写回本地并推送。
+ * 与 WebDAV 同步独立，互不影响；并发调用复用进行中的结果。
+ */
+export async function syncBank(): Promise<{ pulled: number; pushed: number; ok: boolean }> {
+  const s = useSettingsStore()
+  if (!s.loaded) await s.load()
+  if (!s.bankSync.enabled) return { pulled: 0, pushed: 0, ok: false }
+  if (bankSyncing) return bankSyncing
+
+  bankSyncing = (async () => {
+    try {
+      const res = await fetch(bankEndpoint(), { headers: bankAuthHeaders() })
+      if (!res.ok) throw new Error(`拉取失败 (${res.status})`)
+      const remote = ((await res.json()) as SyncFileData) || { version: 1, tables: {} as any }
+      const local = await exportLocal()
+      const merged = pruneMergedTombstones(mergeAll(local, remote))
+      await importLocal(merged)
+
+      const put = await fetch(bankEndpoint(), {
+        method: 'PUT',
+        headers: { ...bankAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: merged.version, tables: merged.tables }),
+      })
+      if (!put.ok) throw new Error(`推送失败 (${put.status})`)
+
+      await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+      return { pulled: merged.stats.pulled, pushed: merged.stats.pushed, ok: true }
+    } catch (e) {
+      console.warn('[bank-sync] failed', e)
+      return { pulled: 0, pushed: 0, ok: false }
+    } finally {
+      bankSyncing = null
+    }
+  })()
+  return bankSyncing
+}
+
+/** 用当前配置测试云端题库接口连通性（GET 一次） */
+export async function testBankSync(config: { baseUrl: string; key: string }): Promise<void> {
+  const base = (config.baseUrl || '').replace(/\/$/, '')
+  const url = base ? `${base}/api/bank` : '/api/bank'
+  const headers: Record<string, string> = config.key ? { Authorization: `Bearer ${config.key}` } : {}
+  const res = await fetch(url, { headers })
+  if (res.status === 401) throw new Error('密钥不匹配')
+  if (!res.ok) throw new Error(`接口不可用 (${res.status})`)
+  await res.json().catch(() => {
+    throw new Error('返回内容异常')
+  })
 }
 
 /** 从远端下载缺失的附件（懒加载时调用） */

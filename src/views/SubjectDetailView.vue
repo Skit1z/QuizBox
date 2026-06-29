@@ -187,18 +187,22 @@ onMounted(load)
 
     <!-- 题量大时用虚拟滚动；少量时直接渲染 -->
     <div v-else-if="filteredQuestions.length <= 30">
-      <van-swipe-cell
+      <div
         v-for="(q, i) in filteredQuestions"
         :key="q.id"
-        class="swipe-card"
-        :class="{ 'swipe-card--selected': managing && selectedIds.includes(q.id) }"
-        @click="managing ? toggleSelect(q.id) : null"
+        class="scroller-item-wrap"
       >
-        <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
-        <template #right>
-          <van-button square type="danger" text="删除" style="height: 100%" @click.stop="removeQuestion(q.id)" />
-        </template>
-      </van-swipe-cell>
+        <van-swipe-cell
+          class="swipe-card"
+          :class="{ 'swipe-card--selected': managing && selectedIds.includes(q.id) }"
+          @click="managing ? toggleSelect(q.id) : null"
+        >
+          <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
+          <template #right>
+            <van-button square type="danger" text="删除" style="height: 100%" @click.stop="removeQuestion(q.id)" />
+          </template>
+        </van-swipe-cell>
+      </div>
     </div>
 
     <DynamicScroller
@@ -210,16 +214,18 @@ onMounted(load)
     >
       <template #default="{ item, index, active }">
         <DynamicScrollerItem :item="item" :active="active" :data-index="index">
-          <van-swipe-cell
-            class="swipe-card"
-            :class="{ 'swipe-card--selected': managing && selectedIds.includes(item.id) }"
-            @click="managing ? toggleSelect(item.id) : null"
-          >
-            <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
-            <template #right>
-              <van-button square type="danger" text="删除" style="height: 100%" @click.stop="removeQuestion(item.id)" />
-            </template>
-          </van-swipe-cell>
+          <div class="scroller-item-wrap">
+            <van-swipe-cell
+              class="swipe-card"
+              :class="{ 'swipe-card--selected': managing && selectedIds.includes(item.id) }"
+              @click="managing ? toggleSelect(item.id) : null"
+            >
+              <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
+              <template #right>
+                <van-button square type="danger" text="删除" style="height: 100%" @click.stop="removeQuestion(item.id)" />
+              </template>
+            </van-swipe-cell>
+          </div>
         </DynamicScrollerItem>
       </template>
     </DynamicScroller>

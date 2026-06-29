@@ -543,7 +543,7 @@ const isWrongOption = (letter: string) => {
 .options-list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   padding: 0 var(--sp-1);
 }
 .option-item {

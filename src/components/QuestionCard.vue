@@ -47,7 +47,7 @@ const formattedUserAnswer = computed(() => {
     <!-- 选项 -->
     <div v-if="!hideOptions && question.options && question.options.length" class="q-card__options">
       <div v-for="(opt, i) in question.options" :key="i" class="q-card__option">
-        <span class="q-card__option-key">{{ String.fromCharCode(65 + i) }}.</span>
+        <span class="q-card__option-key">{{ String.fromCharCode(65 + i) }}</span>
         <RichText :text="opt" />
       </div>
     </div>
@@ -110,15 +110,25 @@ const formattedUserAnswer = computed(() => {
 .q-card__option {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: var(--sp-2) 0;
+  gap: var(--sp-2.5);
+  padding: var(--sp-3) 0;
   font-size: 14px;
   color: var(--text-2);
 }
 .q-card__option-key {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
   flex-shrink: 0;
-  font-weight: 600;
-  line-height: 1.7;
+  margin-top: 2px;
 }
 .q-card__answer {
   margin-top: var(--sp-3);

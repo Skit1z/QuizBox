@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { showSuccessToast, showFailToast } from 'vant'
-import { useSettingsStore, type AiSettings, type WebdavSettings } from '@/stores/settings'
+import {
+  useSettingsStore,
+  type AiSettings,
+  type WebdavSettings,
+  type BankSyncSettings,
+} from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
 import { AI_PROVIDERS, findProvider } from '@/services/ai-providers'
 import { THEME_COLORS, type ThemeColor } from '@/themes/tokens'
@@ -12,6 +17,10 @@ const settings = useSettingsStore()
 const syncStore = useSyncStore()
 const ai = ref<AiSettings>({ ...settings.ai })
 const webdav = ref<WebdavSettings>({ ...settings.webdav })
+const bank = ref<BankSyncSettings>({ ...settings.bankSync })
+const bankTesting = ref(false)
+const bankSyncing = ref(false)
+const bankResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 // 版本号由 vite define 在构建期从 package.json 注入
 const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
@@ -133,6 +142,45 @@ async function manualSync() {
   else showFailToast('同步失败，请检查 WebDAV 设置')
 }
 
+async function saveBank() {
+  await settings.saveBankSync({
+    enabled: bank.value.enabled,
+    baseUrl: bank.value.baseUrl.trim(),
+    key: bank.value.key.trim(),
+  })
+  showSuccessToast('云端题库设置已保存')
+}
+
+async function testBank() {
+  if (bankTesting.value) return
+  bankTesting.value = true
+  bankResult.value = null
+  try {
+    const { testBankSync } = await import('@/services/sync')
+    await testBankSync({ baseUrl: bank.value.baseUrl.trim(), key: bank.value.key.trim() })
+    bankResult.value = { type: 'success', msg: '接口连通正常' }
+  } catch (e: any) {
+    bankResult.value = { type: 'error', msg: e?.message || '接口不可用' }
+  } finally {
+    bankTesting.value = false
+  }
+}
+
+async function manualBankSync() {
+  if (bankSyncing.value) return
+  // 先确保已保存最新配置
+  await saveBank()
+  bankSyncing.value = true
+  try {
+    const { syncBank } = await import('@/services/sync')
+    const res = await syncBank()
+    if (res.ok) showSuccessToast(`云端同步成功：拉取 ${res.pulled}，推送 ${res.pushed}`)
+    else showFailToast('云端同步失败，请检查接口与密钥')
+  } finally {
+    bankSyncing.value = false
+  }
+}
+
 const ocrToken = ref('')
 const ocrTesting = ref(false)
 const ocrResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
@@ -173,6 +221,7 @@ onMounted(async () => {
   await settings.load()
   ai.value = { ...settings.ai }
   webdav.value = { ...settings.webdav }
+  bank.value = { ...settings.bankSync }
   ocrToken.value = settings.ocr.token
 })
 </script>
@@ -258,6 +307,61 @@ onMounted(async () => {
         <van-button type="primary" round @click="saveAi">保存</van-button>
         <van-button plain type="primary" round :loading="testing" @click="testModel">
           {{ testing ? '检测中…' : '检测模型' }}
+        </van-button>
+      </div>
+    </div>
+
+    <!-- ===== 云端题库同步 ===== -->
+    <div class="section-title">云端题库同步（跨设备）</div>
+    <div class="card">
+      <div class="field-group">
+        <div class="field field--row">
+          <label class="field__label">启用</label>
+          <van-switch
+            :model-value="bank.enabled"
+            @update:model-value="(v: boolean) => (bank.enabled = v)"
+          />
+        </div>
+        <div class="field">
+          <label class="field__label">接口地址</label>
+          <input
+            v-model="bank.baseUrl"
+            class="field__input"
+            placeholder="留空 = 同源 /api/bank（网页端推荐）"
+          />
+        </div>
+        <div class="field">
+          <label class="field__label">共享密钥（可选）</label>
+          <input
+            v-model="bank.key"
+            class="field__input"
+            type="password"
+            placeholder="与服务端 BANK_KEY 一致"
+          />
+        </div>
+      </div>
+      <p class="field__tip">
+        在电脑导入题库后会自动上传；其它设备打开本站启用同名密钥即可拉取，接着做题。
+      </p>
+      <div
+        v-if="bankResult"
+        :class="[
+          'test-result',
+          bankResult.type === 'success' ? 'test-result--ok' : 'test-result--err',
+        ]"
+      >
+        <van-icon :name="bankResult.type === 'success' ? 'success' : 'cross'" />
+        <span>{{ bankResult.msg }}</span>
+      </div>
+      <div class="btn-row">
+        <van-button type="primary" round @click="saveBank">保存</van-button>
+        <van-button plain type="primary" round :loading="bankTesting" @click="testBank">
+          {{ bankTesting ? '检测中…' : '检测接口' }}
+        </van-button>
+      </div>
+      <div v-if="bank.enabled" style="margin-top: var(--sp-3)">
+        <van-button block plain round :loading="bankSyncing" @click="manualBankSync">
+          {{ bankSyncing ? '同步中…' : '立即同步' }}
         </van-button>
       </div>
     </div>

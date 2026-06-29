@@ -314,13 +314,19 @@ body {
   --van-tag-border-radius: var(--r-sm);
 }
 
+/* ===== 滚动条边距包装（防止虚拟滚动测量高度不包含 Margin 的问题） ===== */
+.scroller-item-wrap {
+  padding: 2px 6px 14px 6px;
+  box-sizing: border-box;
+}
+
 /* ===== 滑动卡片容器（解决阴影被 van-swipe-cell 裁剪问题） ===== */
 .swipe-card {
   background: var(--surface);
   border-radius: var(--r-lg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
-  margin: 2px 6px var(--sp-3) 6px;
+  margin: 0;
   overflow: hidden;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
