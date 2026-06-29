@@ -306,9 +306,20 @@ body {
 }
 .app-content {
   flex: 1;
-  max-width: var(--content-max);
   margin: 0 auto;
   padding: var(--sp-5) var(--sp-4);
+}
+/* 桌面端：内容区放宽，给做题双栏等宽布局留空间 */
+@media (min-width: 768px) {
+  .app-content {
+    max-width: 1120px;
+  }
+}
+/* 移动端：保持窄宽度 */
+@media (max-width: 767px) {
+  .app-content {
+    max-width: var(--content-max);
+  }
 }
 
 /* ===== 路由过渡：淡入，掩盖懒加载 chunk 下载间隙 ===== */
@@ -326,6 +337,17 @@ body {
 /* ===== 通用组件类 ===== */
 .page {
   padding: var(--sp-4);
+}
+/* 桌面端单栏阅读页：内容居中限宽，避免行宽过长 */
+@media (min-width: 768px) {
+  .page {
+    max-width: var(--content-max);
+    margin: 0 auto;
+  }
+  /* 做题等宽布局页：突破限宽，利用桌面空间 */
+  .page--wide {
+    max-width: none;
+  }
 }
 .page-head {
   margin-bottom: var(--sp-5);

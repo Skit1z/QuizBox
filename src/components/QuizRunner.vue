@@ -621,15 +621,17 @@ const isWrongOption = (letter: string) => {
 }
 .quiz-shell--desktop {
   display: flex;
-  gap: var(--sp-5);
+  gap: var(--sp-6);
   align-items: flex-start;
 }
 .quiz-main {
   flex: 1;
   min-width: 0;
+  /* 题干行宽控制在阅读舒适范围，避免桌面端过宽 */
+  max-width: 760px;
 }
 .quiz-aside {
-  width: 260px;
+  width: 300px;
   flex-shrink: 0;
   position: sticky;
   top: var(--sp-4);
