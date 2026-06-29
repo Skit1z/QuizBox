@@ -26,8 +26,23 @@ export interface OcrSettings {
   token: string
 }
 
+export interface BankSyncSettings {
+  /** 启用云端题库同步（跨设备共享） */
+  enabled: boolean
+  /** 接口基址：留空=同源 /api/bank（网页端推荐）；桌面端需填部署站点完整地址 */
+  baseUrl: string
+  /** 共享密钥（可选，须与服务端 BANK_KEY 一致） */
+  key: string
+}
+
 const DEFAULT_OCR: OcrSettings = {
   token: '',
+}
+
+const DEFAULT_BANK: BankSyncSettings = {
+  enabled: false,
+  baseUrl: '',
+  key: '',
 }
 
 const DEFAULT_AI: AiSettings = {
@@ -48,6 +63,7 @@ const DEFAULT_WEBDAV: WebdavSettings = {
 const META_KEY_AI = 'ai_settings'
 const META_KEY_WEBDAV = 'webdav_settings'
 const META_KEY_OCR = 'ocr_settings'
+const META_KEY_BANK = 'bank_sync_settings'
 const META_KEY_THEME = 'theme'
 const META_KEY_COLOR = 'theme_color'
 
@@ -70,6 +86,7 @@ export const useSettingsStore = defineStore('settings', {
     ai: { ...DEFAULT_AI },
     webdav: { ...DEFAULT_WEBDAV },
     ocr: { ...DEFAULT_OCR },
+    bankSync: { ...DEFAULT_BANK },
     theme: 'auto' as 'light' | 'dark' | 'auto',
     themeColor: DEFAULT_THEME_COLOR,
     secretErrors: [] as string[],
@@ -78,10 +95,11 @@ export const useSettingsStore = defineStore('settings', {
   actions: {
     async load() {
       if (this.loaded) return // 避免重复加载（含解密开销）
-      const [aiMeta, wdMeta, ocrMeta, themeMeta, colorMeta] = await Promise.all([
+      const [aiMeta, wdMeta, ocrMeta, bankMeta, themeMeta, colorMeta] = await Promise.all([
         db.syncMeta.get(META_KEY_AI),
         db.syncMeta.get(META_KEY_WEBDAV),
         db.syncMeta.get(META_KEY_OCR),
+        db.syncMeta.get(META_KEY_BANK),
         db.syncMeta.get(META_KEY_THEME),
         db.syncMeta.get(META_KEY_COLOR),
       ])
@@ -112,6 +130,14 @@ export const useSettingsStore = defineStore('settings', {
       if (ocrMeta) {
         const raw = JSON.parse(ocrMeta.value) as { token: string }
         this.ocr = { token: await this.tryDecrypt(raw.token, 'OCR Token') }
+      }
+      if (bankMeta) {
+        const raw = JSON.parse(bankMeta.value) as { enabled: boolean; baseUrl: string; key: string }
+        this.bankSync = {
+          enabled: !!raw.enabled,
+          baseUrl: raw.baseUrl || '',
+          key: await this.tryDecrypt(raw.key, '云题库密钥'),
+        }
       }
       if (themeMeta) this.theme = JSON.parse(themeMeta.value)
       if (colorMeta) this.themeColor = JSON.parse(colorMeta.value) as ThemeColor
@@ -182,6 +208,17 @@ export const useSettingsStore = defineStore('settings', {
       }
       await db.syncMeta.put({ key: META_KEY_OCR, value: JSON.stringify(stored) })
       this.secretErrors = this.secretErrors.filter((x) => x !== 'OCR Token')
+    },
+
+    async saveBankSync(settings: Partial<BankSyncSettings>) {
+      this.bankSync = { ...this.bankSync, ...settings }
+      const stored = {
+        enabled: this.bankSync.enabled,
+        baseUrl: this.bankSync.baseUrl,
+        key: this.bankSync.key ? await encryptSecret(this.bankSync.key) : '',
+      }
+      await db.syncMeta.put({ key: META_KEY_BANK, value: JSON.stringify(stored) })
+      this.secretErrors = this.secretErrors.filter((x) => x !== '云题库密钥')
     },
 
     async setTheme(theme: 'light' | 'dark' | 'auto') {

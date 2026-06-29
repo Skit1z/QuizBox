@@ -109,6 +109,7 @@ const formattedUserAnswer = computed(() => {
 }
 .q-card__option {
   display: flex;
+  align-items: flex-start;
   gap: 6px;
   padding: var(--sp-2) 0;
   font-size: 14px;
@@ -117,6 +118,7 @@ const formattedUserAnswer = computed(() => {
 .q-card__option-key {
   flex-shrink: 0;
   font-weight: 600;
+  line-height: 1.7;
 }
 .q-card__answer {
   margin-top: var(--sp-3);

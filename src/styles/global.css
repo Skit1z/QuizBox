@@ -320,7 +320,7 @@ body {
   border-radius: var(--r-lg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
-  margin-bottom: var(--sp-3);
+  margin: 2px 6px var(--sp-3) 6px;
   overflow: hidden;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -342,11 +342,11 @@ body {
 .swipe-card--selected {
   border-color: var(--brand) !important;
   background: var(--brand-soft) !important;
-  box-shadow: var(--shadow-md), 0 0 0 1px var(--brand) !important;
+  box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
 }
 .wrong-card--selected {
   border-color: var(--brand) !important;
   background: var(--brand-soft) !important;
-  box-shadow: var(--shadow-md), 0 0 0 1px var(--brand) !important;
+  box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
 }
 
