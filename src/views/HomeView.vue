@@ -22,6 +22,41 @@ const greeting = computed(() => {
   return '晚上好，温故知新'
 })
 
+/** 日期 + 星期 */
+const dateText = computed(() => {
+  const d = new Date()
+  const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${week}`
+})
+
+/** 设备信息：型号 + 名称（从 UA 解析，移动端优先） */
+const deviceText = computed(() => {
+  if (typeof navigator === 'undefined') return ''
+  const ua = navigator.userAgent
+  let model = ''
+  // iOS 设备型号
+  const iphoneMatch = ua.match(/iPhone([0-9]+,[0-9]+)/)
+  const ipadMatch = ua.match(/iPad([0-9]+,[0-9]+)/)
+  if (/Android/.test(ua)) {
+    const m = ua.match(/Android[^;]*;\s*([^)]+?)\s*Build/i)
+    model = m ? m[1].trim() : 'Android 设备'
+  } else if (iphoneMatch) {
+    model = 'iPhone'
+  } else if (ipadMatch) {
+    model = 'iPad'
+  } else if (/Macintosh|Mac OS X/.test(ua)) {
+    model = /Tauri/.test(ua) ? '桌面端' : 'Mac'
+  } else if (/Windows/.test(ua)) {
+    model = 'Windows'
+  } else if (/Linux/.test(ua)) {
+    model = 'Linux'
+  }
+  // 桌面端优先用 Tauri 标识
+  const isDesktop = (window as any).__TAURI__
+  if (isDesktop) return `桌面端${model ? ' · ' + model : ''}`
+  return model || ''
+})
+
 const features = [
   { title: '自测模式', desc: '即时反馈', icon: 'edit', route: 'practice' },
   { title: '我的自测', desc: '继续未完成', icon: 'clock-o', route: 'my-practice' },
@@ -86,7 +121,8 @@ onBeforeUnmount(() => {
       <div class="page-head">
         <img class="home-icon" src="/favicon.svg" alt="题盒图标" />
         <p class="page-sub">{{ greeting }}</p>
-        <h1 class="page-title">QuizBox</h1>
+        <h1 class="page-title">{{ dateText }}</h1>
+        <p v-if="deviceText" class="page-device">{{ deviceText }}</p>
       </div>
 
       <!-- 数据概览 -->

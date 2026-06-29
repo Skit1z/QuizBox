@@ -340,6 +340,12 @@ body {
   color: var(--text-3);
   margin: 0;
 }
+.page-device {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 2px 0 0;
+  opacity: 0.8;
+}
 .card {
   background: var(--surface);
   border-radius: var(--r-lg);
@@ -399,7 +405,7 @@ body {
 
 /* ===== 滚动条边距包装（防止虚拟滚动测量高度不包含 Margin 的问题） ===== */
 .scroller-item-wrap {
-  padding: 2px 6px 14px 6px;
+  padding: 2px 6px 8px 6px;
   box-sizing: border-box;
 }
 
@@ -466,3 +472,21 @@ body {
   background: var(--brand-soft) !important;
   box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
 }
+
+/* ===== Popover 危险操作样式 ===== */
+.van-popover__action.popover-danger-action,
+.van-popover__action.popover-danger-action .van-popover__action-text,
+.van-popover__action.popover-danger-action .van-icon {
+  color: var(--danger) !important;
+}
+
+/* ===== Popover 黑暗模式及背景适配 ===== */
+.van-popover__content {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+.van-popover__arrow {
+  color: var(--surface) !important;
+}
+
+

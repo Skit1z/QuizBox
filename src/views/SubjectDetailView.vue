@@ -359,10 +359,13 @@ onMounted(async () => {
           :class="{ 'swipe-card--selected': managing && selectedIds.includes(q.id) }"
           @click="managing ? toggleSelect(q.id) : null"
         >
-          <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
-          <button class="q-menu-btn" @click.stop="guardedAction(() => openQActions(q))">
-            <van-icon name="ellipsis" size="16" />
-          </button>
+          <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id">
+            <template #action>
+              <button class="q-action-btn" @click.stop="guardedAction(() => openQActions(q))">
+                <van-icon name="ellipsis" size="16" />
+              </button>
+            </template>
+          </QuestionCard>
           <template #right>
             <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(q))" />
             <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(q.id))" />
@@ -386,10 +389,13 @@ onMounted(async () => {
               :class="{ 'swipe-card--selected': managing && selectedIds.includes(item.id) }"
               @click="managing ? toggleSelect(item.id) : null"
             >
-              <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
-              <button class="q-menu-btn" @click.stop="guardedAction(() => openQActions(item))">
-                <van-icon name="ellipsis" size="16" />
-              </button>
+              <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id">
+                <template #action>
+                  <button class="q-action-btn" @click.stop="guardedAction(() => openQActions(item))">
+                    <van-icon name="ellipsis" size="16" />
+                  </button>
+                </template>
+              </QuestionCard>
               <template #right>
                 <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(item))" />
                 <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(item.id))" />
@@ -619,10 +625,7 @@ onMounted(async () => {
   color: var(--text-3);
   margin: 0;
 }
-.q-menu-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+.q-action-btn {
   width: 30px;
   height: 30px;
   border: none;
@@ -633,15 +636,11 @@ onMounted(async () => {
   justify-content: center;
   cursor: pointer;
   border-radius: var(--r-sm);
-  z-index: 2;
   transition: background 0.15s;
 }
-.q-menu-btn:hover {
+.q-action-btn:hover {
   background: var(--surface-2);
   color: var(--text);
-}
-.scroller-item-wrap {
-  position: relative;
 }
 .edit-q {
   padding: var(--sp-4) var(--sp-5);

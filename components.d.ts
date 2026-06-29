@@ -8,6 +8,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AdminDialog: typeof import('./src/components/AdminDialog.vue')['default']
+    AnswerCard: typeof import('./src/components/AnswerCard.vue')['default']
     AttachmentImage: typeof import('./src/components/AttachmentImage.vue')['default']
     ExamResult: typeof import('./src/components/ExamResult.vue')['default']
     QuestionCard: typeof import('./src/components/QuestionCard.vue')['default']
@@ -23,6 +24,7 @@ declare module 'vue' {
     VanField: typeof import('vant/es')['Field']
     VanIcon: typeof import('vant/es')['Icon']
     VanLoading: typeof import('vant/es')['Loading']
+    VanPopover: typeof import('vant/es')['Popover']
     VanProgress: typeof import('vant/es')['Progress']
     VanPullRefresh: typeof import('vant/es')['PullRefresh']
     VanSearch: typeof import('vant/es')['Search']

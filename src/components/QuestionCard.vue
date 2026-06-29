@@ -40,6 +40,8 @@ const formattedUserAnswer = computed(() => {
     <div class="q-card__meta">
       <van-tag plain>{{ typeLabel }}</van-tag>
       <span v-if="index !== undefined" class="q-card__index">第 {{ index + 1 }} 题</span>
+      <!-- 操作插槽：用于放置「⋯」编辑/删除菜单触发器 -->
+      <slot name="action" />
     </div>
 
     <RichText :text="question.stem" class="q-card__stem" />
@@ -99,6 +101,15 @@ const formattedUserAnswer = computed(() => {
   margin-left: auto;
   font-size: 12px;
   color: var(--text-3);
+}
+/* 有操作插槽时，题号不再 auto（让按钮靠右） */
+.q-card__meta :deep(.q-action-btn) {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* 题号 + 操作按钮同时存在：题号不 auto，按钮 auto */
+.q-card__meta > .q-card__index + :deep(.q-action-btn) {
+  margin-left: var(--sp-2);
 }
 .q-card__stem {
   font-size: 15px;

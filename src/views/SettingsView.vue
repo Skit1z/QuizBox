@@ -438,9 +438,6 @@ onMounted(async () => {
           />
         </div>
       </div>
-      <p class="field__tip">
-        BLOB_READ_WRITE_TOKEN 只放在 Vercel 环境变量中；这里不是 Blob Token。没有配置 BANK_KEY 时请留空。
-      </p>
       <div
         v-if="bankResult"
         :class="[
@@ -614,8 +611,8 @@ onMounted(async () => {
         管理员密码跨设备共享（随云端题库同步）。设置/修改后下次同步生效。刷新页面需重新验证。
       </p>
 
-      <!-- 从云端同步（在未登录或本地无密码时可用） -->
-      <div v-if="!adminStore.isAdmin" style="margin-bottom: var(--sp-3)">
+      <!-- 从云端同步：仅在本机尚未设置密码时可用（用于新设备继承共享管理员密码） -->
+      <div v-if="!adminStore.hasPassword" style="margin-bottom: var(--sp-3)">
         <van-button
           block
           plain
@@ -623,8 +620,11 @@ onMounted(async () => {
           :loading="adminPulling"
           @click="pullAdminFromCloud"
         >
-          {{ adminPulling ? '同步中…' : '从云端同步密码' }}
+          {{ adminPulling ? '同步中…' : '使用云端管理员密码' }}
         </van-button>
+        <p class="field__tip" style="margin-top: 6px">
+          若其他设备已设置管理员密码，点此拉取并继承同一密码（首次配置新设备时使用）。
+        </p>
       </div>
 
       <!-- 情况一：设置密码 -->
