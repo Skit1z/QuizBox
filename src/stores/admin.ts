@@ -31,25 +31,24 @@ export const useAdminStore = defineStore('admin', {
     /**
      * 用云端 meta 分片的密码哈希覆盖本地状态。
      * 用于题库同步后让各设备共享同一管理员密码。
-     * - 云端有密码 → 以云端为准（同步本地缓存）
-     * - 云端无密码 → 若本地有则清空（已设密码的设备推送后会被清）
-     *   注：实际场景中云端哈希由设密码的设备推送，故以云端为权威源。
+     *
+     * 权威源规则（避免设密码后被空云端值清空）：
+     * - 云端有密码哈希 → 以云端为准（同步本地缓存），本地登录态失效需重新验证
+     * - 云端无密码哈希 → 仅当本地也无密码时同步空态；
+     *   本地已设密码时不覆盖（本地密码等待下次推送上云，而非被清空）
      */
     applyRemoteHash(hash: string | undefined) {
       const remoteHash = hash || ''
       this._remoteHash = remoteHash
-      // 仅当与本地不同时更新，避免无谓写入
+      // 云端无密码：不覆盖本地（避免设密码后被空值清空）
+      if (!remoteHash) return
+      // 云端有密码且与本地不同 → 以云端为准
       if (remoteHash !== this._hash) {
         this._hash = remoteHash
-        this.hasPassword = !!remoteHash
+        this.hasPassword = true
         // 远端密码变化 → 当前登录态失效，需重新验证
         this.isAdmin = false
-        // 同步到本地缓存
-        if (remoteHash) {
-          void db.syncMeta.put({ key: META_KEY_ADMIN, value: remoteHash })
-        } else {
-          void db.syncMeta.delete(META_KEY_ADMIN)
-        }
+        void db.syncMeta.put({ key: META_KEY_ADMIN, value: remoteHash })
       }
     },
 

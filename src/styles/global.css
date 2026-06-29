@@ -128,6 +128,7 @@
   --van-button-default-background: #262932;
   --van-button-default-color: #f0f1f3;
   --van-button-default-border-color: #363a44;
+  --van-button-plain-background: transparent;
 
   /* Vant popup-like surfaces */
   --van-action-sheet-item-background: #202329;
@@ -188,6 +189,7 @@
     --van-button-default-background: #262932;
     --van-button-default-color: #f0f1f3;
     --van-button-default-border-color: #363a44;
+    --van-button-plain-background: transparent;
 
     /* Vant popup-like surfaces */
     --van-action-sheet-item-background: #202329;

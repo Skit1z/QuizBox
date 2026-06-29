@@ -7,6 +7,7 @@ import { useSubjectsStore } from '@/stores/subjects'
 import { useAdminStore } from '@/stores/admin'
 import { questionsRepo } from '@/db/questions'
 import AdminDialog from '@/components/AdminDialog.vue'
+import ActionPopover from '@/components/ActionPopover.vue'
 
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
@@ -33,11 +34,6 @@ const popoverActions = [
   { text: '删除科目', icon: 'delete-o', className: 'popover-danger-action' },
 ]
 
-function togglePopover(id: string) {
-  const currentState = !!showPopoverMap.value[id]
-  showPopoverMap.value = {}
-  showPopoverMap.value[id] = !currentState
-}
 
 function onSelectAction(action: { text: string }, s: { id: string; name: string; color?: string }) {
   showPopoverMap.value[s.id] = false
@@ -159,19 +155,17 @@ onMounted(async () => {
               <div class="subject-card__name">{{ s.name }}</div>
               <div class="subject-card__count">{{ counts[s.id] || 0 }} 道题</div>
             </div>
-            <van-popover
+            <ActionPopover
               v-model:show="showPopoverMap[s.id]"
-              placement="bottom-end"
               :actions="popoverActions"
-              trigger="manual"
+              :disabled="!adminStore.canOperate()"
+              @click-disabled="guardedAction(() => { showPopoverMap[s.id] = true })"
               @select="(action) => onSelectAction(action, s)"
             >
-              <template #reference>
-                <button class="card-menu-btn" @click.stop="guardedAction(() => togglePopover(s.id))">
-                  <van-icon name="ellipsis" size="18" />
-                </button>
-              </template>
-            </van-popover>
+              <button class="card-menu-btn" @click.stop>
+                <van-icon name="ellipsis" size="18" />
+              </button>
+            </ActionPopover>
             <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
           <template #right>

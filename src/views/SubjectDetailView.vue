@@ -8,6 +8,7 @@ import { useAdminStore } from '@/stores/admin'
 import QuestionCard from '@/components/QuestionCard.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import AdminDialog from '@/components/AdminDialog.vue'
+import ActionPopover from '@/components/ActionPopover.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
@@ -32,24 +33,8 @@ const targetSubjectId = ref('')
 const showAdminDialog = ref(false)
 const pendingAction = ref<(() => void) | null>(null)
 
-// 题目操作菜单（桌面端/非触摸友好）
-const showQActions = ref(false)
-const actionQuestion = ref<Question | null>(null)
-
-function openQActions(q: Question) {
-  actionQuestion.value = q
-  showQActions.value = true
-}
-function qActionEdit() {
-  const q = actionQuestion.value
-  actionQuestion.value = null
-  if (q) openEdit(q)
-}
-async function qActionDelete() {
-  const q = actionQuestion.value
-  actionQuestion.value = null
-  if (q) await removeQuestion(q.id)
-}
+// 题目操作气泡菜单
+const showPopoverMap = ref<Record<string, boolean>>({})
 
 // ===== 编辑题目 =====
 const showEdit = ref(false)
@@ -361,9 +346,19 @@ onMounted(async () => {
         >
           <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id">
             <template #action>
-              <button class="q-action-btn" @click.stop="guardedAction(() => openQActions(q))">
-                <van-icon name="ellipsis" size="16" />
-              </button>
+              <ActionPopover
+                v-model:show="showPopoverMap[q.id]"
+                :actions="[
+                  { text: '编辑题目', icon: 'edit', callback: () => openEdit(q) },
+                  { text: '删除题目', icon: 'delete-o', className: 'popover-danger-action', callback: () => removeQuestion(q.id) },
+                ]"
+                :disabled="!adminStore.canOperate()"
+                @click-disabled="guardedAction(() => { showPopoverMap[q.id] = true })"
+              >
+                <button class="q-action-btn" @click.stop>
+                  <van-icon name="ellipsis" size="16" />
+                </button>
+              </ActionPopover>
             </template>
           </QuestionCard>
           <template #right>
@@ -391,9 +386,19 @@ onMounted(async () => {
             >
               <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id">
                 <template #action>
-                  <button class="q-action-btn" @click.stop="guardedAction(() => openQActions(item))">
-                    <van-icon name="ellipsis" size="16" />
-                  </button>
+                  <ActionPopover
+                    v-model:show="showPopoverMap[item.id]"
+                    :actions="[
+                      { text: '编辑题目', icon: 'edit', callback: () => openEdit(item) },
+                      { text: '删除题目', icon: 'delete-o', className: 'popover-danger-action', callback: () => removeQuestion(item.id) },
+                    ]"
+                    :disabled="!adminStore.canOperate()"
+                    @click-disabled="guardedAction(() => { showPopoverMap[item.id] = true })"
+                  >
+                    <button class="q-action-btn" @click.stop>
+                      <van-icon name="ellipsis" size="16" />
+                    </button>
+                  </ActionPopover>
                 </template>
               </QuestionCard>
               <template #right>
@@ -505,15 +510,6 @@ onMounted(async () => {
       @verified="onAdminVerified"
     />
 
-    <van-action-sheet
-      v-model:show="showQActions"
-      :actions="[
-        { name: '编辑题目', callback: qActionEdit },
-        { name: '删除题目', color: '#ee0a24', callback: qActionDelete },
-      ]"
-      cancel-text="取消"
-      close-on-click-action
-    />
   </div>
 </template>
 
