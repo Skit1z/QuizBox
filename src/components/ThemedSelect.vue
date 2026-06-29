@@ -87,12 +87,8 @@ function pick(o: SelectOption | null) {
   close()
 }
 
-onMounted(() => {
-  window.addEventListener('scroll', close, true)
-})
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
-  window.removeEventListener('scroll', close, true)
 })
 </script>
 

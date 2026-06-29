@@ -26,6 +26,27 @@ const editId = ref('')
 const editName = ref('')
 const editColor = ref('')
 
+// 科目操作菜单
+const showActions = ref(false)
+const actionSubject = ref<{ id: string; name: string; color?: string } | null>(null)
+
+function openActions(s: { id: string; name: string; color?: string }) {
+  actionSubject.value = s
+  showActions.value = true
+}
+
+function actionEdit() {
+  if (!actionSubject.value) return
+  openEdit(actionSubject.value.id, actionSubject.value.name, actionSubject.value.color)
+}
+
+function actionDelete() {
+  if (!actionSubject.value) return
+  const s = actionSubject.value
+  actionSubject.value = null
+  void removeSubject(s.id, s.name)
+}
+
 function openEdit(id: string, name: string, color?: string) {
   editId.value = id
   editName.value = name
@@ -137,6 +158,9 @@ onMounted(async () => {
               <div class="subject-card__name">{{ s.name }}</div>
               <div class="subject-card__count">{{ counts[s.id] || 0 }} 道题</div>
             </div>
+            <button class="card-menu-btn" @click.stop="guardedAction(() => openActions(s))">
+              <van-icon name="ellipsis" size="18" />
+            </button>
             <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
           <template #right>
@@ -181,6 +205,16 @@ onMounted(async () => {
     <AdminDialog
       v-model:show="showAdminDialog"
       @verified="onAdminVerified"
+    />
+
+    <van-action-sheet
+      v-model:show="showActions"
+      :actions="[
+        { name: '编辑科目', callback: actionEdit },
+        { name: '删除科目', color: '#ee0a24', callback: actionDelete },
+      ]"
+      cancel-text="取消"
+      close-on-click-action
     />
   </div>
 </template>
@@ -258,6 +292,23 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-3);
   margin-top: 2px;
+}
+.card-menu-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.card-menu-btn:hover {
+  background: var(--surface-2);
 }
 .edit-body {
   padding: var(--sp-4) var(--sp-5);

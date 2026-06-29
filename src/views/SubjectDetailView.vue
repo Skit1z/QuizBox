@@ -32,6 +32,25 @@ const targetSubjectId = ref('')
 const showAdminDialog = ref(false)
 const pendingAction = ref<(() => void) | null>(null)
 
+// 题目操作菜单（桌面端/非触摸友好）
+const showQActions = ref(false)
+const actionQuestion = ref<Question | null>(null)
+
+function openQActions(q: Question) {
+  actionQuestion.value = q
+  showQActions.value = true
+}
+function qActionEdit() {
+  const q = actionQuestion.value
+  actionQuestion.value = null
+  if (q) openEdit(q)
+}
+async function qActionDelete() {
+  const q = actionQuestion.value
+  actionQuestion.value = null
+  if (q) await removeQuestion(q.id)
+}
+
 // ===== 编辑题目 =====
 const showEdit = ref(false)
 const editId = ref('')
@@ -341,6 +360,9 @@ onMounted(async () => {
           @click="managing ? toggleSelect(q.id) : null"
         >
           <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
+          <button class="q-menu-btn" @click.stop="guardedAction(() => openQActions(q))">
+            <van-icon name="ellipsis" size="16" />
+          </button>
           <template #right>
             <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(q))" />
             <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(q.id))" />
@@ -365,6 +387,9 @@ onMounted(async () => {
               @click="managing ? toggleSelect(item.id) : null"
             >
               <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
+              <button class="q-menu-btn" @click.stop="guardedAction(() => openQActions(item))">
+                <van-icon name="ellipsis" size="16" />
+              </button>
               <template #right>
                 <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(item))" />
                 <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(item.id))" />
@@ -472,6 +497,16 @@ onMounted(async () => {
     <AdminDialog
       v-model:show="showAdminDialog"
       @verified="onAdminVerified"
+    />
+
+    <van-action-sheet
+      v-model:show="showQActions"
+      :actions="[
+        { name: '编辑题目', callback: qActionEdit },
+        { name: '删除题目', color: '#ee0a24', callback: qActionDelete },
+      ]"
+      cancel-text="取消"
+      close-on-click-action
     />
   </div>
 </template>
@@ -583,6 +618,30 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--text-3);
   margin: 0;
+}
+.q-menu-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  z-index: 2;
+  transition: background 0.15s;
+}
+.q-menu-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.scroller-item-wrap {
+  position: relative;
 }
 .edit-q {
   padding: var(--sp-4) var(--sp-5);

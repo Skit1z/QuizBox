@@ -30,7 +30,7 @@ const routes: RouteRecordRaw[] = [
     path: '/wrong',
     name: 'wrong',
     component: () => import('@/views/WrongBookView.vue'),
-    meta: { title: '错题本', tabbar: true },
+    meta: { title: '错题本' },
   },
   {
     path: '/settings',

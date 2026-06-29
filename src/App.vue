@@ -10,7 +10,7 @@ const router = useRouter()
 const routeKey = computed(() => String(route.name) + String(route.params.subjectId || ''))
 
 /** 需要缓存的页面（tab 主页 + 题库列表），切回时保留滚动与状态 */
-const cachedViews = ['HomeView', 'LibraryView', 'WrongBookView']
+const cachedViews = ['HomeView', 'LibraryView']
 
 const isDesktop = ref(typeof window !== 'undefined' && window.innerWidth >= 768)
 const updateLayout = () => {
@@ -26,7 +26,6 @@ onBeforeUnmount(() => {
 const navItems = [
   { name: 'home', label: '首页', icon: 'wap-home-o' },
   { name: 'library', label: '题库', icon: 'bookmark-o' },
-  { name: 'wrong', label: '错题本', icon: 'warning-o' },
   { name: 'settings', label: '设置', icon: 'setting-o' },
 ]
 

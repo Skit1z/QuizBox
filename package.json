@@ -1,7 +1,7 @@
 {
   "name": "quizbox",
   "private": true,
-  "version": "1.58",
+  "version": "1.6.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "bump": "node scripts/bump-version.mjs",
+    "bump:patch": "node scripts/bump-version.mjs patch",
+    "bump:minor": "node scripts/bump-version.mjs minor",
+    "bump:major": "node scripts/bump-version.mjs major",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -1,19 +1,22 @@
-// 版本号自动递增脚本
-// 规则：每次 +0.01，小数位递增并自动进位，显示固定为两位小数
-//   1.10 → 1.11 → 1.12 → ... → 1.19 → 1.20 → 1.21 → 1.22 ...
-// 实现：用「厘」整数计数避免浮点精度问题。
-//   显示版本 X.YZ ↔ 厘 = X*100 + Y*10 + Z（Z 为 0-9，Y 为最后两位中的第二位）
-// 为兼容「1.1」这类只有一位小数的形式，解析时把 1.1 当作 1.10（=110 厘）。
+// 版本号自动递增脚本（语义化版本 MAJOR.MINOR.PATCH，如 1.6.0）
+//
+// 规则：遵循 https://semver.org/lang/zh-CN/
+//   - MAJOR：不兼容的 API 变更
+//   - MINOR：向下兼容的新功能
+//   - PATCH：向下兼容的问题修复
 //
 // 用法：
-//   node scripts/bump-version.mjs          # 默认 +0.01
-//   node scripts/bump-version.mjs 1.50     # 显式设为 1.50
+//   node scripts/bump-version.mjs              # 默认 patch +1
+//   node scripts/bump-version.mjs patch        # 1.6.0 → 1.6.1
+//   node scripts/bump-version.mjs minor        # 1.6.0 → 1.7.0
+//   node scripts/bump-version.mjs major        # 1.6.0 → 2.0.0
+//   node scripts/bump-version.mjs 1.8.3        # 显式设为 1.8.3
 //
 // 同步更新的文件：
-//   package.json            version
-//   package-lock.json       packages[""].version
-//   src-tauri/tauri.conf.json  version
-//   src-tauri/Cargo.toml    version
+//   package.json              version
+//   package-lock.json         packages[""].version
+//   src-tauri/tauri.conf.json version
+//   src-tauri/Cargo.toml      version
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -22,29 +25,38 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 
 // ===== 版本号解析/格式化 =====
-// 解析 "1.1" → 110 厘（视为 1.10）；"1.23" → 123；"2.05" → 205
-// 兼容旧语义化版本 "0.1.0"（取前两段 0.1）。
+// 解析 "1.6.0" → { major:1, minor:6, patch:0 }
+// 兼容旧的两位格式 "1.58"（视为 1.58.0）与 "1.5"（视为 1.5.0）
 function parseVersion(v) {
   const s = String(v).trim()
-  // 兼容 X.Y.Z 形式（取 X.Y）
-  const m3 = /^(\d+)\.(\d+)\.\d+$/.exec(s)
-  const target = m3 ? `${m3[1]}.${m3[2]}` : s
-  const m = /^(\d+)\.(\d+)$/.exec(target)
-  if (!m) throw new Error(`版本号格式应为 X.Y：${v}`)
-  const major = Number(m[1])
-  let minorRaw = m[2]
-  // 归一化为两位小数："1"→"10"，"23"→"23"，"5"→"50"(两位以上原样)
-  let minor2
-  if (minorRaw.length === 1) minor2 = minorRaw + '0'
-  else minor2 = minorRaw
-  return major * 100 + Number(minor2)
+  const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(s)
+  if (!m) throw new Error(`版本号格式应为 MAJOR.MINOR.PATCH：${v}`)
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: m[3] !== undefined ? Number(m[3]) : 0,
+  }
 }
 
-// 厘 → 显示版本。110→"1.10", 111→"1.11", 120→"1.20", 205→"2.05"
-function formatVersion(cents) {
-  const major = Math.floor(cents / 100)
-  const minor2 = cents % 100 // 0-99
-  return `${major}.${String(minor2).padStart(2, '0')}`
+function formatVersion(ver) {
+  return `${ver.major}.${ver.minor}.${ver.patch}`
+}
+
+// 按级别递增
+function bump(ver, level) {
+  const next = { ...ver }
+  if (level === 'major') {
+    next.major++
+    next.minor = 0
+    next.patch = 0
+  } else if (level === 'minor') {
+    next.minor++
+    next.patch = 0
+  } else {
+    // patch（默认）
+    next.patch++
+  }
+  return next
 }
 
 // ===== 文件更新 =====
@@ -61,19 +73,21 @@ function main() {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
   const current = parseVersion(pkg.version)
 
-  // 命令行参数：显式设定 or 默认 +1
-  const arg = process.argv[2]
+  // 命令行参数：显式版本号 or 级别（patch/minor/major），默认 patch
+  const arg = process.argv[2] || 'patch'
   let next
-  if (arg) {
+  if (/^\d+\.\d+(\.\d+)?$/.test(arg)) {
+    // 显式版本号
     next = parseVersion(arg)
+  } else if (['patch', 'minor', 'major'].includes(arg)) {
+    next = bump(current, arg)
   } else {
-    next = current + 1
+    throw new Error(`参数应为 patch | minor | major | 显式版本号，收到：${arg}`)
   }
 
   const nextStr = formatVersion(next)
   const curStr = formatVersion(current)
-  if (nextStr === curStr && !arg) {
-    // 已是最新，无需 bump（理论上 +1 不会相等，兜底）
+  if (nextStr === curStr) {
     console.log(`[version] 当前 ${curStr}，无需递增`)
     return
   }

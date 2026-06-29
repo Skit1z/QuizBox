@@ -105,8 +105,11 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <div class="page-head">
-      <h1 class="page-title">错题本</h1>
+    <div class="page-head page-head--row">
+      <div class="page-head__left" @click="router.back()">
+        <van-icon name="arrow-left" size="20" />
+        <h1 class="page-title page-title--sm">错题本</h1>
+      </div>
     </div>
 
     <div class="filter-tabs">
@@ -192,6 +195,20 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.page-head--row {
+  display: flex;
+  align-items: center;
+}
+.page-head__left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: pointer;
+}
+.page-title--sm {
+  font-size: 18px;
+  margin: 0;
+}
 .filter-tabs {
   display: flex;
   gap: var(--sp-2);
