@@ -625,6 +625,7 @@ const isWrongOption = (letter: string) => {
           {{ props.classic ? '交卷' : '完成' }} <van-icon name="passed" />
         </van-button>
         <van-button
+          v-if="props.mode !== 'practice'"
           round
           plain
           @click="router.back()"
