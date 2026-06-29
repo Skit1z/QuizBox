@@ -10,6 +10,11 @@ import { parseFile, getFileExt, ACCEPT_EXTENSIONS, EXT_LABELS } from '@/services
 import { saveImages, type ParsedImage } from '@/services/docx-parser'
 import { repairWithAI, generateAnswer, type ParsedQuestion } from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
+import {
+  isProfileResultBetter,
+  parseWithDetectedProfile,
+  shouldTryProfileParse,
+} from '@/services/profile-parser'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 import { QUESTION_TYPE_LABELS, type QuestionType } from '@/types'
@@ -34,6 +39,7 @@ const editingIdx = ref<number | null>(null)
 const repairing = ref(false)
 const repairCount = ref(0)
 const saving = ref(false)
+const AUTO_REPAIR_LIMIT = 40
 
 const types: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
 
@@ -190,11 +196,26 @@ async function doParse() {
     // 统一管线：规则解析为主（零 AI 消耗），仅对低完整度块用 AI 判定
     // 注意：lowConfidenceIndices 是基于此数组的位置索引，回填/删除完成前不可过滤，
     // 否则索引会错位。空题干的过滤统一放在所有索引操作之后（见 finalizePreview）。
-    const hybrid = parseWithRulesHybrid(result.text)
+    let hybrid = parseWithRulesHybrid(result.text)
+    if (settingsStore.ai.apiKey && shouldTryProfileParse(hybrid, result.text)) {
+      try {
+        const profiled = await parseWithDetectedProfile(result.text, (message) => {
+          pdfProgress.value = message
+        })
+        if (isProfileResultBetter(hybrid, profiled)) {
+          hybrid = profiled
+        }
+      } catch (e) {
+        console.warn('[import] profile parse failed', e)
+      }
+    }
     let qs: ParsedQuestion[] = hybrid.questions
 
+    const tooManyRepairBlocks = hybrid.lowConfidenceBlocks.length > AUTO_REPAIR_LIMIT
+
     // 有低完整度块 + 有 AI 配置 → AI 判定这些块（是题目则结构化，不是则丢弃）
-    if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey) {
+    // 数量过大时不做逐题 AI 修复，避免一次导入把数百题全发给 AI。
+    if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey && !tooManyRepairBlocks) {
       parsed.value = qs
       const aiCandidates = new WeakSet<ParsedQuestion>()
       hybrid.lowConfidenceIndices.forEach((qIdx) => {
@@ -239,6 +260,13 @@ async function doParse() {
         )
       }
       return
+    }
+
+    if (tooManyRepairBlocks) {
+      console.warn(
+        `[import] skip AI repair: ${hybrid.lowConfidenceBlocks.length} low-confidence blocks exceeds limit ${AUTO_REPAIR_LIMIT}`,
+      )
+      showFailToast(`低把握题过多，已跳过批量 AI 修复`)
     }
 
     const cleaned = prioritizeReviewQuestions(qs.filter(isRenderableQuestion))

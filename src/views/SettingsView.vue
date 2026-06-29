@@ -388,6 +388,13 @@ onMounted(async () => {
 
     <div class="section-title">关于</div>
     <div class="card about-card">
+      <div class="about-brand">
+        <img class="about-brand__logo" src="/favicon.svg" alt="QuizBox" />
+        <div>
+          <div class="about-brand__name">题盒 QuizBox</div>
+          <div class="about-brand__sub">本地优先的题库与练习工具</div>
+        </div>
+      </div>
       <div class="about-row">
         <span class="about-row__label">版本号</span>
         <span class="about-row__value">v{{ version }}</span>
@@ -402,7 +409,12 @@ onMounted(async () => {
         target="_blank"
         rel="noopener noreferrer"
       >
-        <van-icon name="link-o" size="15" />
+        <svg class="github-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 2C6.48 2 2 6.58 2 12.26c0 4.54 2.87 8.39 6.84 9.75.5.1.68-.22.68-.5v-1.75c-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.34 1.12 2.91.85.09-.67.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.98c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.4.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9v2.82c0 .28.18.6.69.5A10.13 10.13 0 0 0 22 12.26C22 6.58 17.52 2 12 2Z"
+          />
+        </svg>
         Skit1z/QuizBox
       </a>
     </div>
@@ -549,7 +561,31 @@ onMounted(async () => {
 .about-card {
   display: flex;
   flex-direction: column;
+  gap: var(--sp-4);
+}
+.about-brand {
+  display: flex;
+  align-items: center;
   gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+.about-brand__logo {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-brand);
+  flex-shrink: 0;
+}
+.about-brand__name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.about-brand__sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-3);
 }
 .about-row {
   display: flex;
@@ -578,5 +614,10 @@ onMounted(async () => {
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
+}
+.github-btn__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 </style>

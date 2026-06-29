@@ -28,11 +28,13 @@ const RE_CHAPTER_BREAK =
   /^[\s　]*(?:《[^》]*》.*\d|《[^》]+》\s*$|习题[一二三四五六七八九十\d]+|^[^A-Za-z\d]{0,12}习题)/m
 
 // 题号：1. / 1、/ 1) / (1) / 1．
-const RE_QUESTION_NUM = /^[\s　]*[(\[（【]?(\d{1,4})[)\]）】]?[.、．)\s]/m
+// 注：改为 let，parseWithRulesHybrid 可按 AI 推断的格式 profile 临时覆盖（解析后还原）
+let RE_QUESTION_NUM = /^[\s　]*[(\[（【]?(\d{1,4})[)\]）】]?[.、．)\s]/m
 
 // 选项行开头：A. / A、/ A) / (A) / A．/ A（空格）
 // 兼容行首 bullet 符号（已在 expandInlineOptions 阶段 stripBullet 去除，这里用 * 兜底）
-const RE_OPTION_HEAD = /^[\s　•◦▪▪·●○■□*\-‑–—]*[(\[（]?([A-Ha-h])[)\]）]?[.、．)]\s*/
+// 注：改为 let，可被 profile 临时覆盖（解析后还原）
+let RE_OPTION_HEAD = /^[\s　•◦▪▪·●○■□*\-‑–—]*[(\[（]?([A-Ha-h])[)\]）]?[.、．)]\s*/
 
 // 同一行内的后续选项标记：用于拆分 "A.xxx B.xxx" 或 "A.xxxB.xxxC.xxx"
 // 在中文/字母 + 字母选项标点 边界处拆分
@@ -122,7 +124,57 @@ export function parseWithRules(text: string): ParsedQuestion[] {
   return parseWithRulesHybrid(text).questions
 }
 
-export function parseWithRulesHybrid(text: string): HybridResult {
+/**
+ * 可注入的格式参数（"方言"）。当默认规则搞不定某种排版时，由 AI 推断一次后注入，
+ * 复用同一套解析"语法"（内联拆分/答案剥离/判断改错…）。无效正则会安全回退默认。
+ */
+export interface RuleProfile {
+  /** 题目开头正则，须第 1 个捕获组捕获题号数字 */
+  questionStart?: string
+  /** 选项开头正则（可含正文捕获，会被裁成仅匹配前缀） */
+  optionStart?: string
+}
+
+export function parseWithRulesHybrid(text: string, profile?: RuleProfile): HybridResult {
+  // 保存默认方言，按 profile 临时覆盖；解析为纯同步，无并发风险，finally 还原
+  const savedQuestion = RE_QUESTION_NUM
+  const savedOption = RE_OPTION_HEAD
+  if (profile?.questionStart) {
+    const re = safeRegExp(profile.questionStart, 'm')
+    if (re && hasCaptureGroup(re)) RE_QUESTION_NUM = re
+  }
+  if (profile?.optionStart) {
+    const re = safeRegExp(stripTrailingContentCapture(profile.optionStart), '')
+    if (re) RE_OPTION_HEAD = re
+  }
+  try {
+    return parseHybridInternal(text)
+  } finally {
+    RE_QUESTION_NUM = savedQuestion
+    RE_OPTION_HEAD = savedOption
+  }
+}
+
+function safeRegExp(src: string, flags: string): RegExp | null {
+  try {
+    return new RegExp(src, flags)
+  } catch {
+    return null
+  }
+}
+
+/** 正则是否含普通捕获组（题号正则必须能捕获题号） */
+function hasCaptureGroup(re: RegExp): boolean {
+  return /\((?!\?)/.test(re.source)
+}
+
+/** 裁掉选项正则末尾用于捕获正文的 (.*)/(.*)$，使其只匹配选项前缀，
+ *  以兼容 parseBlock 用 .replace(RE_OPTION_HEAD,'') 剥前缀的语义 */
+function stripTrailingContentCapture(src: string): string {
+  return src.replace(/\(\.\*\??\)\$?\s*$/, '').replace(/\s+$/, '')
+}
+
+function parseHybridInternal(text: string): HybridResult {
   const lines = text.split(/\r?\n/)
   const expanded = expandInlineOptions(lines)
   const blocks = splitIntoBlocks(expanded)
@@ -459,6 +511,14 @@ function parseBlock(block: RawBlock): ParsedBlock | null {
     }
   }
 
+  if (options.length === 0) {
+    const inlineOptions = extractInlineOptionsFromStem(stem)
+    if (inlineOptions) {
+      stem = inlineOptions.stem
+      options.push(...inlineOptions.options)
+    }
+  }
+
   // 提取图片占位符
   const imgMatches = text.match(/\[IMG_\d+\]/g)
   if (imgMatches) imagePlaceholders.push(...imgMatches)
@@ -652,6 +712,49 @@ function extractStemAnswer(stem: string): { cleanStem: string; answer: string } 
   return null
 }
 
+function extractInlineOptionsFromStem(stem: string): { stem: string; options: string[] } | null {
+  const markerRe = /[A-Ha-h][.、．)]\s*/g
+  const markers = Array.from(stem.matchAll(markerRe))
+    .map((match) => ({
+      key: match[0][0].toUpperCase(),
+      index: match.index ?? -1,
+      end: (match.index ?? 0) + match[0].length,
+    }))
+    .filter((marker) => marker.index >= 0 && isLikelyInlineOptionMarker(stem, marker.index))
+
+  const start = markers.findIndex((marker) => marker.key === 'A')
+  if (start < 0) return null
+
+  const sequence = [markers[start]]
+  for (let i = start + 1; i < markers.length; i++) {
+    const expected = String.fromCharCode(65 + sequence.length)
+    if (markers[i].key !== expected) break
+    sequence.push(markers[i])
+  }
+  if (sequence.length < 2) return null
+
+  const options = sequence
+    .map((marker, i) => {
+      const next = sequence[i + 1]
+      return stem.slice(marker.end, next ? next.index : stem.length).trim()
+    })
+    .filter(Boolean)
+  if (options.length < 2) return null
+
+  return {
+    stem: stem.slice(0, sequence[0].index).trim(),
+    options,
+  }
+}
+
+function isLikelyInlineOptionMarker(text: string, index: number): boolean {
+  if (index === 0) return true
+  const prev = text[index - 1]
+  if (!prev) return true
+  if (/[A-Za-z0-9]/.test(prev)) return false
+  return true
+}
+
 export function detectType(
   stem: string,
   options: string[],
@@ -662,6 +765,7 @@ export function detectType(
   if (options.length >= 1) {
     const letters = answer.match(/[A-Ha-h]/g)
     if (letters && letters.length > 1) return 'multiple'
+    if (!letters && (sectionType === 'single' || sectionType === 'multiple')) return sectionType
     return 'single'
   }
 
