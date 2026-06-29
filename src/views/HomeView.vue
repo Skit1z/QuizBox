@@ -3,11 +3,14 @@ import { ref, onMounted, onActivated, onBeforeUnmount, computed } from 'vue'
 defineOptions({ name: 'HomeView' })
 import { useRouter } from 'vue-router'
 import { useSubjectsStore } from '@/stores/subjects'
+import { useSyncStore } from '@/stores/sync'
 import { questionsRepo } from '@/db/questions'
 import { wrongBookRepo } from '@/db/wrongbook'
+import { showToast } from 'vant'
 
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
+const syncStore = useSyncStore()
 
 const stats = ref({ subjects: 0, questions: 0, wrong: 0 })
 const greeting = computed(() => {
@@ -40,6 +43,25 @@ async function loadStats() {
   }
 }
 
+const refreshing = ref(false)
+
+/** 下拉刷新：触发一次云端题库增量同步并刷新统计 */
+async function onPullRefresh() {
+  try {
+    const res = await syncStore.runBank()
+    if (res.ok) {
+      const pulledMsg =
+        res.pulled > 0 ? `已同步 ${res.pulled} 条` : '已是最新'
+      showToast(pulledMsg)
+    } else if (res.error) {
+      showToast(res.error)
+    }
+  } finally {
+    await loadStats()
+    refreshing.value = false
+  }
+}
+
 function refreshWhenVisible() {
   if (document.visibilityState === 'visible') void loadStats()
 }
@@ -59,53 +81,55 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page">
-    <!-- 头部问候 -->
-    <div class="page-head">
-      <img class="home-icon" src="/favicon.svg" alt="题盒图标" />
-      <p class="page-sub">{{ greeting }}</p>
-      <h1 class="page-title">QuizBox</h1>
-    </div>
+  <van-pull-refresh v-model="refreshing" @refresh="onPullRefresh">
+    <div class="page">
+      <!-- 头部问候 -->
+      <div class="page-head">
+        <img class="home-icon" src="/favicon.svg" alt="题盒图标" />
+        <p class="page-sub">{{ greeting }}</p>
+        <h1 class="page-title">QuizBox</h1>
+      </div>
 
-    <!-- 数据概览 -->
-    <div class="stat-row">
-      <div class="stat">
-        <div class="stat__num">{{ stats.subjects }}</div>
-        <div class="stat__label">科目</div>
-      </div>
-      <div class="stat__sep"></div>
-      <div class="stat">
-        <div class="stat__num">{{ stats.questions }}</div>
-        <div class="stat__label">题目</div>
-      </div>
-      <div class="stat__sep"></div>
-      <div class="stat">
-        <div class="stat__num" :class="{ 'stat__num--accent': stats.wrong > 0 }">{{ stats.wrong }}</div>
-        <div class="stat__label">待复习</div>
-      </div>
-    </div>
-
-    <!-- 功能入口 -->
-    <div class="section-title">开始学习</div>
-    <div class="feature-grid">
-      <div
-        v-for="f in features"
-        :key="f.route"
-        class="feature card card--clickable"
-        @click="router.push({ name: f.route })"
-      >
-        <div class="feature__icon">
-          <van-icon :name="f.icon" size="22" />
+      <!-- 数据概览 -->
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat__num">{{ stats.subjects }}</div>
+          <div class="stat__label">科目</div>
         </div>
-        <div class="feature__body">
-          <div class="feature__title">{{ f.title }}</div>
-          <div class="feature__desc">{{ f.desc }}</div>
+        <div class="stat__sep"></div>
+        <div class="stat">
+          <div class="stat__num">{{ stats.questions }}</div>
+          <div class="stat__label">题目</div>
         </div>
-        <van-icon name="arrow" size="14" color="var(--text-3)" />
+        <div class="stat__sep"></div>
+        <div class="stat">
+          <div class="stat__num" :class="{ 'stat__num--accent': stats.wrong > 0 }">{{ stats.wrong }}</div>
+          <div class="stat__label">待复习</div>
+        </div>
       </div>
-    </div>
 
-  </div>
+      <!-- 功能入口 -->
+      <div class="section-title">开始学习</div>
+      <div class="feature-grid">
+        <div
+          v-for="f in features"
+          :key="f.route"
+          class="feature card card--clickable"
+          @click="router.push({ name: f.route })"
+        >
+          <div class="feature__icon">
+            <van-icon :name="f.icon" size="22" />
+          </div>
+          <div class="feature__body">
+            <div class="feature__title">{{ f.title }}</div>
+            <div class="feature__desc">{{ f.desc }}</div>
+          </div>
+          <van-icon name="arrow" size="14" color="var(--text-3)" />
+        </div>
+      </div>
+
+    </div>
+  </van-pull-refresh>
 </template>
 
 <style scoped>

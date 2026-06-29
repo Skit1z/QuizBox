@@ -236,12 +236,13 @@ async function manualBankSync() {
     const { syncBank } = await import('@/services/sync')
     const res = await syncBank()
     if (res.ok) {
-      const rows = res.remoteRows ?? res.localRows ?? 0
+      const pulledMsg = res.pulled > 0 ? `拉取 ${res.pulled} 条` : '本地已是最新'
+      const pushedMsg = res.pushed > 0 ? `推送 ${res.shardsPushed} 分片` : '无变更推送'
       bankResult.value = {
         type: 'success',
-        msg: `已写入 ${rows} 条记录到 ${res.pathname || 'quizbox/bank.json'}（${res.size || 0} B）`,
+        msg: `增量同步完成：${pulledMsg}，${pushedMsg}`,
       }
-      showSuccessToast(`云端同步成功：${rows} 条`)
+      showSuccessToast(`云端同步成功：${pulledMsg}`)
     } else {
       bankResult.value = { type: 'error', msg: res.error || '云端同步失败，请检查接口与密钥' }
       showFailToast(res.error || '云端同步失败')
