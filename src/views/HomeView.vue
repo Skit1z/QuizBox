@@ -24,7 +24,6 @@ const features = [
   { title: '我的自测', desc: '继续未完成', icon: 'clock-o', route: 'my-practice' },
   { title: '考试模式', desc: '限时交卷', icon: 'certificate', route: 'exam' },
   { title: '错题本', desc: '间隔复习', icon: 'warning-o', route: 'wrong' },
-  { title: '导入题库', desc: 'AI 解析', icon: 'add-square', route: 'import' },
 ]
 
 async function loadStats() {

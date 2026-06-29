@@ -32,6 +32,124 @@ const targetSubjectId = ref('')
 const showAdminDialog = ref(false)
 const pendingAction = ref<(() => void) | null>(null)
 
+// ===== 编辑题目 =====
+const showEdit = ref(false)
+const editId = ref('')
+const editType = ref<QuestionType>('single')
+const editStem = ref('')
+const editOptions = ref<string[]>([])
+const editAnswer = ref('')
+const editAnalysis = ref('')
+const editSaving = ref(false)
+
+const editTypeOptions = computed<SelectOption[]>(() =>
+  Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => ({ value, label })),
+)
+
+/** 判断题、单选、多选使用字母选项作为答案；填空/简答/论述为自由文本 */
+function isChoiceLike(t: QuestionType): boolean {
+  return t === 'single' || t === 'multiple' || t === 'judge'
+}
+
+function openEdit(q: Question) {
+  editId.value = q.id
+  editType.value = q.type
+  editStem.value = q.stem || ''
+  editOptions.value = q.options ? [...q.options] : []
+  const a = q.answer
+  if (isChoiceLike(q.type)) {
+    editAnswer.value = Array.isArray(a) ? a.join('') : String(a ?? '')
+  } else {
+    editAnswer.value = Array.isArray(a) ? a.join('\n') : String(a ?? '')
+  }
+  editAnalysis.value = q.analysis || ''
+  showEdit.value = true
+}
+
+function onEditTypeChange(t: string) {
+  editType.value = t as QuestionType
+  // 切到判断题时重置默认选项与答案
+  if (t === 'judge') {
+    editOptions.value = ['正确', '错误']
+    if (!['T', 'F'].includes(editAnswer.value)) editAnswer.value = 'T'
+  } else if (!isChoiceLike(t as QuestionType)) {
+    editAnswer.value = ''
+  } else if (t === 'single' || t === 'multiple') {
+    // 还原选项（若之前被清空，给 4 个空选项）
+    if (editOptions.value.length === 0 || editOptions.value.length === 2) {
+      editOptions.value = ['', '', '', '']
+    }
+    editAnswer.value = ''
+  }
+}
+
+function addOption() {
+  editOptions.value.push('')
+}
+
+function removeOption(i: number) {
+  // 至少保留 2 个选项（单选/多选）
+  if (editOptions.value.length <= 2) return
+  editOptions.value.splice(i, 1)
+}
+
+async function saveEdit() {
+  const stem = editStem.value.trim()
+  if (!stem) {
+    showFailToast('请输入题干')
+    return
+  }
+  if (editSaving.value) return
+  editSaving.value = true
+  try {
+    const type = editType.value
+    let answer: string | string[]
+    if (type === 'multiple') {
+      // 多选答案：去重保留顺序，如 "AC" → ['A','C']
+      answer = Array.from(new Set(editAnswer.value.toUpperCase().split('').filter((c) => /[A-Z]/.test(c))))
+      if (!answer.length) {
+        showFailToast('请填写答案（如 AC）')
+        return
+      }
+    } else if (type === 'judge') {
+      answer = editAnswer.value.toUpperCase().startsWith('F') ? 'F' : 'T'
+    } else if (isChoiceLike(type)) {
+      answer = editAnswer.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1)
+      if (!answer) {
+        showFailToast('请填写答案字母')
+        return
+      }
+    } else {
+      // 填空：按行拆为多个空；简答/论述：单个字符串
+      const lines = editAnswer.value.split('\n').map((s) => s.trim()).filter(Boolean)
+      answer = type === 'fill' ? (lines.length > 1 ? lines : (lines[0] || '')) : editAnswer.value.trim()
+      if (!answer || (Array.isArray(answer) && !answer.length)) {
+        showFailToast('请填写答案')
+        return
+      }
+    }
+    const patch: Partial<{ type: QuestionType; stem: string; options?: string[]; answer: string | string[]; analysis: string }> = {
+      type,
+      stem,
+      answer,
+      analysis: editAnalysis.value.trim(),
+    }
+    if (type === 'single' || type === 'multiple') {
+      patch.options = editOptions.value.map((o) => o.trim())
+      if (patch.options.some((o) => !o)) {
+        showFailToast('选项不能为空')
+        return
+      }
+    }
+    await questionsRepo.update(editId.value, patch)
+    showEdit.value = false
+    showSuccessToast('已保存')
+    await load()
+  } finally {
+    editSaving.value = false
+  }
+}
+
 const typeOptions = computed<SelectOption[]>(() => [
   { value: '', label: '全部题型' },
   ...Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => ({ value, label })),
@@ -224,6 +342,7 @@ onMounted(async () => {
         >
           <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
           <template #right>
+            <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(q))" />
             <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(q.id))" />
           </template>
         </van-swipe-cell>
@@ -247,6 +366,7 @@ onMounted(async () => {
             >
               <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
               <template #right>
+                <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(item))" />
                 <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(item.id))" />
               </template>
             </van-swipe-cell>
@@ -258,6 +378,94 @@ onMounted(async () => {
     <van-dialog v-model:show="showMove" title="移动到科目" show-cancel-button @confirm="batchMove">
       <div class="dialog-body">
         <ThemedSelect v-model="targetSubjectId" :options="moveSubjectOptions" placeholder="选择目标科目" />
+      </div>
+    </van-dialog>
+
+    <!-- 编辑题目 -->
+    <van-dialog
+      v-model:show="showEdit"
+      title="编辑题目"
+      show-cancel-button
+      :confirm-button-text="editSaving ? '保存中…' : '保存'"
+      :before-close="
+        (action: string) => {
+          if (action === 'confirm') {
+            void saveEdit()
+            return false
+          }
+          return true
+        }
+      "
+    >
+      <div class="edit-q">
+        <div class="edit-q__field">
+          <label class="edit-q__label">题型</label>
+          <ThemedSelect
+            :model-value="editType"
+            :options="editTypeOptions"
+            placeholder="选择题型"
+            @change="onEditTypeChange"
+          />
+        </div>
+        <div class="edit-q__field">
+          <label class="edit-q__label">题干</label>
+          <textarea
+            v-model="editStem"
+            class="edit-q__textarea"
+            rows="3"
+            placeholder="题干内容（支持纯文本）"
+          ></textarea>
+        </div>
+        <!-- 选项（单选/多选） -->
+        <template v-if="editType === 'single' || editType === 'multiple'">
+          <div class="edit-q__field">
+            <label class="edit-q__label">选项</label>
+            <div
+              v-for="(opt, i) in editOptions"
+              :key="i"
+              class="edit-q__option"
+            >
+              <span class="edit-q__option-key">{{ String.fromCharCode(65 + i) }}</span>
+              <input v-model="editOptions[i]" class="edit-q__input" :placeholder="`选项 ${String.fromCharCode(65 + i)}`" />
+              <button
+                v-if="editOptions.length > 2"
+                type="button"
+                class="edit-q__option-del"
+                @click="removeOption(i)"
+              >
+                <van-icon name="cross" size="14" />
+              </button>
+            </div>
+            <van-button size="small" plain round @click="addOption">添加选项</van-button>
+          </div>
+        </template>
+        <div class="edit-q__field">
+          <label class="edit-q__label">
+            答案
+            <span class="edit-q__hint">
+              {{
+                editType === 'multiple' ? '（如 AC，多选填字母）' :
+                editType === 'judge' ? '（T 正确 / F 错误）' :
+                editType === 'fill' ? '（多个空用换行分隔）' : ''
+              }}
+            </span>
+          </label>
+          <textarea
+            v-model="editAnswer"
+            class="edit-q__textarea"
+            :rows="editType === 'fill' || editType === 'short' || editType === 'essay' ? 3 : 1"
+            :placeholder="editType === 'single' ? '答案字母，如 A' : editType === 'multiple' ? '答案字母，如 ACD' : '答案'"
+          ></textarea>
+        </div>
+        <div class="edit-q__field">
+          <label class="edit-q__label">解析</label>
+          <textarea
+            v-model="editAnalysis"
+            class="edit-q__textarea"
+            rows="2"
+            placeholder="解析（可选）"
+          ></textarea>
+        </div>
       </div>
     </van-dialog>
 
@@ -375,5 +583,81 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--text-3);
   margin: 0;
+}
+.edit-q {
+  padding: var(--sp-4) var(--sp-5);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.edit-q__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--sp-3);
+}
+.edit-q__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.edit-q__hint {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.edit-q__textarea,
+.edit-q__input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+  font-family: inherit;
+}
+.edit-q__textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.edit-q__textarea:focus,
+.edit-q__input:focus {
+  border-color: var(--brand);
+}
+.edit-q__option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.edit-q__option-key {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-full);
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.edit-q__option-del {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 </style>

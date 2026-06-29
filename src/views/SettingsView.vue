@@ -19,6 +19,8 @@ const syncStore = useSyncStore()
 const adminStore = useAdminStore()
 const ai = ref<AiSettings>({ ...settings.ai })
 const webdav = ref<WebdavSettings>({ ...settings.webdav })
+// WebDAV 默认折叠，仅在已启用时默认展开
+const webdavExpanded = ref(false)
 const bank = ref<BankSyncSettings>({ ...settings.bankSync })
 const bankTesting = ref(false)
 const bankSyncing = ref(false)
@@ -292,6 +294,7 @@ onMounted(async () => {
   await adminStore.load()
   ai.value = { ...settings.ai }
   webdav.value = { ...settings.webdav }
+  webdavExpanded.value = settings.webdav.enabled
   bank.value = { ...settings.bankSync }
   ocrToken.value = settings.ocr.token
 })
@@ -437,9 +440,13 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ===== WebDAV 同步 ===== -->
-    <div class="section-title">WebDAV 同步</div>
-    <div class="card">
+    <!-- ===== WebDAV 同步（默认折叠） ===== -->
+    <button type="button" class="collapse-head" @click="webdavExpanded = !webdavExpanded">
+      <span class="collapse-head__title">WebDAV 同步</span>
+      <span v-if="webdav.enabled" class="collapse-head__badge">已启用</span>
+      <van-icon :name="webdavExpanded ? 'arrow-up' : 'arrow-down'" size="14" color="var(--text-3)" />
+    </button>
+    <div v-show="webdavExpanded" class="card">
       <div class="field-group">
         <div class="field field--row">
           <label class="field__label">启用同步</label>
@@ -647,6 +654,33 @@ onMounted(async () => {
   border-radius: var(--r-lg);
   padding: var(--sp-5);
   box-shadow: var(--shadow-sm);
+}
+.collapse-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: var(--sp-5) 0 var(--sp-3);
+  cursor: pointer;
+}
+.collapse-head__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.collapse-head__badge {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--success);
+  background: rgba(0, 180, 42, 0.1);
+  padding: 1px 8px;
+  border-radius: var(--r-full);
+}
+.collapse-head :deep(.van-icon) {
+  margin-left: auto;
 }
 .btn-row {
   display: flex;

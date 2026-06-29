@@ -51,5 +51,11 @@ export const useSubjectsStore = defineStore('subjects', {
       autoSync()
       await this.reload()
     },
+    /** 更新科目：名称、颜色等 */
+    async update(id: string, patch: Partial<Pick<Subject, 'name' | 'color'>>) {
+      await db.subjects.update(id, { ...patch, updatedAt: Date.now() })
+      autoSync()
+      await this.reload()
+    },
   },
 })

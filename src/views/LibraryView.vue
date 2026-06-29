@@ -16,6 +16,31 @@ const showAdd = ref(false)
 const showAdminDialog = ref(false)
 const pendingAction = ref<(() => void) | null>(null)
 
+// ===== 编辑科目 =====
+const SUBJECT_COLORS = [
+  '#4f6bed', '#2d6a4f', '#ff6b35', '#9333ea', '#db2777',
+  '#0891b2', '#ca8a04', '#dc2626', '#475569', '#16a34a',
+]
+const showEdit = ref(false)
+const editId = ref('')
+const editName = ref('')
+const editColor = ref('')
+
+function openEdit(id: string, name: string, color?: string) {
+  editId.value = id
+  editName.value = name
+  editColor.value = color || SUBJECT_COLORS[0]
+  showEdit.value = true
+}
+
+async function saveEdit() {
+  const name = editName.value.trim()
+  if (!name) return
+  await subjectsStore.update(editId.value, { name, color: editColor.value })
+  showEdit.value = false
+  showSuccessToast('已保存')
+}
+
 const counts = ref<Record<string, number>>({})
 
 async function loadCounts() {
@@ -115,6 +140,7 @@ onMounted(async () => {
             <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
           <template #right>
+            <van-button square type="primary" text="编辑" style="height: 100%" @click="guardedAction(() => openEdit(s.id, s.name, s.color))" />
             <van-button square type="danger" text="删除" style="height: 100%" @click="guardedAction(() => removeSubject(s.id, s.name))" />
           </template>
         </van-swipe-cell>
@@ -128,6 +154,28 @@ onMounted(async () => {
       @confirm="addSubject"
     >
       <van-field v-model="newName" placeholder="科目名称（如：高数）" style="margin: 12px" />
+    </van-dialog>
+
+    <van-dialog
+      v-model:show="showEdit"
+      title="编辑科目"
+      show-cancel-button
+      @confirm="saveEdit"
+    >
+      <div class="edit-body">
+        <van-field v-model="editName" placeholder="科目名称" />
+        <div class="edit-colors">
+          <button
+            v-for="c in SUBJECT_COLORS"
+            :key="c"
+            type="button"
+            class="color-pick"
+            :class="{ 'color-pick--active': editColor === c }"
+            :style="{ background: c }"
+            @click="editColor = c"
+          ></button>
+        </div>
+      </div>
     </van-dialog>
 
     <AdminDialog
@@ -210,5 +258,26 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-3);
   margin-top: 2px;
+}
+.edit-body {
+  padding: var(--sp-4) var(--sp-5);
+}
+.edit-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.color-pick {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.color-pick--active {
+  border-color: var(--surface);
+  box-shadow: 0 0 0 2px currentColor;
 }
 </style>
