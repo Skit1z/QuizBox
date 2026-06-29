@@ -331,10 +331,16 @@ export interface BankSyncResult {
   pulled: number
   pushed: number
   ok: boolean
+  error?: string
   localRows?: number
   remoteRows?: number
   size?: number
   pathname?: string
+}
+
+async function readErrorMessage(res: Response): Promise<string> {
+  const data = await res.json().catch(() => null)
+  return data?.error || data?.message || res.statusText || `HTTP ${res.status}`
 }
 
 function countSnapshotRows(data: SyncFileData): number {
@@ -361,7 +367,7 @@ export async function syncBank(): Promise<BankSyncResult> {
   bankSyncing = (async () => {
     try {
       const res = await fetch(bankEndpoint(), { headers: bankAuthHeaders() })
-      if (!res.ok) throw new Error(`拉取失败 (${res.status})`)
+      if (!res.ok) throw new Error(`拉取失败：${await readErrorMessage(res)} (${res.status})`)
       const remote = ((await res.json()) as SyncFileData) || { version: 1, tables: {} as any }
       const local = await exportLocal()
       const merged = pruneMergedTombstones(mergeAll(local, remote))
@@ -373,7 +379,7 @@ export async function syncBank(): Promise<BankSyncResult> {
         headers: { ...bankAuthHeaders(), 'Content-Type': 'application/json' },
         body,
       })
-      if (!put.ok) throw new Error(`推送失败 (${put.status})`)
+      if (!put.ok) throw new Error(`推送失败：${await readErrorMessage(put)} (${put.status})`)
       const meta = (await put.json().catch(() => null)) as BankSnapshotMeta | null
       if (meta && meta.exists === false) throw new Error('推送后未检测到云端快照')
 
@@ -387,9 +393,9 @@ export async function syncBank(): Promise<BankSyncResult> {
         size: meta?.size || body.length,
         pathname: meta?.pathname,
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn('[bank-sync] failed', e)
-      return { pulled: 0, pushed: 0, ok: false }
+      return { pulled: 0, pushed: 0, ok: false, error: e?.message || '云端同步失败' }
     } finally {
       bankSyncing = null
     }
@@ -407,7 +413,7 @@ export async function testBankSync(config: {
   const headers: Record<string, string> = config.key ? { Authorization: `Bearer ${config.key}` } : {}
   const res = await fetch(url, { headers })
   if (res.status === 401) throw new Error('密钥不匹配')
-  if (!res.ok) throw new Error(`接口不可用 (${res.status})`)
+  if (!res.ok) throw new Error(`接口不可用：${await readErrorMessage(res)} (${res.status})`)
   return await res.json().catch(() => {
     throw new Error('返回内容异常')
   })

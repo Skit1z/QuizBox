@@ -143,16 +143,32 @@ async function manualSync() {
 }
 
 async function saveBank() {
+  if (/^vercel_blob_rw_/i.test(bank.value.key.trim())) {
+    bankResult.value = {
+      type: 'error',
+      msg: '这里不能填写 BLOB_READ_WRITE_TOKEN；它只应配置在 Vercel 环境变量中。',
+    }
+    showFailToast('共享密钥不能使用 Blob Token')
+    return false
+  }
   await settings.saveBankSync({
     enabled: bank.value.enabled,
     baseUrl: bank.value.baseUrl.trim(),
     key: bank.value.key.trim(),
   })
   showSuccessToast('云端题库设置已保存')
+  return true
 }
 
 async function testBank() {
   if (bankTesting.value) return
+  if (/^vercel_blob_rw_/i.test(bank.value.key.trim())) {
+    bankResult.value = {
+      type: 'error',
+      msg: '共享密钥不是 Blob Token。若未在 Vercel 配置 BANK_KEY，这里请留空。',
+    }
+    return
+  }
   bankTesting.value = true
   bankResult.value = null
   try {
@@ -177,7 +193,8 @@ async function testBank() {
 async function manualBankSync() {
   if (bankSyncing.value) return
   // 先确保已保存最新配置
-  await saveBank()
+  const saved = await saveBank()
+  if (!saved) return
   bankSyncing.value = true
   try {
     const { syncBank } = await import('@/services/sync')
@@ -190,8 +207,8 @@ async function manualBankSync() {
       }
       showSuccessToast(`云端同步成功：${rows} 条`)
     } else {
-      bankResult.value = { type: 'error', msg: '云端同步失败，请检查接口与密钥' }
-      showFailToast('云端同步失败，请检查接口与密钥')
+      bankResult.value = { type: 'error', msg: res.error || '云端同步失败，请检查接口与密钥' }
+      showFailToast(res.error || '云端同步失败')
     }
   } finally {
     bankSyncing.value = false
@@ -353,12 +370,12 @@ onMounted(async () => {
             v-model="bank.key"
             class="field__input"
             type="password"
-            placeholder="与服务端 BANK_KEY 一致"
+            placeholder="留空；或填写自定义 BANK_KEY"
           />
         </div>
       </div>
       <p class="field__tip">
-        在电脑导入题库后会自动上传；其它设备打开本站启用同名密钥即可拉取，接着做题。
+        BLOB_READ_WRITE_TOKEN 只放在 Vercel 环境变量中；这里不是 Blob Token。没有配置 BANK_KEY 时请留空。
       </p>
       <div
         v-if="bankResult"
