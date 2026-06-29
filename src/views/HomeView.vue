@@ -105,12 +105,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 快捷：搜索 -->
-    <div class="section-title">快速查找</div>
-    <div class="card card--clickable search-card" @click="router.push({ name: 'search' })">
-      <van-icon name="search" size="18" color="var(--text-3)" />
-      <span class="search-card__hint">搜索题干、选项、解析…</span>
-    </div>
   </div>
 </template>
 
@@ -202,14 +196,4 @@ onBeforeUnmount(() => {
   margin-top: 2px;
 }
 
-.search-card {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-4) var(--sp-5);
-}
-.search-card__hint {
-  color: var(--text-3);
-  font-size: 14px;
-}
 </style>

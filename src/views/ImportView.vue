@@ -17,6 +17,8 @@ import {
 } from '@/services/profile-parser'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
+import AdminDialog from '@/components/AdminDialog.vue'
+import { useAdminStore } from '@/stores/admin'
 import { QUESTION_TYPE_LABELS, type QuestionType } from '@/types'
 
 defineOptions({ name: 'ImportView' })
@@ -25,6 +27,9 @@ const route = useRoute()
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
 const settingsStore = useSettingsStore()
+const adminStore = useAdminStore()
+
+const showAdminDialog = ref(false)
 
 const step = ref<1 | 2 | 3>(1) // 1上传 2解析 3预览
 const selectedSubjectId = ref((route.query.subjectId as string) || '')
@@ -436,11 +441,27 @@ function fmtSize(bytes: number): string {
 }
 
 onMounted(async () => {
+  await adminStore.load()
+  // 未通过管理员验证时弹出密码弹窗
+  if (!adminStore.canOperate()) {
+    showAdminDialog.value = true
+  }
   await subjectsStore.load()
   if (!selectedSubjectId.value && subjectsStore.list.length === 1) {
     selectedSubjectId.value = subjectsStore.list[0].id
   }
 })
+
+function onAdminVerified() {
+  // 验证成功，继续正常流程
+}
+
+function onAdminDialogClose() {
+  // 未验证就关闭弹窗 → 返回上一页
+  if (!adminStore.canOperate()) {
+    router.back()
+  }
+}
 </script>
 
 <template>
@@ -720,6 +741,12 @@ onMounted(async () => {
         >
       </div>
     </div>
+
+    <AdminDialog
+      v-model:show="showAdminDialog"
+      @verified="onAdminVerified"
+      @update:show="(v) => { if (!v) onAdminDialogClose() }"
+    />
   </div>
 </template>
 

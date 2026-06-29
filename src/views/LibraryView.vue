@@ -4,12 +4,17 @@ import { useRouter } from 'vue-router'
 defineOptions({ name: 'LibraryView' })
 import { showConfirmDialog, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
+import { useAdminStore } from '@/stores/admin'
 import { questionsRepo } from '@/db/questions'
+import AdminDialog from '@/components/AdminDialog.vue'
 
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
+const adminStore = useAdminStore()
 const newName = ref('')
 const showAdd = ref(false)
+const showAdminDialog = ref(false)
+const pendingAction = ref<(() => void) | null>(null)
 
 const counts = ref<Record<string, number>>({})
 
@@ -49,7 +54,27 @@ async function removeSubject(id: string, name: string) {
   showSuccessToast('已删除')
 }
 
-onMounted(refresh)
+/** 尝试执行受保护操作，未验证则弹出密码弹窗 */
+function guardedAction(action: () => void) {
+  if (adminStore.canOperate()) {
+    action()
+  } else {
+    pendingAction.value = action
+    showAdminDialog.value = true
+  }
+}
+
+function onAdminVerified() {
+  if (pendingAction.value) {
+    pendingAction.value()
+    pendingAction.value = null
+  }
+}
+
+onMounted(async () => {
+  await adminStore.load()
+  await refresh()
+})
 </script>
 
 <template>
@@ -59,7 +84,7 @@ onMounted(refresh)
         <h1 class="page-title">题库</h1>
         <p class="page-sub">{{ subjectsStore.list.length }} 个科目</p>
       </div>
-      <button class="fab" @click="showAdd = true">
+      <button class="fab" @click="guardedAction(() => (showAdd = true))">
         <van-icon name="plus" size="18" />
       </button>
     </div>
@@ -90,7 +115,7 @@ onMounted(refresh)
             <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
           <template #right>
-            <van-button square type="danger" text="删除" style="height: 100%" @click="removeSubject(s.id, s.name)" />
+            <van-button square type="danger" text="删除" style="height: 100%" @click="guardedAction(() => removeSubject(s.id, s.name))" />
           </template>
         </van-swipe-cell>
       </div>
@@ -104,6 +129,11 @@ onMounted(refresh)
     >
       <van-field v-model="newName" placeholder="科目名称（如：高数）" style="margin: 12px" />
     </van-dialog>
+
+    <AdminDialog
+      v-model:show="showAdminDialog"
+      @verified="onAdminVerified"
+    />
   </div>
 </template>
 

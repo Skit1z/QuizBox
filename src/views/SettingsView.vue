@@ -8,6 +8,7 @@ import {
   type BankSyncSettings,
 } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
+import { useAdminStore } from '@/stores/admin'
 import { AI_PROVIDERS, findProvider } from '@/services/ai-providers'
 import { THEME_COLORS, type ThemeColor } from '@/themes/tokens'
 import ThemedSelect from '@/components/ThemedSelect.vue'
@@ -15,6 +16,7 @@ import type { SelectOption } from '@/components/ThemedSelect.vue'
 
 const settings = useSettingsStore()
 const syncStore = useSyncStore()
+const adminStore = useAdminStore()
 const ai = ref<AiSettings>({ ...settings.ai })
 const webdav = ref<WebdavSettings>({ ...settings.webdav })
 const bank = ref<BankSyncSettings>({ ...settings.bankSync })
@@ -23,6 +25,40 @@ const bankSyncing = ref(false)
 const bankResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 // 版本号由 vite define 在构建期从 package.json 注入
 const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
+
+// ===== 管理密码 =====
+const adminNewPwd = ref('')
+const adminConfirmPwd = ref('')
+const adminOldPwd = ref('')
+
+async function saveAdminPassword() {
+  const pwd = adminNewPwd.value.trim()
+  const confirm = adminConfirmPwd.value.trim()
+  if (!pwd) { showFailToast('请输入密码'); return }
+  if (pwd !== confirm) { showFailToast('两次输入不一致'); return }
+  // 修改密码时需先验证旧密码
+  if (adminStore.hasPassword) {
+    const old = adminOldPwd.value.trim()
+    if (!old) { showFailToast('请输入当前密码'); return }
+    const ok = await adminStore.verify(old)
+    if (!ok) { showFailToast('当前密码错误'); return }
+  }
+  await adminStore.setPassword(pwd)
+  adminNewPwd.value = ''
+  adminConfirmPwd.value = ''
+  adminOldPwd.value = ''
+  showSuccessToast(adminStore.hasPassword ? '管理密码已更新' : '管理密码已设置')
+}
+
+async function clearAdminPassword() {
+  const old = adminOldPwd.value.trim()
+  if (!old) { showFailToast('请输入当前密码'); return }
+  const ok = await adminStore.verify(old)
+  if (!ok) { showFailToast('密码错误'); return }
+  await adminStore.clearPassword()
+  adminOldPwd.value = ''
+  showSuccessToast('已清除管理密码')
+}
 
 const currentProvider = computed(
   () => findProvider(ai.value.providerId) || AI_PROVIDERS[AI_PROVIDERS.length - 1],
@@ -253,6 +289,7 @@ async function testOcr() {
 
 onMounted(async () => {
   await settings.load()
+  await adminStore.load()
   ai.value = { ...settings.ai }
   webdav.value = { ...settings.webdav }
   bank.value = { ...settings.bankSync }
@@ -485,6 +522,51 @@ onMounted(async () => {
         <van-button type="primary" round @click="saveOcr">保存</van-button>
         <van-button plain type="primary" round :loading="ocrTesting" @click="testOcr">
           {{ ocrTesting ? '检测中…' : '检测连接' }}
+        </van-button>
+      </div>
+    </div>
+
+    <!-- ===== 管理权限 ===== -->
+    <div class="section-title">管理权限</div>
+    <div class="card">
+      <div class="field-group">
+        <div class="field field--row">
+          <label class="field__label">状态</label>
+          <span v-if="!adminStore.hasPassword" class="admin-status admin-status--off">未设置密码（所有人可操作）</span>
+          <span v-else-if="adminStore.isAdmin" class="admin-status admin-status--on">
+            <van-icon name="shield-o" size="14" /> 管理员已登入
+          </span>
+          <span v-else class="admin-status admin-status--locked">
+            <van-icon name="lock" size="14" /> 受保护模式
+          </span>
+        </div>
+        <div v-if="adminStore.hasPassword" class="field">
+          <label class="field__label">当前密码</label>
+          <input v-model="adminOldPwd" class="field__input" type="password" placeholder="输入当前管理密码" />
+        </div>
+        <div class="field">
+          <label class="field__label">{{ adminStore.hasPassword ? '新密码' : '设置管理密码' }}</label>
+          <input v-model="adminNewPwd" class="field__input" type="password" placeholder="输入密码" />
+        </div>
+        <div class="field">
+          <label class="field__label">确认密码</label>
+          <input v-model="adminConfirmPwd" class="field__input" type="password" placeholder="再次输入密码" />
+        </div>
+      </div>
+      <p class="field__tip">
+        设置管理密码后，导入/删除/新建科目等操作将需要验证密码。刷新页面后需重新验证。
+      </p>
+      <div class="btn-row">
+        <van-button type="primary" round @click="saveAdminPassword">
+          {{ adminStore.hasPassword ? '修改密码' : '设置密码' }}
+        </van-button>
+        <van-button v-if="adminStore.hasPassword" plain type="danger" round @click="clearAdminPassword">
+          清除密码
+        </van-button>
+      </div>
+      <div v-if="adminStore.hasPassword" style="margin-top: var(--sp-3)">
+        <van-button v-if="adminStore.isAdmin" block plain round @click="adminStore.logout()">
+          退出管理员
         </van-button>
       </div>
     </div>
@@ -757,5 +839,31 @@ onMounted(async () => {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+}
+.admin-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: var(--r-sm);
+}
+.admin-status--off {
+  color: var(--text-3);
+}
+.admin-status--on {
+  color: var(--success);
+  background: rgba(0, 180, 42, 0.08);
+}
+.admin-status--locked {
+  color: var(--danger);
+  background: rgba(245, 63, 63, 0.08);
+}
+.field__tip {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: var(--sp-3) 0 0;
+  line-height: 1.5;
 }
 </style>

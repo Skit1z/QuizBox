@@ -27,12 +27,6 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '题目列表' },
   },
   {
-    path: '/search',
-    name: 'search',
-    component: () => import('@/views/SearchView.vue'),
-    meta: { title: '搜索题目' },
-  },
-  {
     path: '/wrong',
     name: 'wrong',
     component: () => import('@/views/WrongBookView.vue'),

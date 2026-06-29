@@ -7,6 +7,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminDialog: typeof import('./src/components/AdminDialog.vue')['default']
     AttachmentImage: typeof import('./src/components/AttachmentImage.vue')['default']
     ExamResult: typeof import('./src/components/ExamResult.vue')['default']
     QuestionCard: typeof import('./src/components/QuestionCard.vue')['default']

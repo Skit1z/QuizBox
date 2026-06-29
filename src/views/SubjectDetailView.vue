@@ -4,8 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { questionsRepo } from '@/db/questions'
 import { useSubjectsStore } from '@/stores/subjects'
+import { useAdminStore } from '@/stores/admin'
 import QuestionCard from '@/components/QuestionCard.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
+import AdminDialog from '@/components/AdminDialog.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
@@ -14,6 +16,7 @@ import { QUESTION_TYPE_LABELS, type Question, type QuestionType } from '@/types'
 const route = useRoute()
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
+const adminStore = useAdminStore()
 
 const subjectId = route.params.subjectId as string
 const focusId = (route.query.focus as string) || ''
@@ -26,6 +29,8 @@ const managing = ref(false)
 const selectedIds = ref<string[]>([])
 const showMove = ref(false)
 const targetSubjectId = ref('')
+const showAdminDialog = ref(false)
+const pendingAction = ref<(() => void) | null>(null)
 
 const typeOptions = computed<SelectOption[]>(() => [
   { value: '', label: '全部题型' },
@@ -132,7 +137,27 @@ function practiceSelected() {
   router.push({ name: 'practice', query: { questionIds: selectedIds.value.join(',') } })
 }
 
-onMounted(load)
+/** 尝试执行受保护操作，未验证则弹出密码弹窗 */
+function guardedAction(action: () => void) {
+  if (adminStore.canOperate()) {
+    action()
+  } else {
+    pendingAction.value = action
+    showAdminDialog.value = true
+  }
+}
+
+function onAdminVerified() {
+  if (pendingAction.value) {
+    pendingAction.value()
+    pendingAction.value = null
+  }
+}
+
+onMounted(async () => {
+  await adminStore.load()
+  await load()
+})
 </script>
 
 <template>
@@ -146,10 +171,10 @@ onMounted(load)
         </div>
       </div>
       <div class="head-actions">
-        <button class="icon-btn" @click="toggleManage">
+        <button class="icon-btn" @click="guardedAction(toggleManage)">
           <van-icon :name="managing ? 'cross' : 'records-o'" size="18" />
         </button>
-        <button class="fab" @click="router.push({ name: 'import', query: { subjectId } })">
+        <button class="fab" @click="guardedAction(() => router.push({ name: 'import', query: { subjectId } }))">
           <van-icon name="add-o" size="18" />
         </button>
       </div>
@@ -163,8 +188,8 @@ onMounted(load)
         <div class="batch-bar__actions">
           <van-button size="small" plain round @click="selectVisible">全选当前</van-button>
           <van-button size="small" type="primary" plain round @click="practiceSelected">自测</van-button>
-          <van-button size="small" plain round @click="openMove">移动</van-button>
-          <van-button size="small" type="danger" plain round @click="batchRemove">删除</van-button>
+          <van-button size="small" plain round @click="guardedAction(openMove)">移动</van-button>
+          <van-button size="small" type="danger" plain round @click="guardedAction(batchRemove)">删除</van-button>
         </div>
       </div>
     </div>
@@ -199,7 +224,7 @@ onMounted(load)
         >
           <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
           <template #right>
-            <van-button square type="danger" text="删除" style="height: 100%" @click.stop="removeQuestion(q.id)" />
+            <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(q.id))" />
           </template>
         </van-swipe-cell>
       </div>
@@ -222,7 +247,7 @@ onMounted(load)
             >
               <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
               <template #right>
-                <van-button square type="danger" text="删除" style="height: 100%" @click.stop="removeQuestion(item.id)" />
+                <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(item.id))" />
               </template>
             </van-swipe-cell>
           </div>
@@ -235,6 +260,11 @@ onMounted(load)
         <ThemedSelect v-model="targetSubjectId" :options="moveSubjectOptions" placeholder="选择目标科目" />
       </div>
     </van-dialog>
+
+    <AdminDialog
+      v-model:show="showAdminDialog"
+      @verified="onAdminVerified"
+    />
   </div>
 </template>
 
