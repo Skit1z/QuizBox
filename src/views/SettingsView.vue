@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { showSuccessToast, showFailToast } from 'vant'
-import {
-  useSettingsStore,
-  type AiSettings,
-  type WebdavSettings,
-} from '@/stores/settings'
+import { useSettingsStore, type AiSettings, type WebdavSettings } from '@/stores/settings'
 import { useSyncStore } from '@/stores/sync'
 import { AI_PROVIDERS, findProvider } from '@/services/ai-providers'
 import { THEME_COLORS, type ThemeColor } from '@/themes/tokens'
@@ -19,7 +15,9 @@ const webdav = ref<WebdavSettings>({ ...settings.webdav })
 // 版本号由 vite define 在构建期从 package.json 注入
 const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
-const currentProvider = computed(() => findProvider(ai.value.providerId) || AI_PROVIDERS[AI_PROVIDERS.length - 1])
+const currentProvider = computed(
+  () => findProvider(ai.value.providerId) || AI_PROVIDERS[AI_PROVIDERS.length - 1],
+)
 const isCustom = computed(() => currentProvider.value.custom)
 
 const providerOptions = computed<SelectOption[]>(() =>
@@ -207,21 +205,12 @@ onMounted(async () => {
         <!-- 自定义才显示 Base URL -->
         <div v-if="isCustom" class="field">
           <label class="field__label">Base URL</label>
-          <input
-            v-model="ai.baseUrl"
-            class="field__input"
-            placeholder="https://your-api.com/v1"
-          />
+          <input v-model="ai.baseUrl" class="field__input" placeholder="https://your-api.com/v1" />
         </div>
 
         <div class="field">
           <label class="field__label">API Key</label>
-          <input
-            v-model="ai.apiKey"
-            class="field__input"
-            type="password"
-            placeholder="sk-..."
-          />
+          <input v-model="ai.apiKey" class="field__input" type="password" placeholder="sk-..." />
         </div>
 
         <!-- 模型：有预设则下拉（可清空转自定义输入），否则直接输入 -->
@@ -254,7 +243,13 @@ onMounted(async () => {
         <van-icon name="question-o" /> 如何获取 {{ currentProvider.label }} 的 API Key？
       </a>
 
-      <div v-if="testResult" :class="['test-result', testResult.type === 'success' ? 'test-result--ok' : 'test-result--err']">
+      <div
+        v-if="testResult"
+        :class="[
+          'test-result',
+          testResult.type === 'success' ? 'test-result--ok' : 'test-result--err',
+        ]"
+      >
         <van-icon :name="testResult.type === 'success' ? 'success' : 'cross'" />
         <span>{{ testResult.msg }}</span>
       </div>
@@ -273,11 +268,18 @@ onMounted(async () => {
       <div class="field-group">
         <div class="field field--row">
           <label class="field__label">启用同步</label>
-          <van-switch :model-value="webdav.enabled" @update:model-value="(v:boolean) => (webdav.enabled = v)" />
+          <van-switch
+            :model-value="webdav.enabled"
+            @update:model-value="(v: boolean) => (webdav.enabled = v)"
+          />
         </div>
         <div class="field">
           <label class="field__label">服务器地址</label>
-          <input v-model="webdav.url" class="field__input" placeholder="https://dav.jianguoyun.com/dav/" />
+          <input
+            v-model="webdav.url"
+            class="field__input"
+            placeholder="https://dav.jianguoyun.com/dav/"
+          />
         </div>
         <div class="field">
           <label class="field__label">账号</label>
@@ -292,7 +294,13 @@ onMounted(async () => {
           <input v-model="webdav.remotePath" class="field__input" placeholder="/QuizBox" />
         </div>
       </div>
-      <div v-if="wdResult" :class="['test-result', wdResult.type === 'success' ? 'test-result--ok' : 'test-result--err']">
+      <div
+        v-if="wdResult"
+        :class="[
+          'test-result',
+          wdResult.type === 'success' ? 'test-result--ok' : 'test-result--err',
+        ]"
+      >
         <van-icon :name="wdResult.type === 'success' ? 'success' : 'cross'" />
         <span>{{ wdResult.msg }}</span>
       </div>
@@ -316,11 +324,22 @@ onMounted(async () => {
       <div class="field-group">
         <div class="field">
           <label class="field__label">PaddleOCR Token</label>
-          <input v-model="ocrToken" class="field__input" type="password" placeholder="飞桨 PaddleOCR API Token" />
+          <input
+            v-model="ocrToken"
+            class="field__input"
+            type="password"
+            placeholder="飞桨 PaddleOCR API Token"
+          />
           <p class="field__desc">在飞桨 PaddleOCR 平台获取 Token，用于 PDF 文档的文字与图片识别</p>
         </div>
       </div>
-      <div v-if="ocrResult" :class="['test-result', ocrResult.type === 'success' ? 'test-result--ok' : 'test-result--err']">
+      <div
+        v-if="ocrResult"
+        :class="[
+          'test-result',
+          ocrResult.type === 'success' ? 'test-result--ok' : 'test-result--err',
+        ]"
+      >
         <van-icon :name="ocrResult.type === 'success' ? 'success' : 'cross'" />
         <span>{{ ocrResult.msg }}</span>
       </div>
@@ -339,11 +358,17 @@ onMounted(async () => {
         <label class="field__label">主题模式</label>
         <div class="seg">
           <button
-            v-for="t in [{v:'auto',l:'跟随系统'},{v:'light',l:'亮色'},{v:'dark',l:'暗色'}]"
+            v-for="t in [
+              { v: 'auto', l: '跟随系统' },
+              { v: 'light', l: '亮色' },
+              { v: 'dark', l: '暗色' },
+            ]"
             :key="t.v"
             :class="['seg__btn', settings.theme === t.v && 'seg__btn--active']"
             @click="settings.setTheme(t.v as any)"
-          >{{ t.l }}</button>
+          >
+            {{ t.l }}
+          </button>
         </div>
       </div>
       <div class="field">
@@ -361,7 +386,26 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="about">题盒 QuizBox v{{ version }}</div>
+    <div class="section-title">关于</div>
+    <div class="card about-card">
+      <div class="about-row">
+        <span class="about-row__label">版本号</span>
+        <span class="about-row__value">v{{ version }}</span>
+      </div>
+      <div class="about-row">
+        <span class="about-row__label">开源协议</span>
+        <span class="about-row__value">MIT License</span>
+      </div>
+      <a
+        class="github-btn"
+        href="https://github.com/Skit1z/QuizBox"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <van-icon name="link-o" size="15" />
+        Skit1z/QuizBox
+      </a>
+    </div>
   </div>
 </template>
 
@@ -502,11 +546,37 @@ onMounted(async () => {
   border-color: var(--surface);
   box-shadow: 0 0 0 2px currentColor;
 }
-.about {
-  text-align: center;
-  font-size: 12px;
+.about-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: 14px;
+}
+.about-row__label {
   color: var(--text-3);
-  margin-top: var(--sp-6);
-  padding-bottom: var(--sp-4);
+}
+.about-row__value {
+  color: var(--text);
+  font-weight: 600;
+}
+.github-btn {
+  height: 42px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
 }
 </style>

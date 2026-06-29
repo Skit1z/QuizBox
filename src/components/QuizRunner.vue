@@ -121,24 +121,24 @@ function persistAnswers() {
 
 // ===== 答题逻辑 =====
 function setUserAnswerSingle(letter: string) {
-  answers.value[current.value.id] = letter
+  answers.value = { ...answers.value, [current.value.id]: letter }
   persistAnswers()
   if (!props.classic) submit()
 }
 function toggleMulti(letter: string) {
   const cur = (answers.value[current.value.id] as string[]) || []
   const arr = cur.includes(letter) ? cur.filter((x) => x !== letter) : [...cur, letter]
-  answers.value[current.value.id] = arr.sort()
+  answers.value = { ...answers.value, [current.value.id]: arr.sort() }
   persistAnswers()
 }
 function setFill(i: number, val: string) {
   const cur = (answers.value[current.value.id] as string[]) || []
   cur[i] = val
-  answers.value[current.value.id] = [...cur]
+  answers.value = { ...answers.value, [current.value.id]: [...cur] }
   persistAnswers()
 }
 function setSubjective(val: string) {
-  answers.value[current.value.id] = val
+  answers.value = { ...answers.value, [current.value.id]: val }
   persistAnswers()
 }
 
@@ -146,13 +146,13 @@ function submit() {
   const q = current.value
   const ans = answers.value[q.id]
   if (ans == null || (Array.isArray(ans) && ans.length === 0)) {
-    submitted.value[q.id] = false
+    submitted.value = { ...submitted.value, [q.id]: false }
     return
   }
-  submitted.value[q.id] = true
+  submitted.value = { ...submitted.value, [q.id]: true }
   if (isObjective(q.type)) {
     const res = gradeObjective(q, ans)
-    gradeMap.value[q.id] = res.isCorrect
+    gradeMap.value = { ...gradeMap.value, [q.id]: res.isCorrect }
     recordAttempt(q.id, ans, res.isCorrect)
   }
 }
@@ -327,12 +327,12 @@ const isWrongOption = (letter: string) => {
     <div class="quiz-header">
       <span>{{ idx + 1 }} / {{ total }}</span>
       <van-tag plain>{{ QUESTION_TYPE_LABELS[current.type] }}</van-tag>
-      <van-tag v-if="classic && remainingSec > 0" :type="remainingSec < 60 ? 'danger' : 'primary'">
+      <van-tag v-if="props.classic && remainingSec > 0" :type="remainingSec < 60 ? 'danger' : 'primary'">
         ⏱ {{ fmtTime(remainingSec) }}
       </van-tag>
     </div>
 
-    <QuestionCard :question="current" :show-answer="!classic && submitted[current.id]" hide-options />
+    <QuestionCard :question="current" :show-answer="!props.classic && submitted[current.id]" hide-options />
 
     <!-- 答题区 -->
     <div class="answer-area">
@@ -345,11 +345,11 @@ const isWrongOption = (letter: string) => {
             class="option-item"
             :class="{
               'option-item--selected': isSelected(String.fromCharCode(65 + i)),
-              'option-item--disabled': !classic && submitted[current.id],
-              'option-item--correct': !classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
-              'option-item--wrong': !classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
+              'option-item--disabled': !props.classic && submitted[current.id],
+              'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
+              'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
             }"
-            @click="(!classic && submitted[current.id]) ? null : setUserAnswerSingle(String.fromCharCode(65 + i))"
+            @click="(!props.classic && submitted[current.id]) ? null : setUserAnswerSingle(String.fromCharCode(65 + i))"
           >
             <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
             <div class="option-text"><RichText :text="opt" /></div>
@@ -366,11 +366,11 @@ const isWrongOption = (letter: string) => {
             class="option-item"
             :class="{
               'option-item--selected': isSelected(String.fromCharCode(65 + i)),
-              'option-item--disabled': !classic && submitted[current.id],
-              'option-item--correct': !classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
-              'option-item--wrong': !classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
+              'option-item--disabled': !props.classic && submitted[current.id],
+              'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
+              'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
             }"
-            @click="(!classic && submitted[current.id]) ? null : toggleMulti(String.fromCharCode(65 + i))"
+            @click="(!props.classic && submitted[current.id]) ? null : toggleMulti(String.fromCharCode(65 + i))"
           >
             <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
             <div class="option-text"><RichText :text="opt" /></div>
@@ -385,11 +385,11 @@ const isWrongOption = (letter: string) => {
             class="option-item"
             :class="{
               'option-item--selected': isSelected('T'),
-              'option-item--disabled': !classic && submitted[current.id],
-              'option-item--correct': !classic && submitted[current.id] && isCorrectOption('T'),
-              'option-item--wrong': !classic && submitted[current.id] && isWrongOption('T')
+              'option-item--disabled': !props.classic && submitted[current.id],
+              'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption('T'),
+              'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('T')
             }"
-            @click="(!classic && submitted[current.id]) ? null : setUserAnswerSingle('T')"
+            @click="(!props.classic && submitted[current.id]) ? null : setUserAnswerSingle('T')"
           >
             <div class="option-badge">
               <van-icon name="success" v-if="isSelected('T')" />
@@ -401,11 +401,11 @@ const isWrongOption = (letter: string) => {
             class="option-item"
             :class="{
               'option-item--selected': isSelected('F'),
-              'option-item--disabled': !classic && submitted[current.id],
-              'option-item--correct': !classic && submitted[current.id] && isCorrectOption('F'),
-              'option-item--wrong': !classic && submitted[current.id] && isWrongOption('F')
+              'option-item--disabled': !props.classic && submitted[current.id],
+              'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption('F'),
+              'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('F')
             }"
-            @click="(!classic && submitted[current.id]) ? null : setUserAnswerSingle('F')"
+            @click="(!props.classic && submitted[current.id]) ? null : setUserAnswerSingle('F')"
           >
             <div class="option-badge">
               <van-icon name="cross" v-if="isSelected('F')" />
@@ -426,7 +426,7 @@ const isWrongOption = (letter: string) => {
             placeholder="请输入"
             :model-value="((answers[current.id] as string[]) || [])[i]"
             @update:model-value="(v:string) => setFill(i, v)"
-            :disabled="!classic && submitted[current.id]"
+            :disabled="!props.classic && submitted[current.id]"
           />
         </van-cell-group>
       </template>
@@ -444,7 +444,7 @@ const isWrongOption = (letter: string) => {
           />
         </van-cell-group>
 
-        <div v-if="!classic" class="subjective-grade card">
+        <div v-if="!props.classic" class="subjective-grade card">
           <van-button size="small" plain type="primary" :loading="aiLoading[current.id]" @click="callAi">
             AI 评分
           </van-button>
@@ -459,10 +459,10 @@ const isWrongOption = (letter: string) => {
         </div>
       </template>
 
-      <div v-if="!classic && !submitted[current.id] && current.type !== 'single' && current.type !== 'judge'" style="padding: 12px">
-        <van-button block type="primary" round @click="submit">提交答案</van-button>
+      <div v-if="!props.classic && !submitted[current.id] && current.type !== 'single' && current.type !== 'judge'" style="padding: 12px">
+        <van-button block type="primary" round @click="submit">确认答案</van-button>
       </div>
-      <div v-if="!classic && submitted[current.id]" class="feedback-tag">
+      <div v-if="!props.classic && submitted[current.id]" class="feedback-tag">
         <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'" size="large" round>
           {{ gradeMap[current.id] ? '回答正确' : '回答错误' }}
         </van-tag>
@@ -490,7 +490,7 @@ const isWrongOption = (letter: string) => {
         @click="finishPractice()"
         class="quiz-action-btn quiz-action-btn--success"
       >
-        {{ classic ? '交卷' : '完成' }} <van-icon name="passed" />
+        {{ props.classic ? '交卷' : '完成' }} <van-icon name="passed" />
       </van-button>
       <van-button round plain @click="router.back()" class="quiz-action-btn quiz-action-btn--exit">
         <van-icon name="close" /> 退出
