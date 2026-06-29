@@ -4,16 +4,15 @@ import { useRouter } from 'vue-router'
 import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'
-import { wrongBookRepo } from '@/db/wrongbook'
-import { attemptsRepo } from '@/db/attempts'
 import { examSessionsRepo } from '@/db/examSessions'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
 import ExamResult from '@/components/ExamResult.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
-import type { ExamSession, ExamSubMode } from '@/types'
+import type { ExamSession, QuestionType } from '@/types'
 import type { Question } from '@/types'
+import { QUESTION_TYPE_LABELS } from '@/types'
 
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
@@ -25,7 +24,7 @@ const result = ref<any>(null)
 const restoredSession = ref<ExamSession | null>(null)
 
 const subjectId = ref('')
-const subMode = ref<ExamSubMode>('classic')
+const selectedTypes = ref<QuestionType[]>([])
 const count = ref(20)
 const durationMin = ref(30)
 
@@ -33,59 +32,31 @@ const subjectOptions = computed<SelectOption[]>(() =>
   subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
 )
 
-const subModes: { value: ExamSubMode; label: string; desc: string }[] = [
-  { value: 'classic', label: '传统限时', desc: '设定题量时长，做完交卷出分' },
-  { value: 'wrong_redo', label: '错题重做', desc: '只做错题本里的题' },
-  { value: 'random', label: '随机抽查', desc: '从题库随机抽题' },
-  { value: 'shuffle', label: '乱序练习', desc: '题目顺序打乱' },
-  { value: 'weak', label: '薄弱点加权', desc: '优先抽出错率高的题' },
-]
-
-const classicModes: ExamSubMode[] = ['classic', 'random', 'shuffle', 'weak', 'wrong_redo']
+function toggleType(type: QuestionType) {
+  const index = selectedTypes.value.indexOf(type)
+  if (index > -1) {
+    selectedTypes.value.splice(index, 1)
+  } else {
+    selectedTypes.value.push(type)
+  }
+}
 
 async function start() {
   if (!subjectId.value) {
     showFailToast('请选择科目')
     return
   }
-  const base = await questionsRepo.filter({ subjectId: subjectId.value })
-  let qs: Question[]
-
-  switch (subMode.value) {
-    case 'wrong_redo':
-    case 'weak': {
-      const wrongs = await wrongBookRepo.listAll()
-      const wMap = new Map(wrongs.map((w) => [w.questionId, w.reviewCount || 1]))
-      if (subMode.value === 'wrong_redo') {
-        qs = base.filter((q) => wMap.has(q.id))
-        qs = shuffle(qs)
-      } else {
-        const stats = await attemptsRepo.getObjectiveStats(base.map((q) => q.id))
-        // weak：按真实错题率和错题本状态加权，带随机扰动
-        qs = base
-          .map((q) => {
-            const s = stats.get(q.id)
-            const wrongRate = s?.total ? s.wrong / s.total : 0
-            const wrongBookBoost = wMap.has(q.id) ? 1 : 0
-            return { q, w: wrongBookBoost + wrongRate, r: Math.random() }
-          })
-          .sort((a, b) => b.w - a.w || a.r - b.r)
-          .map((x) => x.q)
-      }
-      break
-    }
-    case 'random':
-    case 'shuffle':
-    case 'classic':
-    default:
-      qs = shuffle(base)
+  let base = await questionsRepo.filter({ subjectId: subjectId.value })
+  if (selectedTypes.value.length > 0) {
+    base = base.filter((q) => selectedTypes.value.includes(q.type))
   }
 
-  qs = qs.slice(0, count.value)
-  if (qs.length === 0) {
+  if (base.length === 0) {
     showFailToast('没有符合条件的题目')
     return
   }
+
+  const qs = shuffle(base).slice(0, count.value)
   questions.value = qs
   restoredSession.value = null
   started.value = true
@@ -112,7 +83,11 @@ onMounted(async () => {
     .map((id) => byId.get(id))
     .filter((q): q is Question => !!q)
   subjectId.value = inProgress.config.subjectId
-  subMode.value = inProgress.config.subMode
+  if (inProgress.config.questionTypes) {
+    selectedTypes.value = inProgress.config.questionTypes
+  } else {
+    selectedTypes.value = []
+  }
   count.value = inProgress.config.count
   durationMin.value = inProgress.config.durationMin || durationMin.value
   restoredSession.value = inProgress
@@ -121,7 +96,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page page--wide">
     <div class="page-head page-head--row">
       <div class="page-head__left" @click="router.back()">
         <van-icon name="arrow-left" size="20" />
@@ -140,80 +115,91 @@ onMounted(async () => {
     <QuizRunner
       v-else-if="started"
       mode="exam"
-      :classic="classicModes.includes(subMode)"
+      :classic="true"
       :duration-min="durationMin"
       :questions="questions"
       :initial-session="restoredSession || undefined"
-      :exam-sub-mode="subMode"
+      exam-sub-mode="classic"
+      :question-types="selectedTypes"
       @finish="onFinish"
     />
 
     <div v-else class="setup-body">
-      <!-- 科目 -->
-      <div class="card">
-        <div class="field">
-          <label class="field__label">科目</label>
+      <div class="card setup-card">
+        <!-- 科目 -->
+        <div class="form-item">
+          <div class="form-item__header">
+            <van-icon name="bookmark-o" class="form-item__icon" />
+            <span class="form-item__title">考试科目</span>
+          </div>
           <ThemedSelect v-model="subjectId" :options="subjectOptions" placeholder="选择科目" />
         </div>
-      </div>
 
-      <!-- 考试模式 -->
-      <div class="section-title">考试模式</div>
-      <div class="card mode-list">
-        <div
-          v-for="m in subModes"
-          :key="m.value"
-          :class="['mode-item', subMode === m.value && 'mode-item--active']"
-          @click="subMode = m.value"
-        >
-          <div class="mode-item__radio">
-            <div class="mode-item__dot"></div>
+        <!-- 题型 -->
+        <div class="form-item">
+          <div class="form-item__header">
+            <van-icon name="filter-o" class="form-item__icon" />
+            <span class="form-item__title">考试题型（不选默认全部）</span>
           </div>
-          <div class="mode-item__body">
-            <div class="mode-item__label">{{ m.label }}</div>
-            <div class="mode-item__desc">{{ m.desc }}</div>
+          <div class="type-chips">
+            <button
+              v-for="(label, value) in QUESTION_TYPE_LABELS"
+              :key="value"
+              type="button"
+              class="chip-btn"
+              :class="{ 'chip-btn--active': selectedTypes.includes(value) }"
+              @click="toggleType(value)"
+            >
+              {{ label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 题量与时长 -->
+        <div class="form-item-grid">
+          <div class="form-item">
+            <div class="form-item__header">
+              <van-icon name="records-o" class="form-item__icon" />
+              <span class="form-item__title">考试题量</span>
+            </div>
+            <div class="num-input">
+              <button type="button" class="num-input__btn" :disabled="count <= 1" @click="count = Math.max(1, count - 1)">−</button>
+              <input
+                v-model.number="count"
+                type="number"
+                inputmode="numeric"
+                class="num-input__field"
+                :min="1"
+                :max="999"
+                @blur="count = Math.max(1, Math.min(999, Math.floor(Number(count)) || 1))"
+              />
+              <button type="button" class="num-input__btn" :disabled="count >= 999" @click="count = Math.min(999, count + 1)">+</button>
+            </div>
+          </div>
+
+          <div class="form-item">
+            <div class="form-item__header">
+              <van-icon name="clock-o" class="form-item__icon" />
+              <span class="form-item__title">考试时长（分钟）</span>
+            </div>
+            <div class="num-input">
+              <button type="button" class="num-input__btn" :disabled="durationMin <= 1" @click="durationMin = Math.max(1, durationMin - 5)">−</button>
+              <input
+                v-model.number="durationMin"
+                type="number"
+                inputmode="numeric"
+                class="num-input__field"
+                :min="1"
+                :max="600"
+                @blur="durationMin = Math.max(1, Math.min(600, Math.floor(Number(durationMin)) || 1))"
+              />
+              <button type="button" class="num-input__btn" :disabled="durationMin >= 600" @click="durationMin = Math.min(600, durationMin + 5)">+</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- 题量与时长 -->
-      <div class="section-title">题量与时长</div>
-      <div class="card">
-        <div class="num-row">
-          <span class="num-row__label">题量</span>
-          <div class="num-input">
-            <button type="button" class="num-input__btn" :disabled="count <= 1" @click="count = Math.max(1, count - 1)">−</button>
-            <input
-              v-model.number="count"
-              type="number"
-              inputmode="numeric"
-              class="num-input__field"
-              :min="1"
-              :max="999"
-              @blur="count = Math.max(1, Math.min(999, Math.floor(Number(count)) || 1))"
-            />
-            <button type="button" class="num-input__btn" :disabled="count >= 999" @click="count = Math.min(999, count + 1)">+</button>
-          </div>
-        </div>
-        <div class="num-row">
-          <span class="num-row__label">时长（分钟）</span>
-          <div class="num-input">
-            <button type="button" class="num-input__btn" :disabled="durationMin <= 1" @click="durationMin = Math.max(1, durationMin - 5)">−</button>
-            <input
-              v-model.number="durationMin"
-              type="number"
-              inputmode="numeric"
-              class="num-input__field"
-              :min="1"
-              :max="600"
-              @blur="durationMin = Math.max(1, Math.min(600, Math.floor(Number(durationMin)) || 1))"
-            />
-            <button type="button" class="num-input__btn" :disabled="durationMin >= 600" @click="durationMin = Math.min(600, durationMin + 5)">+</button>
-          </div>
-        </div>
-      </div>
-
-      <van-button type="primary" round block @click="start">开始考试</van-button>
+      <button type="button" class="btn-start" @click="start">开始考试</button>
     </div>
   </div>
 </template>
@@ -239,94 +225,78 @@ onMounted(async () => {
 .setup-body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-5);
+  max-width: var(--content-max);
+  margin: 0 auto;
 }
 
-.field {
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+}
+
+.form-item {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
 }
-.field__label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-
-.mode-list {
-  padding: var(--sp-2);
-}
-.mode-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.mode-item:active {
-  background: var(--surface-2);
-}
-.mode-item--active {
-  background: var(--brand-soft);
-}
-.mode-item__radio {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid var(--border-strong);
+.form-item__header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-  transition: border-color 0.15s;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
 }
-.mode-item--active .mode-item__radio {
-  border-color: var(--brand);
+.form-item__icon {
+  color: var(--brand);
+  font-size: 16px;
 }
-.mode-item__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--brand);
-  transform: scale(0);
-  transition: transform 0.15s;
-}
-.mode-item--active .mode-item__dot {
-  transform: scale(1);
-}
-.mode-item__body {
-  flex: 1;
-}
-.mode-item__label {
-  font-size: 15px;
+.form-item__title {
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
-.mode-item--active .mode-item__label {
-  color: var(--brand);
+
+.form-item-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
 }
-.mode-item__desc {
-  font-size: 12px;
-  color: var(--text-3);
-  margin-top: 2px;
+@media (max-width: 576px) {
+  .form-item-grid {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+  }
 }
 
-.num-row {
+.type-chips {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-3) 0;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
 }
-.num-row + .num-row {
-  border-top: 1px solid var(--border);
+.chip-btn {
+  padding: 8px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.num-row__label {
-  font-size: 15px;
-  color: var(--text);
+.chip-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
 }
+.chip-btn--active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #ffffff !important;
+  box-shadow: var(--shadow-brand);
+}
+
 .num-input {
   display: flex;
   align-items: center;
@@ -335,6 +305,7 @@ onMounted(async () => {
   border-radius: var(--r-md);
   overflow: hidden;
   background: var(--surface-2);
+  width: fit-content;
 }
 .num-input__btn {
   width: 38px;
@@ -376,5 +347,29 @@ onMounted(async () => {
 .num-input__field::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+.btn-start {
+  width: 100%;
+  height: 46px;
+  border: none;
+  border-radius: var(--r-full);
+  background: linear-gradient(135deg, var(--brand) 0%, rgb(99, 102, 241) 100%);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-brand);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-start:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 24px rgba(var(--brand-rgb), 0.25);
+}
+.btn-start:active {
+  transform: translateY(0);
 }
 </style>

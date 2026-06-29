@@ -7,6 +7,7 @@ import { useSubjectsStore } from '@/stores/subjects'
 import { useAdminStore } from '@/stores/admin'
 import { questionsRepo } from '@/db/questions'
 import AdminDialog from '@/components/AdminDialog.vue'
+import ActionPopover from '@/components/ActionPopover.vue'
 
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
@@ -26,25 +27,21 @@ const editId = ref('')
 const editName = ref('')
 const editColor = ref('')
 
-// 科目操作菜单
-const showActions = ref(false)
-const actionSubject = ref<{ id: string; name: string; color?: string } | null>(null)
+// 科目操作气泡菜单
+const showPopoverMap = ref<Record<string, boolean>>({})
+const popoverActions = [
+  { text: '编辑科目', icon: 'edit' },
+  { text: '删除科目', icon: 'delete-o', className: 'popover-danger-action' },
+]
 
-function openActions(s: { id: string; name: string; color?: string }) {
-  actionSubject.value = s
-  showActions.value = true
-}
 
-function actionEdit() {
-  if (!actionSubject.value) return
-  openEdit(actionSubject.value.id, actionSubject.value.name, actionSubject.value.color)
-}
-
-function actionDelete() {
-  if (!actionSubject.value) return
-  const s = actionSubject.value
-  actionSubject.value = null
-  void removeSubject(s.id, s.name)
+function onSelectAction(action: { text: string }, s: { id: string; name: string; color?: string }) {
+  showPopoverMap.value[s.id] = false
+  if (action.text === '编辑科目') {
+    openEdit(s.id, s.name, s.color)
+  } else if (action.text === '删除科目') {
+    void removeSubject(s.id, s.name)
+  }
 }
 
 function openEdit(id: string, name: string, color?: string) {
@@ -158,9 +155,17 @@ onMounted(async () => {
               <div class="subject-card__name">{{ s.name }}</div>
               <div class="subject-card__count">{{ counts[s.id] || 0 }} 道题</div>
             </div>
-            <button class="card-menu-btn" @click.stop="guardedAction(() => openActions(s))">
-              <van-icon name="ellipsis" size="18" />
-            </button>
+            <ActionPopover
+              v-model:show="showPopoverMap[s.id]"
+              :actions="popoverActions"
+              :disabled="!adminStore.canOperate()"
+              @click-disabled="guardedAction(() => { showPopoverMap[s.id] = true })"
+              @select="(action) => onSelectAction(action, s)"
+            >
+              <button class="card-menu-btn" @click.stop>
+                <van-icon name="ellipsis" size="18" />
+              </button>
+            </ActionPopover>
             <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
           <template #right>
@@ -207,15 +212,6 @@ onMounted(async () => {
       @verified="onAdminVerified"
     />
 
-    <van-action-sheet
-      v-model:show="showActions"
-      :actions="[
-        { name: '编辑科目', callback: actionEdit },
-        { name: '删除科目', color: '#ee0a24', callback: actionDelete },
-      ]"
-      cancel-text="取消"
-      close-on-click-action
-    />
   </div>
 </template>
 
@@ -260,7 +256,7 @@ onMounted(async () => {
 .subject-list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: 0;
 }
 .subject-card {
   display: flex;

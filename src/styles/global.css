@@ -128,6 +128,7 @@
   --van-button-default-background: #262932;
   --van-button-default-color: #f0f1f3;
   --van-button-default-border-color: #363a44;
+  --van-button-plain-background: transparent;
 
   /* Vant popup-like surfaces */
   --van-action-sheet-item-background: #202329;
@@ -188,6 +189,7 @@
     --van-button-default-background: #262932;
     --van-button-default-color: #f0f1f3;
     --van-button-default-border-color: #363a44;
+    --van-button-plain-background: transparent;
 
     /* Vant popup-like surfaces */
     --van-action-sheet-item-background: #202329;
@@ -304,9 +306,20 @@ body {
 }
 .app-content {
   flex: 1;
-  max-width: var(--content-max);
   margin: 0 auto;
   padding: var(--sp-5) var(--sp-4);
+}
+/* 桌面端：内容区放宽，给做题双栏等宽布局留空间 */
+@media (min-width: 768px) {
+  .app-content {
+    max-width: 1120px;
+  }
+}
+/* 移动端：保持窄宽度 */
+@media (max-width: 767px) {
+  .app-content {
+    max-width: var(--content-max);
+  }
 }
 
 /* ===== 路由过渡：淡入，掩盖懒加载 chunk 下载间隙 ===== */
@@ -325,6 +338,17 @@ body {
 .page {
   padding: var(--sp-4);
 }
+/* 桌面端单栏阅读页：内容居中限宽，避免行宽过长 */
+@media (min-width: 768px) {
+  .page {
+    max-width: var(--content-max);
+    margin: 0 auto;
+  }
+  /* 做题等宽布局页：突破限宽，利用桌面空间 */
+  .page--wide {
+    max-width: none;
+  }
+}
 .page-head {
   margin-bottom: var(--sp-5);
 }
@@ -339,6 +363,12 @@ body {
   font-size: 13px;
   color: var(--text-3);
   margin: 0;
+}
+.page-device {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 2px 0 0;
+  opacity: 0.8;
 }
 .card {
   background: var(--surface);
@@ -399,7 +429,7 @@ body {
 
 /* ===== 滚动条边距包装（防止虚拟滚动测量高度不包含 Margin 的问题） ===== */
 .scroller-item-wrap {
-  padding: 2px 6px 14px 6px;
+  padding: 2px 6px 8px 6px;
   box-sizing: border-box;
 }
 
@@ -466,3 +496,21 @@ body {
   background: var(--brand-soft) !important;
   box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
 }
+
+/* ===== Popover 危险操作样式 ===== */
+.van-popover__action.popover-danger-action,
+.van-popover__action.popover-danger-action .van-popover__action-text,
+.van-popover__action.popover-danger-action .van-icon {
+  color: var(--danger) !important;
+}
+
+/* ===== Popover 黑暗模式及背景适配 ===== */
+.van-popover__content {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+.van-popover__arrow {
+  color: var(--surface) !important;
+}
+
+

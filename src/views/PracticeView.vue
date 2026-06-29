@@ -100,7 +100,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page page--wide">
     <div class="page-head page-head--row">
       <div class="page-head__left" @click="router.back()">
         <van-icon name="arrow-left" size="20" />
