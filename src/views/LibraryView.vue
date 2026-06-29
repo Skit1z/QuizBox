@@ -19,8 +19,16 @@ const pendingAction = ref<(() => void) | null>(null)
 
 // ===== 编辑科目 =====
 const SUBJECT_COLORS = [
-  '#4f6bed', '#2d6a4f', '#ff6b35', '#9333ea', '#db2777',
-  '#0891b2', '#ca8a04', '#dc2626', '#475569', '#16a34a',
+  '#4f6bed',
+  '#2d6a4f',
+  '#ff6b35',
+  '#9333ea',
+  '#db2777',
+  '#0891b2',
+  '#ca8a04',
+  '#dc2626',
+  '#475569',
+  '#16a34a',
 ]
 const showEdit = ref(false)
 const editId = ref('')
@@ -33,7 +41,6 @@ const popoverActions = [
   { text: '编辑科目', icon: 'edit' },
   { text: '删除科目', icon: 'delete-o', className: 'popover-danger-action' },
 ]
-
 
 function onSelectAction(action: { text: string }, s: { id: string; name: string; color?: string }) {
   showPopoverMap.value[s.id] = false
@@ -159,7 +166,11 @@ onMounted(async () => {
               v-model:show="showPopoverMap[s.id]"
               :actions="popoverActions"
               :disabled="!adminStore.canOperate()"
-              @click-disabled="guardedAction(() => { showPopoverMap[s.id] = true })"
+              @click-disabled="
+                guardedAction(() => {
+                  showPopoverMap[s.id] = true
+                })
+              "
               @select="(action) => onSelectAction(action, s)"
             >
               <button class="card-menu-btn" @click.stop>
@@ -169,28 +180,30 @@ onMounted(async () => {
             <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
           <template #right>
-            <van-button square type="primary" text="编辑" style="height: 100%" @click="guardedAction(() => openEdit(s.id, s.name, s.color))" />
-            <van-button square type="danger" text="删除" style="height: 100%" @click="guardedAction(() => removeSubject(s.id, s.name))" />
+            <van-button
+              square
+              type="primary"
+              text="编辑"
+              style="height: 100%"
+              @click="guardedAction(() => openEdit(s.id, s.name, s.color))"
+            />
+            <van-button
+              square
+              type="danger"
+              text="删除"
+              style="height: 100%"
+              @click="guardedAction(() => removeSubject(s.id, s.name))"
+            />
           </template>
         </van-swipe-cell>
       </div>
     </div>
 
-    <van-dialog
-      v-model:show="showAdd"
-      title="新建科目"
-      show-cancel-button
-      @confirm="addSubject"
-    >
+    <van-dialog v-model:show="showAdd" title="新建科目" show-cancel-button @confirm="addSubject">
       <van-field v-model="newName" placeholder="科目名称（如：高数）" style="margin: 12px" />
     </van-dialog>
 
-    <van-dialog
-      v-model:show="showEdit"
-      title="编辑科目"
-      show-cancel-button
-      @confirm="saveEdit"
-    >
+    <van-dialog v-model:show="showEdit" title="编辑科目" show-cancel-button @confirm="saveEdit">
       <div class="edit-body">
         <van-field v-model="editName" placeholder="科目名称" />
         <div class="edit-colors">
@@ -207,11 +220,7 @@ onMounted(async () => {
       </div>
     </van-dialog>
 
-    <AdminDialog
-      v-model:show="showAdminDialog"
-      @verified="onAdminVerified"
-    />
-
+    <AdminDialog v-model:show="showAdminDialog" @verified="onAdminVerified" />
   </div>
 </template>
 

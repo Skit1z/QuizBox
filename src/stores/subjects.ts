@@ -13,7 +13,10 @@ export const useSubjectsStore = defineStore('subjects', {
       // deletedAt=0 表示未删除，用单字段索引查询并按 order 排序
       let arr: Subject[]
       try {
-        arr = await db.subjects.where('deletedAt').equals(0 as any).sortBy('order')
+        arr = await db.subjects
+          .where('deletedAt')
+          .equals(0 as any)
+          .sortBy('order')
       } catch {
         // 兜底：旧数据 deletedAt 可能为 null
         const all = await db.subjects.toArray()

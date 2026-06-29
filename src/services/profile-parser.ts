@@ -101,9 +101,13 @@ function buildProfileSample(text: string): string {
   const normalized = text.replace(/\r\n/g, '\n')
   const head = normalized.slice(0, 6000)
   const tail = normalized.slice(Math.max(0, normalized.length - 3000))
-  return ['请识别以下题库的排版规则。只输出 JSON。', '--- 文档开头 ---', head, '--- 文档结尾 ---', tail].join(
-    '\n',
-  )
+  return [
+    '请识别以下题库的排版规则。只输出 JSON。',
+    '--- 文档开头 ---',
+    head,
+    '--- 文档结尾 ---',
+    tail,
+  ].join('\n')
 }
 
 function hasAnswer(answer: ParsedQuestion['answer']): boolean {

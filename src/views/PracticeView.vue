@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -23,6 +23,7 @@ const questions = ref<Question[]>([])
 const restoredSession = ref<ExamSession | null>(null)
 
 const subjectId = ref((route.query.subjectId as string) || '')
+const subjectQuestions = ref<Question[]>([])
 const types = ref<QuestionType[]>([])
 const random = ref(true)
 const onlyWrong = ref(false)
@@ -33,6 +34,11 @@ const subjectOptions = computed<SelectOption[]>(() =>
   subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
 )
 
+const availableTypes = computed(() => {
+  const currentTypes = new Set(subjectQuestions.value.map((q) => q.type))
+  return allTypes.filter((t) => currentTypes.has(t))
+})
+
 // 来自错题本的指定题目
 const presetQuestionIds = ref<string[]>(
   route.query.questionIds ? (route.query.questionIds as string).split(',').filter(Boolean) : [],
@@ -42,6 +48,17 @@ function toggleType(t: QuestionType) {
   const i = types.value.indexOf(t)
   if (i >= 0) types.value.splice(i, 1)
   else types.value.push(t)
+}
+
+async function loadSubjectQuestions(id: string) {
+  if (!id || presetQuestionIds.value.length) {
+    subjectQuestions.value = []
+    types.value = []
+    return
+  }
+  subjectQuestions.value = await questionsRepo.filter({ subjectId: id })
+  const allowed = new Set(subjectQuestions.value.map((q) => q.type))
+  types.value = types.value.filter((t) => allowed.has(t))
 }
 
 async function start() {
@@ -97,6 +114,14 @@ onMounted(async () => {
     subjectId.value = subjectsStore.list[0].id
   }
 })
+
+watch(
+  subjectId,
+  (id) => {
+    void loadSubjectQuestions(id)
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -133,17 +158,22 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="card">
+      <div v-if="!presetQuestionIds.length" class="card">
         <!-- 题型多选 -->
         <div class="field">
-          <label class="field__label">题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label>
-          <div class="multi-chips">
+          <label class="field__label"
+            >题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label
+          >
+          <div v-if="!subjectId" class="empty-hint">先选择科目后配置题型。</div>
+          <div v-else-if="availableTypes.length === 0" class="empty-hint">
+            当前科目还没有可练习的题目。
+          </div>
+          <div v-else class="multi-chips">
             <button
-              v-for="t in allTypes"
+              v-for="t in availableTypes"
               :key="t"
               :class="['mchip', types.includes(t) && 'mchip--active']"
-              @click="!presetQuestionIds.length && toggleType(t)"
-              :disabled="!!presetQuestionIds.length"
+              @click="toggleType(t)"
             >
               {{ QUESTION_TYPE_LABELS[t] }}
             </button>
@@ -212,6 +242,14 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
+}
+.empty-hint {
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
 }
 .mchip {
   padding: 6px var(--sp-3);

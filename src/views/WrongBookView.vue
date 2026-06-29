@@ -34,10 +34,13 @@ const selectedCount = computed(() => selectedIds.value.length)
 
 async function load() {
   // pending：仅到期需复习；all：所有未掌握（含未到期）
-  const wrongs = filter.value === 'pending' ? await wrongBookRepo.listPending() : await wrongBookRepo.listAll()
+  const wrongs =
+    filter.value === 'pending' ? await wrongBookRepo.listPending() : await wrongBookRepo.listAll()
   const questions = await db.questions.bulkGet(wrongs.map((w) => w.questionId))
   items.value = wrongs.map((w, i) => ({ ...w, question: questions[i] as Question }))
-  selectedIds.value = selectedIds.value.filter((id) => items.value.some((item) => item.questionId === id))
+  selectedIds.value = selectedIds.value.filter((id) =>
+    items.value.some((item) => item.questionId === id),
+  )
 }
 
 watch(filter, load)
@@ -116,11 +119,15 @@ onMounted(async () => {
       <button
         :class="['filter-tab', filter === 'pending' && 'filter-tab--active']"
         @click="filter = 'pending'"
-      >待复习</button>
+      >
+        待复习
+      </button>
       <button
         :class="['filter-tab', filter === 'all' && 'filter-tab--active']"
         @click="filter = 'all'"
-      >全部</button>
+      >
+        全部
+      </button>
     </div>
 
     <div class="subject-filter">
@@ -144,7 +151,9 @@ onMounted(async () => {
         <div class="batch-panel__meta">已选 {{ selectedCount }} / {{ filteredItems.length }}</div>
         <div class="batch-panel__actions">
           <van-button size="small" plain round @click="selectAllVisible">全选当前</van-button>
-          <van-button size="small" type="primary" plain round icon="edit" @click="reviewSelected">自测选中</van-button>
+          <van-button size="small" type="primary" plain round icon="edit" @click="reviewSelected"
+            >自测选中</van-button
+          >
           <van-button size="small" type="primary" round plain icon="refresh" @click="reviewAll">
             复习当前（{{ filteredItems.length }}）
           </van-button>
@@ -173,8 +182,17 @@ onMounted(async () => {
               {{ item.question?.stem?.slice(0, 60) || '(题目已删除)' }}
             </div>
             <div class="wrong-card__actions">
-              <van-button size="small" type="primary" plain round @click.stop="review(item)">复习</van-button>
-              <van-button size="small" type="success" plain round @click.stop="markMastered(item.id)">已掌握</van-button>
+              <van-button size="small" type="primary" plain round @click.stop="review(item)"
+                >复习</van-button
+              >
+              <van-button
+                size="small"
+                type="success"
+                plain
+                round
+                @click.stop="markMastered(item.id)"
+                >已掌握</van-button
+              >
             </div>
           </div>
         </div>

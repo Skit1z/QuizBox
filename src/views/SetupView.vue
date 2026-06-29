@@ -52,7 +52,11 @@ onMounted(async () => {
       <div class="field-group">
         <div class="field">
           <label class="field__label">服务器地址</label>
-          <input v-model="webdav.url" class="field__input" placeholder="https://dav.jianguoyun.com/dav/" />
+          <input
+            v-model="webdav.url"
+            class="field__input"
+            placeholder="https://dav.jianguoyun.com/dav/"
+          />
         </div>
         <div class="field">
           <label class="field__label">账号</label>
@@ -60,7 +64,12 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label class="field__label">应用密码</label>
-          <input v-model="webdav.password" class="field__input" type="password" placeholder="第三方应用专用密码" />
+          <input
+            v-model="webdav.password"
+            class="field__input"
+            type="password"
+            placeholder="第三方应用专用密码"
+          />
         </div>
         <div class="field">
           <label class="field__label">目录</label>

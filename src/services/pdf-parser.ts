@@ -41,11 +41,14 @@ async function submitJob(file: File, token: string): Promise<string> {
   const form = new FormData()
   form.append('file', file)
   form.append('model', MODEL)
-  form.append('optionalPayload', JSON.stringify({
-    useDocOrientationClassify: false,
-    useDocUnwarping: false,
-    useChartRecognition: false,
-  }))
+  form.append(
+    'optionalPayload',
+    JSON.stringify({
+      useDocOrientationClassify: false,
+      useDocUnwarping: false,
+      useChartRecognition: false,
+    }),
+  )
 
   const res = await fetch(JOB_URL, {
     method: 'POST',
