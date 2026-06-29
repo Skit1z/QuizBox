@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# 提交前自动递增版本号（+0.01），并把版本文件纳入同一个提交。
+# 跳过方式：
+#   SKIP_VERSION_BUMP=1 git commit -m "..."
+# 或提交内容只有版本文件时自动跳过，避免形成无限 bump。
+
+set -e
+
+if [ "${SKIP_VERSION_BUMP:-}" = "1" ]; then
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$ROOT" ] || [ ! -f "$ROOT/package.json" ]; then
+  exit 0
+fi
+
+cd "$ROOT"
+
+STAGED_FILES="$(git diff --cached --name-only)"
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+VERSION_FILES="package.json
+src-tauri/Cargo.toml
+src-tauri/tauri.conf.json"
+
+NON_VERSION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -vxF -e 'package.json' -e 'src-tauri/Cargo.toml' -e 'src-tauri/tauri.conf.json' || true)"
+if [ -z "$NON_VERSION_FILES" ]; then
+  exit 0
+fi
+
+node "$ROOT/scripts/bump-version.mjs"
+printf '%s\n' "$VERSION_FILES" | xargs git add
+
+exit 0

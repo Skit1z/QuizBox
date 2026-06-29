@@ -55,6 +55,8 @@
   --van-background-3: var(--surface-2);
   --van-popup-background: var(--surface);
   --van-dialog-background: var(--surface);
+  --van-dialog-header-text-color: var(--text);
+  --van-dialog-message-text-color: var(--text-2);
   --van-dialog-has-title-message-text-color: var(--text-2);
   --van-action-sheet-item-background: var(--surface);
   --van-action-sheet-item-text-color: var(--text);
@@ -118,6 +120,8 @@
 
   /* Vant Dialog */
   --van-dialog-background: #202329;
+  --van-dialog-header-text-color: #f0f1f3;
+  --van-dialog-message-text-color: #c9cdd4;
   --van-dialog-has-title-message-text-color: #c9cdd4;
 
   /* Vant Default Button */
@@ -140,6 +144,7 @@
   --van-picker-option-text-color: #f0f1f3;
   --van-picker-mask-color: linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)), linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
   --van-picker-loading-icon-color: var(--brand);
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -175,6 +180,8 @@
 
     /* Vant Dialog */
     --van-dialog-background: #202329;
+    --van-dialog-header-text-color: #f0f1f3;
+    --van-dialog-message-text-color: #c9cdd4;
     --van-dialog-has-title-message-text-color: #c9cdd4;
 
     /* Vant Default Button */
@@ -197,6 +204,7 @@
     --van-picker-option-text-color: #f0f1f3;
     --van-picker-mask-color: linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)), linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
     --van-picker-loading-icon-color: var(--brand);
+    color-scheme: dark;
   }
 }
 
@@ -216,6 +224,12 @@ body {
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.2s, color 0.2s;
+  color-scheme: light;
+}
+
+::selection {
+  background: rgba(var(--brand-rgb), 0.22);
+  color: var(--text);
 }
 #app {
   min-height: 100vh;
@@ -411,6 +425,34 @@ body {
   margin-bottom: 0 !important;
   border: none !important;
   background: transparent !important;
+}
+
+/* Vant 函数式弹层挂在 body 下，统一兜底前景/背景，避免白底白字。 */
+.van-popup,
+.van-dialog,
+.van-action-sheet,
+.van-picker {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+.van-dialog__header,
+.van-action-sheet__item,
+.van-picker-column__item,
+.van-popover__action {
+  color: var(--text) !important;
+}
+.van-dialog__message,
+.van-action-sheet__description,
+.van-action-sheet__subname {
+  color: var(--text-2) !important;
+}
+.van-toast {
+  background: var(--van-toast-background) !important;
+  color: var(--van-toast-text-color) !important;
+}
+.van-toast__text,
+.van-toast__icon {
+  color: var(--van-toast-text-color) !important;
 }
 
 /* ===== 选中状态高亮 ===== */

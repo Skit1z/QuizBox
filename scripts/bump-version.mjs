@@ -1,13 +1,13 @@
 // 版本号自动递增脚本
-// 规则：每次 +0.01，小数位递增并自动进位
-//   1.1 → 1.11 → 1.12 → ... → 1.19 → 1.2 → 1.21 → 1.22 ...
+// 规则：每次 +0.01，小数位递增并自动进位，显示固定为两位小数
+//   1.10 → 1.11 → 1.12 → ... → 1.19 → 1.20 → 1.21 → 1.22 ...
 // 实现：用「厘」整数计数避免浮点精度问题。
 //   显示版本 X.YZ ↔ 厘 = X*100 + Y*10 + Z（Z 为 0-9，Y 为最后两位中的第二位）
 // 为兼容「1.1」这类只有一位小数的形式，解析时把 1.1 当作 1.10（=110 厘）。
 //
 // 用法：
 //   node scripts/bump-version.mjs          # 默认 +0.01
-//   node scripts/bump-version.mjs 1.5      # 显式设为 1.5
+//   node scripts/bump-version.mjs 1.50     # 显式设为 1.50
 //
 // 同步更新的文件：
 //   package.json            version
@@ -39,20 +39,11 @@ function parseVersion(v) {
   return major * 100 + Number(minor2)
 }
 
-// 厘 → 显示版本。110→"1.1", 111→"1.11", 120→"1.2", 205→"2.05"→"2.5"
+// 厘 → 显示版本。110→"1.10", 111→"1.11", 120→"1.20", 205→"2.05"
 function formatVersion(cents) {
   const major = Math.floor(cents / 100)
   const minor2 = cents % 100 // 0-99
-  // 还原为 X.Y 形式：minor2==10 → "1.1"；minor2==5 → "1.05"？按规则 1.5 应=1.50=150 厘
-  // 但用户写 1.5 期望=1.5，我们 parse 时 1.5→150，format(150)=1.5。需保持一致。
-  if (minor2 === 0) return `${major}.0` // 理论不出现
-  // 末尾去零：10→1, 20→2, 23→23, 5→"05"？我们把 5 解析成 50，format 回 50→"5"
-  // minor2 范围 0-99，两位小数含义：十位=第一位小数，个位=第二位小数
-  // 显示：minor2=10 → ".1"；minor2=23 → ".23"；minor2=5 → ".05"→但我们统一不补零前导
-  const a = Math.floor(minor2 / 10) // 第一位小数
-  const b = minor2 % 10 // 第二位小数
-  if (b === 0) return `${major}.${a}`
-  return `${major}.${a}${b}`
+  return `${major}.${String(minor2).padStart(2, '0')}`
 }
 
 // ===== 文件更新 =====

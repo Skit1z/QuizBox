@@ -18,6 +18,26 @@ async function listBankBlobs() {
   return blobs.filter((blob) => blob.pathname === BANK_PATH)
 }
 
+function countTables(data: any) {
+  const tables = data?.tables || {}
+  return Object.fromEntries(
+    ['subjects', 'chapters', 'questions', 'wrongBook'].map((name) => [
+      name,
+      tables[name] ? Object.keys(tables[name]).length : 0,
+    ]),
+  )
+}
+
+function blobMeta(blob: any, data?: any) {
+  return {
+    exists: !!blob,
+    pathname: blob?.pathname || BANK_PATH,
+    size: blob?.size || 0,
+    uploadedAt: blob?.uploadedAt || null,
+    tableCounts: data ? countTables(data) : undefined,
+  }
+}
+
 function setCors(res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,OPTIONS')
@@ -45,6 +65,10 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'GET') {
       const blobs = await listBankBlobs()
       if (!blobs.length) {
+        if (req.query?.meta === '1') {
+          res.status(200).json({ ok: true, ...blobMeta(null), tableCounts: countTables(null) })
+          return
+        }
         res.status(200).json({ version: 1, tables: {} })
         return
       }
@@ -55,22 +79,41 @@ export default async function handler(req: any, res: any) {
       const fresh = `${latest.url}${latest.url.includes('?') ? '&' : '?'}t=${Date.now()}`
       const r = await fetch(fresh, { cache: 'no-store' as any })
       const data = await r.json()
+      if (req.query?.meta === '1') {
+        res.status(200).json({ ok: true, ...blobMeta(latest, data) })
+        return
+      }
       res.status(200).json(data)
       return
     }
 
     if (req.method === 'PUT' || req.method === 'POST') {
       const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {})
+      let parsed: any = null
+      try {
+        parsed = JSON.parse(body)
+      } catch {
+        res.status(400).json({ error: '请求体不是合法 JSON' })
+        return
+      }
       const existing = await listBankBlobs()
       if (existing.length) {
         await del(existing.map((blob) => blob.url))
       }
-      await put(BANK_PATH, body, {
+      const uploaded = await put(BANK_PATH, body, {
         access: 'public',
         contentType: 'application/json',
         addRandomSuffix: false,
       })
-      res.status(200).json({ ok: true })
+      const verified = (await listBankBlobs()).find((blob) => blob.pathname === BANK_PATH)
+      res.status(200).json({
+        ok: true,
+        uploaded: {
+          pathname: uploaded.pathname,
+          url: uploaded.url,
+        },
+        ...blobMeta(verified, parsed),
+      })
       return
     }
 

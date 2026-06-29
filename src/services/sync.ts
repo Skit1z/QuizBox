@@ -317,13 +317,42 @@ function bankAuthHeaders(): Record<string, string> {
   return s.bankSync.key ? { Authorization: `Bearer ${s.bankSync.key}` } : {}
 }
 
-let bankSyncing: Promise<{ pulled: number; pushed: number; ok: boolean }> | null = null
+interface BankSnapshotMeta {
+  exists?: boolean
+  pathname?: string
+  size?: number
+  uploadedAt?: string | null
+  tableCounts?: Record<string, number>
+}
+
+let bankSyncing: Promise<BankSyncResult> | null = null
+
+export interface BankSyncResult {
+  pulled: number
+  pushed: number
+  ok: boolean
+  localRows?: number
+  remoteRows?: number
+  size?: number
+  pathname?: string
+}
+
+function countSnapshotRows(data: SyncFileData): number {
+  return SYNC_TABLES.reduce((sum, table) => {
+    return sum + Object.keys(data.tables[table] || {}).length
+  }, 0)
+}
+
+function countMetaRows(meta?: BankSnapshotMeta): number {
+  if (!meta?.tableCounts) return 0
+  return Object.values(meta.tableCounts).reduce((sum, n) => sum + Number(n || 0), 0)
+}
 
 /**
  * 云端题库同步：拉取远端快照 → 与本地逐条 last-write-wins 合并 → 写回本地并推送。
  * 与 WebDAV 同步独立，互不影响；并发调用复用进行中的结果。
  */
-export async function syncBank(): Promise<{ pulled: number; pushed: number; ok: boolean }> {
+export async function syncBank(): Promise<BankSyncResult> {
   const s = useSettingsStore()
   if (!s.loaded) await s.load()
   if (!s.bankSync.enabled) return { pulled: 0, pushed: 0, ok: false }
@@ -337,16 +366,27 @@ export async function syncBank(): Promise<{ pulled: number; pushed: number; ok: 
       const local = await exportLocal()
       const merged = pruneMergedTombstones(mergeAll(local, remote))
       await importLocal(merged)
+      const body = JSON.stringify({ version: merged.version, tables: merged.tables })
 
       const put = await fetch(bankEndpoint(), {
         method: 'PUT',
         headers: { ...bankAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: merged.version, tables: merged.tables }),
+        body,
       })
       if (!put.ok) throw new Error(`推送失败 (${put.status})`)
+      const meta = (await put.json().catch(() => null)) as BankSnapshotMeta | null
+      if (meta && meta.exists === false) throw new Error('推送后未检测到云端快照')
 
       await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
-      return { pulled: merged.stats.pulled, pushed: merged.stats.pushed, ok: true }
+      return {
+        pulled: merged.stats.pulled,
+        pushed: merged.stats.pushed,
+        ok: true,
+        localRows: countSnapshotRows(local),
+        remoteRows: countMetaRows(meta || undefined),
+        size: meta?.size || body.length,
+        pathname: meta?.pathname,
+      }
     } catch (e) {
       console.warn('[bank-sync] failed', e)
       return { pulled: 0, pushed: 0, ok: false }
@@ -358,14 +398,17 @@ export async function syncBank(): Promise<{ pulled: number; pushed: number; ok: 
 }
 
 /** 用当前配置测试云端题库接口连通性（GET 一次） */
-export async function testBankSync(config: { baseUrl: string; key: string }): Promise<void> {
+export async function testBankSync(config: {
+  baseUrl: string
+  key: string
+}): Promise<BankSnapshotMeta> {
   const base = (config.baseUrl || '').replace(/\/$/, '')
-  const url = base ? `${base}/api/bank` : '/api/bank'
+  const url = base ? `${base}/api/bank?meta=1` : '/api/bank?meta=1'
   const headers: Record<string, string> = config.key ? { Authorization: `Bearer ${config.key}` } : {}
   const res = await fetch(url, { headers })
   if (res.status === 401) throw new Error('密钥不匹配')
   if (!res.ok) throw new Error(`接口不可用 (${res.status})`)
-  await res.json().catch(() => {
+  return await res.json().catch(() => {
     throw new Error('返回内容异常')
   })
 }

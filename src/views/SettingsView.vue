@@ -157,8 +157,16 @@ async function testBank() {
   bankResult.value = null
   try {
     const { testBankSync } = await import('@/services/sync')
-    await testBankSync({ baseUrl: bank.value.baseUrl.trim(), key: bank.value.key.trim() })
-    bankResult.value = { type: 'success', msg: '接口连通正常' }
+    const meta = await testBankSync({ baseUrl: bank.value.baseUrl.trim(), key: bank.value.key.trim() })
+    const rows = meta.tableCounts
+      ? Object.values(meta.tableCounts).reduce((sum, n) => sum + Number(n || 0), 0)
+      : 0
+    bankResult.value = {
+      type: 'success',
+      msg: meta.exists
+        ? `接口连通，云端已有 ${rows} 条记录（${meta.size || 0} B）`
+        : '接口连通，但云端还没有题库快照',
+    }
   } catch (e: any) {
     bankResult.value = { type: 'error', msg: e?.message || '接口不可用' }
   } finally {
@@ -174,8 +182,17 @@ async function manualBankSync() {
   try {
     const { syncBank } = await import('@/services/sync')
     const res = await syncBank()
-    if (res.ok) showSuccessToast(`云端同步成功：拉取 ${res.pulled}，推送 ${res.pushed}`)
-    else showFailToast('云端同步失败，请检查接口与密钥')
+    if (res.ok) {
+      const rows = res.remoteRows ?? res.localRows ?? 0
+      bankResult.value = {
+        type: 'success',
+        msg: `已写入 ${rows} 条记录到 ${res.pathname || 'quizbox/bank.json'}（${res.size || 0} B）`,
+      }
+      showSuccessToast(`云端同步成功：${rows} 条`)
+    } else {
+      bankResult.value = { type: 'error', msg: '云端同步失败，请检查接口与密钥' }
+      showFailToast('云端同步失败，请检查接口与密钥')
+    }
   } finally {
     bankSyncing.value = false
   }
