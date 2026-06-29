@@ -144,3 +144,57 @@ export interface SyncMeta {
   key: string
   value: string
 }
+
+// ===== 云端题库分片同步（v2：按科目分片 + 哈希增量） =====
+
+/** Meta 分片：subjects + chapters 的元数据 */
+export interface MetaShard {
+  subjects: Record<string, Subject>
+  chapters: Record<string, Chapter>
+}
+
+/** 单个题目分片（按科目分组，超出 250KB 自动拆分） */
+export interface QuestionShard {
+  subjectId: string
+  /** 分片序号（0 为主分片，1+ 为溢出） */
+  index: number
+  /** id → Question */
+  questions: Record<string, Question>
+}
+
+/** Manifest 中每个分片的索引条目 */
+export interface ShardEntry {
+  /** Blob 路径，如 "quizbox/shard_sub_abc123_0.json" */
+  path: string
+  /** 对应科目 ID */
+  subjectId: string
+  /** 分片序号 */
+  index: number
+  /** 内容的 SHA-256 哈希 */
+  hash: string
+  /** 字节数 */
+  size: number
+  /** 包含的题目数量 */
+  count: number
+  /** 分片内最新 updatedAt */
+  updatedAt: number
+}
+
+/** 云端题库索引文件 */
+export interface BankManifest {
+  /** 格式版本（v2 = 分片增量） */
+  version: 2
+  /** 生成时间戳 */
+  updatedAt: number
+  /** subjects + chapters 的元数据分片 */
+  meta: {
+    /** "quizbox/meta.json" */
+    path: string
+    /** 内容的 SHA-256 */
+    hash: string
+    /** 字节数 */
+    size: number
+  }
+  /** 题目分片列表 */
+  shards: ShardEntry[]
+}
