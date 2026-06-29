@@ -21,17 +21,28 @@ const props = defineProps<{
 
 const typeLabel = computed(() => QUESTION_TYPE_LABELS[props.question.type])
 
+function formatAnswerValue(value: string | string[]): string {
+  if (props.question.type !== 'judge') {
+    return Array.isArray(value) ? value.join('、') : value
+  }
+  const display = (item: string) => {
+    const normalized = item.trim().toUpperCase()
+    if (normalized === 'T') return '正确'
+    if (normalized === 'F') return '错误'
+    return item
+  }
+  return Array.isArray(value) ? value.map(display).join('、') : display(value)
+}
+
 const answerText = computed(() => {
   const a = props.question.answer
-  if (Array.isArray(a)) return a.join('、')
-  return a
+  return formatAnswerValue(a)
 })
 
 const formattedUserAnswer = computed(() => {
   const u = props.userAnswer
   if (u == null) return ''
-  if (Array.isArray(u)) return u.join('、')
-  return u
+  return formatAnswerValue(u)
 })
 </script>
 

@@ -506,8 +506,7 @@ const isWrongOption = (letter: string) => {
               @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('T')"
             >
               <div class="option-badge">
-                <van-icon name="success" v-if="isSelected('T')" />
-                <span v-else>T</span>
+                <van-icon name="success" />
               </div>
               <div class="option-text">正确</div>
             </div>
@@ -523,8 +522,7 @@ const isWrongOption = (letter: string) => {
               @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('F')"
             >
               <div class="option-badge">
-                <van-icon name="cross" v-if="isSelected('F')" />
-                <span v-else>F</span>
+                <van-icon name="cross" />
               </div>
               <div class="option-text">错误</div>
             </div>
