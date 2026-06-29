@@ -7,11 +7,16 @@
 // 可选：设置环境变量 BANK_KEY 作为共享密钥（非账号系统，仅防陌生人覆盖），
 // 客户端在「设置」里填同样的密钥即可。
 
-import { put, list } from '@vercel/blob'
+import { del, put, list } from '@vercel/blob'
 
 export const config = { runtime: 'nodejs' }
 
 const BANK_PATH = 'quizbox/bank.json'
+
+async function listBankBlobs() {
+  const { blobs } = await list({ prefix: BANK_PATH })
+  return blobs.filter((blob) => blob.pathname === BANK_PATH)
+}
 
 function setCors(res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -38,7 +43,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (req.method === 'GET') {
-      const { blobs } = await list({ prefix: BANK_PATH })
+      const blobs = await listBankBlobs()
       if (!blobs.length) {
         res.status(200).json({ version: 1, tables: {} })
         return
@@ -56,6 +61,10 @@ export default async function handler(req: any, res: any) {
 
     if (req.method === 'PUT' || req.method === 'POST') {
       const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {})
+      const existing = await listBankBlobs()
+      if (existing.length) {
+        await del(existing.map((blob) => blob.url))
+      }
       await put(BANK_PATH, body, {
         access: 'public',
         contentType: 'application/json',
