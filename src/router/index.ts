@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '自测模式' },
   },
   {
+    path: '/my-practice',
+    name: 'my-practice',
+    component: () => import('@/views/MyPracticeView.vue'),
+    meta: { title: '我的自测' },
+  },
+  {
     path: '/exam',
     name: 'exam',
     component: () => import('@/views/ExamView.vue'),

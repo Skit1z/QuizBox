@@ -5,11 +5,12 @@ import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'
 import { wrongBookRepo } from '@/db/wrongbook'
+import { examSessionsRepo } from '@/db/examSessions'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
-import { QUESTION_TYPE_LABELS, type Question, type QuestionType } from '@/types'
+import { QUESTION_TYPE_LABELS, type ExamSession, type Question, type QuestionType } from '@/types'
 
 defineOptions({ name: 'PracticeView' })
 
@@ -19,6 +20,7 @@ const subjectsStore = useSubjectsStore()
 
 const started = ref(false)
 const questions = ref<Question[]>([])
+const restoredSession = ref<ExamSession | null>(null)
 
 const subjectId = ref((route.query.subjectId as string) || '')
 const types = ref<QuestionType[]>([])
@@ -44,6 +46,7 @@ function toggleType(t: QuestionType) {
 
 async function start() {
   let qs: Question[]
+  restoredSession.value = null
 
   if (presetQuestionIds.value.length) {
     qs = await questionsRepo.findByIds(presetQuestionIds.value)
@@ -72,6 +75,24 @@ async function start() {
 
 onMounted(async () => {
   await subjectsStore.load()
+  const sessionId = route.query.sessionId as string | undefined
+  if (sessionId) {
+    const session = await examSessionsRepo.get(sessionId)
+    if (session && session.status === 'in_progress' && session.config.subMode === 'practice') {
+      const rows = await questionsRepo.findByIds(session.questionIds)
+      const byId = new Map(rows.map((q) => [q.id, q]))
+      questions.value = session.questionIds
+        .map((id) => byId.get(id))
+        .filter((q): q is Question => !!q)
+      if (questions.value.length) {
+        restoredSession.value = session
+        subjectId.value = session.config.subjectId
+        started.value = true
+        return
+      }
+      await examSessionsRepo.abandon(session.id)
+    }
+  }
   if (!subjectId.value && subjectsStore.list.length === 1) {
     subjectId.value = subjectsStore.list[0].id
   }
@@ -87,7 +108,13 @@ onMounted(async () => {
       </div>
     </div>
 
-    <QuizRunner v-if="started" mode="practice" :questions="questions" @finish="started = false" />
+    <QuizRunner
+      v-if="started"
+      mode="practice"
+      :questions="questions"
+      :initial-session="restoredSession || undefined"
+      @finish="started = false"
+    />
 
     <div v-else class="setup-body">
       <div v-if="presetQuestionIds.length" class="preset-banner">

@@ -117,6 +117,13 @@ export const useSettingsStore = defineStore('settings', {
       if (colorMeta) this.themeColor = JSON.parse(colorMeta.value) as ThemeColor
       this.loaded = true
       this.applyAll()
+      if (typeof window !== 'undefined') {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+          if (this.theme === 'auto') {
+            this.applyTheme()
+          }
+        })
+      }
     },
 
     async tryDecrypt(stored: string, label: string): Promise<string> {
@@ -194,8 +201,14 @@ export const useSettingsStore = defineStore('settings', {
     applyTheme() {
       const root = document.documentElement
       root.classList.remove('dark', 'light')
-      if (this.theme === 'dark') root.classList.add('dark')
-      else if (this.theme === 'light') root.classList.add('light')
+      if (this.theme === 'dark') {
+        root.classList.add('dark')
+      } else if (this.theme === 'light') {
+        root.classList.add('light')
+      } else {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        root.classList.add(isDark ? 'dark' : 'light')
+      }
     },
     applyThemeColor() {
       document.documentElement.setAttribute('data-theme-color', this.themeColor)

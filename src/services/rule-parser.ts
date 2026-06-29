@@ -175,7 +175,7 @@ function stripTrailingContentCapture(src: string): string {
 }
 
 function parseHybridInternal(text: string): HybridResult {
-  const lines = text.split(/\r?\n/)
+  const lines = text.split(/\r?\n/).flatMap(splitMergedSectionUnits)
   const expanded = expandInlineOptions(lines)
   const blocks = splitIntoBlocks(expanded)
   const { answerMap, keyIdx } = extractAnswerKey(blocks)
@@ -257,6 +257,25 @@ function isCleanChoiceMissingAnswer(q: ParsedQuestion): boolean {
   )
 }
 
+// ===== 预处理：拆回被合并进同一段落的逻辑单元 =====
+
+// convertToHtml 常把「上一题末尾 + 大题标题 + 下一题开头」挤进同一段落（一行）。
+// 在大题标题前插换行；在「X题（…题，…分）」计数标题后插换行，把它们拆回独立行。
+const RE_SECTION_TYPE = '(?:单选题|多选题|判断题|填空题|简答题|论述题|选择题|不定项选择题)'
+const RE_INLINE_SECTION_HEAD = new RegExp(
+  `(?<=.)(?=[一二三四五六七八九十]+[、.．]\\s*${RE_SECTION_TYPE})`,
+  'g',
+)
+const RE_INLINE_SECTION_TAIL = new RegExp(`(${RE_SECTION_TYPE}\\s*[（(][^）)]*[）)])(?=\\S)`, 'g')
+
+/** 把一行里被合并的「大题标题 / 下一题」拆成多行 */
+function splitMergedSectionUnits(line: string): string[] {
+  return line
+    .replace(RE_INLINE_SECTION_HEAD, '\n')
+    .replace(RE_INLINE_SECTION_TAIL, '$1\n')
+    .split('\n')
+}
+
 // ===== 预处理：拆分同一行内的多个选项 =====
 
 /** 去除行首的 bullet/列表符号（• ◦ ▪ · 等） */
@@ -320,7 +339,7 @@ interface ParsedEntry {
 }
 
 export function splitRawChunks(text: string): string[] {
-  const lines = text.split(/\r?\n/)
+  const lines = text.split(/\r?\n/).flatMap(splitMergedSectionUnits)
   const expanded = expandInlineOptions(lines)
   const blocks = splitIntoBlocks(expanded)
   return blocks.map((b) => b.lines.join('\n').trim()).filter(Boolean)
@@ -508,6 +527,16 @@ function parseBlock(block: RawBlock): ParsedBlock | null {
     if (stemAnswer) {
       answerRaw = stemAnswer.answer
       stem = stemAnswer.cleanStem
+    }
+  }
+
+  // 整题挤一行时（convertToHtml 常见），答案以「正确答案A」粘在题干/末选项尾部。
+  // 必须在拆内联选项之前剥离，否则会被并进最后一个选项。
+  if (!answerRaw) {
+    const trailing = extractTrailingInlineAnswer(stem)
+    if (trailing) {
+      answerRaw = trailing.answer
+      stem = trailing.stem
     }
   }
 
@@ -710,6 +739,19 @@ function extractStemAnswer(stem: string): { cleanStem: string; answer: string } 
     }
   }
   return null
+}
+
+// 题干末尾内联答案：「…正确答案A」「…答案：BCD」「…正确答案对」
+const RE_TRAILING_INLINE_ANSWER =
+  /(?:正确答案|参考答案|答案)\s*[:：]?\s*([A-Ha-h]{1,8}|正确|错误|对|错|[√✓×✗TF])\s*$/
+
+/** 剥离题干/末选项尾部粘连的内联答案，返回去除后的题干与答案 */
+function extractTrailingInlineAnswer(stem: string): { stem: string; answer: string } | null {
+  const m = stem.match(RE_TRAILING_INLINE_ANSWER)
+  if (!m || m.index === undefined) return null
+  const cleaned = stem.slice(0, m.index).trim()
+  if (!cleaned) return null
+  return { stem: cleaned, answer: m[1].trim() }
 }
 
 function extractInlineOptionsFromStem(stem: string): { stem: string; options: string[] } | null {

@@ -100,7 +100,7 @@ function onFinish(r: any) {
 onMounted(async () => {
   await subjectsStore.load()
   if (subjectsStore.list.length === 1) subjectId.value = subjectsStore.list[0].id
-  const inProgress = await examSessionsRepo.findInProgress()
+  const inProgress = await examSessionsRepo.findInProgressExam()
   if (!inProgress) return
   const rows = await questionsRepo.findByIds(inProgress.questionIds)
   if (rows.length === 0) {

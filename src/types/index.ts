@@ -106,6 +106,7 @@ export interface WrongItem extends SyncRecord {
 
 export type ExamStatus = 'in_progress' | 'finished' | 'abandoned'
 export type ExamSubMode =
+  | 'practice' // 自测
   | 'classic' // 传统限时
   | 'wrong_redo' // 错题重做
   | 'random' // 随机抽查

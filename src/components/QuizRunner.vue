@@ -81,13 +81,13 @@ function stopTimer() {
   }
 }
 
-// ===== ExamSession 持久化（考试模式） =====
+// ===== 会话持久化（考试 / 自测） =====
 async function initSession() {
-  if (props.mode !== 'exam') return
   if (props.initialSession) {
     session.value = props.initialSession
     answers.value = { ...props.initialSession.answers }
     startedAt.value = props.initialSession.startTime
+    if (!props.classic) restoreSubmittedState()
     if (props.classic && durationMinVal.value) {
       const elapsedSec = Math.floor((Date.now() - props.initialSession.startTime) / 1000)
       remainingSec.value = Math.max(durationMinVal.value * 60 - elapsedSec, 0)
@@ -100,7 +100,9 @@ async function initSession() {
         subjectId: props.questions[0]?.subjectId || '',
         count: total.value,
         durationMin: durationMinVal.value,
-        subMode: props.examSubMode || (props.classic ? 'classic' : 'wrong_redo'),
+        subMode: props.mode === 'practice'
+          ? 'practice'
+          : props.examSubMode || (props.classic ? 'classic' : 'wrong_redo'),
       },
       props.questions.map((q) => q.id),
     )
@@ -117,6 +119,26 @@ function persistAnswers() {
   persistTimer = setTimeout(() => {
     examSessionsRepo.updateAnswers(session.value!.id, { ...answers.value })
   }, 800)
+}
+
+function flushAnswers() {
+  if (!session.value) return
+  examSessionsRepo.updateAnswers(session.value.id, { ...answers.value })
+}
+
+function restoreSubmittedState() {
+  const nextSubmitted: Record<string, boolean> = {}
+  const nextGradeMap: Record<string, boolean> = {}
+  for (const q of props.questions) {
+    const ans = answers.value[q.id]
+    if (ans == null || (Array.isArray(ans) && ans.length === 0)) continue
+    nextSubmitted[q.id] = true
+    if (isObjective(q.type)) {
+      nextGradeMap[q.id] = gradeObjective(q, ans).isCorrect
+    }
+  }
+  submitted.value = nextSubmitted
+  gradeMap.value = nextGradeMap
 }
 
 // ===== 答题逻辑 =====
@@ -288,11 +310,11 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopTimer()
-  // 清理未完成的持久化定时器，避免卸载后写库
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
   }
+  flushAnswers()
 })
 
 const isSelected = (letter: string) => {

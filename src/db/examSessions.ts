@@ -42,9 +42,27 @@ export const examSessionsRepo = {
   },
 
   /** 最近一场进行中的考试（用于恢复） */
-  async findInProgress(): Promise<ExamSession | undefined> {
+  async findInProgressExam(): Promise<ExamSession | undefined> {
     const arr = await db.examSessions.where('status').equals('in_progress').toArray()
-    return arr.sort((a, b) => b.startTime - a.startTime)[0]
+    return arr
+      .filter((s) => s.config.subMode !== 'practice')
+      .sort((a, b) => b.startTime - a.startTime)[0]
+  },
+
+  /** 最近一场进行中的自测（用于恢复） */
+  async findInProgressPractice(): Promise<ExamSession | undefined> {
+    const arr = await db.examSessions.where('status').equals('in_progress').toArray()
+    return arr
+      .filter((s) => s.config.subMode === 'practice')
+      .sort((a, b) => b.startTime - a.startTime)[0]
+  },
+
+  async listInProgressPractice(limit = 20): Promise<ExamSession[]> {
+    const arr = await db.examSessions.where('status').equals('in_progress').toArray()
+    return arr
+      .filter((s) => s.config.subMode === 'practice')
+      .sort((a, b) => b.startTime - a.startTime)
+      .slice(0, limit)
   },
 
   async listRecent(limit = 20): Promise<ExamSession[]> {

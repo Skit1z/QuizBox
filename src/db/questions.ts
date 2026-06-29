@@ -133,9 +133,42 @@ export const questionsRepo = {
     autoSync()
   },
 
+  async moveToSubject(ids: string[], subjectId: string): Promise<void> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))]
+    if (!uniqueIds.length) return
+    const now = Date.now()
+    await db.transaction('rw', db.questions, async () => {
+      for (const id of uniqueIds) {
+        const existing = await db.questions.get(id)
+        if (!existing || isDeleted(existing.deletedAt)) continue
+        await db.questions.update(id, {
+          subjectId,
+          updatedAt: now,
+          revision: (existing.revision || 0) + 1,
+        })
+      }
+    })
+    autoSync()
+  },
+
   async remove(id: string): Promise<void> {
     const now = Date.now()
     await db.questions.update(id, { deletedAt: now, updatedAt: now })
+    autoSync()
+  },
+
+  async removeBulk(ids: string[]): Promise<void> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))]
+    if (!uniqueIds.length) return
+    const now = Date.now()
+    await db.transaction('rw', db.questions, async () => {
+      await db.questions.bulkUpdate(
+        uniqueIds.map((id) => ({
+          key: id,
+          changes: { deletedAt: now, updatedAt: now },
+        })),
+      )
+    })
     autoSync()
   },
 
