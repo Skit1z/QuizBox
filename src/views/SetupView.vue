@@ -45,7 +45,7 @@ onMounted(async () => {
         <van-icon name="cloud-o" size="36" color="#fff" />
       </div>
       <h1 class="setup__title">欢迎使用题盒</h1>
-      <p class="setup__desc">首次使用请配置 WebDAV 云盘，<br />用于多端同步你的题库数据</p>
+      <p class="setup__desc">可选配置 WebDAV 云盘，<br />用于多端同步你的题库数据</p>
     </div>
 
     <div class="card setup__form">
@@ -77,6 +77,9 @@ onMounted(async () => {
     <div class="setup__action">
       <van-button type="primary" block round :loading="syncStore.syncing" @click="saveAndSync">
         {{ syncStore.syncing ? '连接中…' : '连接并开始使用' }}
+      </van-button>
+      <van-button block round plain @click="router.replace({ name: 'home' })">
+        暂不配置，直接使用
       </van-button>
     </div>
   </div>
@@ -162,5 +165,10 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-2);
   line-height: 1.5;
+}
+.setup__action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 </style>

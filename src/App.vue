@@ -55,18 +55,12 @@ onMounted(async () => {
   } catch (e) {
     showToast('数据库初始化失败')
   }
-  // 一次性加载设置：应用主题 + 判断是否需要首启引导
+  // 一次性加载设置并应用主题。同步是可选能力，不阻塞手机端本地使用。
   try {
     const { useSettingsStore } = await import('@/stores/settings')
     const settings = useSettingsStore()
     await settings.load()
     settings.applyAll()
-    // 移动端首次启动引导：未配置 WebDAV 则跳转初始化页
-    const isMobile = !isDesktop.value
-    const hasSync = (settings.webdav.enabled && settings.webdav.url) || settings.bankSync.enabled
-    if (isMobile && !hasSync) {
-      if (route.name !== 'setup') router.replace({ name: 'setup' })
-    }
   } catch {
     // ignore
   }

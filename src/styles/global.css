@@ -47,6 +47,23 @@
 
   /* Vant 主色对齐 */
   --van-primary-color: var(--brand);
+  --van-text-color: var(--text);
+  --van-text-color-2: var(--text-2);
+  --van-text-color-3: var(--text-3);
+  --van-background: var(--bg);
+  --van-background-2: var(--surface);
+  --van-background-3: var(--surface-2);
+  --van-popup-background: var(--surface);
+  --van-dialog-background: var(--surface);
+  --van-dialog-has-title-message-text-color: var(--text-2);
+  --van-action-sheet-item-background: var(--surface);
+  --van-action-sheet-item-text-color: var(--text);
+  --van-action-sheet-subname-color: var(--text-2);
+  --van-action-sheet-description-color: var(--text-2);
+  --van-action-sheet-cancel-text-color: var(--text-2);
+  --van-action-sheet-cancel-padding-color: var(--bg);
+  --van-toast-background: rgba(29, 33, 41, 0.88);
+  --van-toast-text-color: #ffffff;
 }
 
 /* 主题色：蓝灰 */
@@ -101,14 +118,22 @@
 
   /* Vant Dialog */
   --van-dialog-background: #202329;
-  --van-dialog-title-color: #f0f1f3;
-  --van-dialog-message-text-color: #c9cdd4;
   --van-dialog-has-title-message-text-color: #c9cdd4;
 
   /* Vant Default Button */
   --van-button-default-background: #262932;
   --van-button-default-color: #f0f1f3;
   --van-button-default-border-color: #363a44;
+
+  /* Vant popup-like surfaces */
+  --van-action-sheet-item-background: #202329;
+  --van-action-sheet-item-text-color: #f0f1f3;
+  --van-action-sheet-subname-color: #c9cdd4;
+  --van-action-sheet-description-color: #c9cdd4;
+  --van-action-sheet-cancel-text-color: #c9cdd4;
+  --van-action-sheet-cancel-padding-color: #16181d;
+  --van-toast-background: rgba(0, 0, 0, 0.78);
+  --van-toast-text-color: #f0f1f3;
 
   /* Vant Picker */
   --van-picker-background: #202329;
@@ -150,14 +175,22 @@
 
     /* Vant Dialog */
     --van-dialog-background: #202329;
-    --van-dialog-title-color: #f0f1f3;
-    --van-dialog-message-text-color: #c9cdd4;
     --van-dialog-has-title-message-text-color: #c9cdd4;
 
     /* Vant Default Button */
     --van-button-default-background: #262932;
     --van-button-default-color: #f0f1f3;
     --van-button-default-border-color: #363a44;
+
+    /* Vant popup-like surfaces */
+    --van-action-sheet-item-background: #202329;
+    --van-action-sheet-item-text-color: #f0f1f3;
+    --van-action-sheet-subname-color: #c9cdd4;
+    --van-action-sheet-description-color: #c9cdd4;
+    --van-action-sheet-cancel-text-color: #c9cdd4;
+    --van-action-sheet-cancel-padding-color: #16181d;
+    --van-toast-background: rgba(0, 0, 0, 0.78);
+    --van-toast-text-color: #f0f1f3;
 
     /* Vant Picker */
     --van-picker-background: #202329;
@@ -391,4 +424,3 @@ body {
   background: var(--brand-soft) !important;
   box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
 }
-
