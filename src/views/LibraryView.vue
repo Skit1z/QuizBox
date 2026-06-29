@@ -74,24 +74,26 @@ onMounted(refresh)
     </div>
 
     <div v-else class="subject-list">
-      <van-swipe-cell v-for="s in subjectsStore.list" :key="s.id" class="swipe-card">
-        <div
-          class="subject-card card--clickable"
-          @click="router.push({ name: 'subject-detail', params: { subjectId: s.id } })"
-        >
-          <div class="subject-card__icon" :style="{ background: s.color || 'var(--brand)' }">
-            {{ s.name.slice(0, 1) }}
+      <div v-for="s in subjectsStore.list" :key="s.id" class="scroller-item-wrap">
+        <van-swipe-cell class="swipe-card">
+          <div
+            class="subject-card card--clickable"
+            @click="router.push({ name: 'subject-detail', params: { subjectId: s.id } })"
+          >
+            <div class="subject-card__icon" :style="{ background: s.color || 'var(--brand)' }">
+              {{ s.name.slice(0, 1) }}
+            </div>
+            <div class="subject-card__body">
+              <div class="subject-card__name">{{ s.name }}</div>
+              <div class="subject-card__count">{{ counts[s.id] || 0 }} 道题</div>
+            </div>
+            <van-icon name="arrow" size="14" color="var(--text-3)" />
           </div>
-          <div class="subject-card__body">
-            <div class="subject-card__name">{{ s.name }}</div>
-            <div class="subject-card__count">{{ counts[s.id] || 0 }} 道题</div>
-          </div>
-          <van-icon name="arrow" size="14" color="var(--text-3)" />
-        </div>
-        <template #right>
-          <van-button square type="danger" text="删除" style="height: 100%" @click="removeSubject(s.id, s.name)" />
-        </template>
-      </van-swipe-cell>
+          <template #right>
+            <van-button square type="danger" text="删除" style="height: 100%" @click="removeSubject(s.id, s.name)" />
+          </template>
+        </van-swipe-cell>
+      </div>
     </div>
 
     <van-dialog

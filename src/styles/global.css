@@ -69,7 +69,8 @@
 }
 
 /* ===== 暗黑模式 ===== */
-.dark {
+.dark,
+.dark[data-theme-color] {
   --bg: #16181d;
   --surface: #202329;
   --surface-2: #262932;
@@ -97,10 +98,28 @@
   --van-tabs-nav-background: #202329;
   --van-popup-background: #202329;
   --van-field-input-text-color: #f0f1f3;
+
+  /* Vant Dialog */
+  --van-dialog-background: #202329;
+  --van-dialog-title-color: #f0f1f3;
+  --van-dialog-message-text-color: #c9cdd4;
+  --van-dialog-has-title-message-text-color: #c9cdd4;
+
+  /* Vant Default Button */
+  --van-button-default-background: #262932;
+  --van-button-default-color: #f0f1f3;
+  --van-button-default-border-color: #363a44;
+
+  /* Vant Picker */
+  --van-picker-background: #202329;
+  --van-picker-option-text-color: #f0f1f3;
+  --van-picker-mask-color: linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)), linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
+  --van-picker-loading-icon-color: var(--brand);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.light) {
+  :root:not(.light),
+  :root:not(.light)[data-theme-color] {
     --bg: #16181d;
     --surface: #202329;
     --surface-2: #262932;
@@ -128,6 +147,23 @@
     --van-tabs-nav-background: #202329;
     --van-popup-background: #202329;
     --van-field-input-text-color: #f0f1f3;
+
+    /* Vant Dialog */
+    --van-dialog-background: #202329;
+    --van-dialog-title-color: #f0f1f3;
+    --van-dialog-message-text-color: #c9cdd4;
+    --van-dialog-has-title-message-text-color: #c9cdd4;
+
+    /* Vant Default Button */
+    --van-button-default-background: #262932;
+    --van-button-default-color: #f0f1f3;
+    --van-button-default-border-color: #363a44;
+
+    /* Vant Picker */
+    --van-picker-background: #202329;
+    --van-picker-option-text-color: #f0f1f3;
+    --van-picker-mask-color: linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)), linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
+    --van-picker-loading-icon-color: var(--brand);
   }
 }
 
