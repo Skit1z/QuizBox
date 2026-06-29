@@ -151,6 +151,8 @@ export interface SyncMeta {
 export interface MetaShard {
   subjects: Record<string, Subject>
   chapters: Record<string, Chapter>
+  /** 管理员密码哈希（SHA-256），跨设备共享；空字符串表示未设置 */
+  adminPwdHash?: string
 }
 
 /** 单个题目分片（按科目分组，超出 250KB 自动拆分） */

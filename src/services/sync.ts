@@ -493,7 +493,10 @@ async function exportMetaShard(): Promise<MetaShard> {
   for (const s of subjects) subjectMap[s.id] = s
   const chapterMap: Record<string, any> = {}
   for (const c of chapters) chapterMap[c.id] = c
-  return { subjects: subjectMap, chapters: chapterMap }
+  // 管理员密码哈希随 meta 分片同步到云端，实现跨设备共享
+  const { useAdminStore } = await import('@/stores/admin')
+  const adminStore = useAdminStore()
+  return { subjects: subjectMap, chapters: chapterMap, adminPwdHash: adminStore.getHash() }
 }
 
 async function exportSubjectQuestions(subjectId: string): Promise<Record<string, any>> {
@@ -552,6 +555,10 @@ async function mergeMetaToLocal(meta: MetaShard): Promise<number> {
       pulled += toPut.length
     }
   }
+  // 同步管理员密码哈希：以云端为权威源，跨设备共享同一密码
+  const { useAdminStore } = await import('@/stores/admin')
+  const adminStore = useAdminStore()
+  adminStore.applyRemoteHash(meta.adminPwdHash)
   return pulled
 }
 
@@ -583,7 +590,13 @@ async function detectLocalChanges(
       ? db.chapters.where('updatedAt').above(lastSync).toArray()
       : db.chapters.toArray(),
   ])
-  if (changedSubjects.length || changedChapters.length) {
+
+  // 管理员密码哈希是否与云端不同（设/改密码后需推送）
+  const { useAdminStore } = await import('@/stores/admin')
+  const adminStore = useAdminStore()
+  const adminChanged = adminStore.getHash() !== adminStore._remoteHash
+
+  if (changedSubjects.length || changedChapters.length || adminChanged) {
     result.meta = await exportMetaShard()
   }
 

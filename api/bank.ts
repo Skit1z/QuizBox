@@ -197,12 +197,13 @@ async function handleGet(req: any, res: any) {
   // ?shard=path：返回指定分片内容
   if (typeof q.shard === 'string') {
     const shardPath = q.shard
-    // 安全校验：只允许读取 quizbox/shard_* 路径，防止越权读取其他 blob
-    if (!SHARD_PATH_RE.test(shardPath)) {
+    // 安全校验：只允许读取 quizbox/shard_* 题目分片，或 meta.json
+    // （meta 含 subjects/chapters/admin 密码哈希，是同步必需的元数据分片）
+    if (!SHARD_PATH_RE.test(shardPath) && shardPath !== META_PATH) {
       res.status(400).json({ error: '非法的分片路径' })
       return
     }
-    const shard = await readJson<QuestionShard>(shardPath)
+    const shard = await readJson(shardPath)
     if (!shard) {
       res.status(404).json({ error: '分片不存在' })
       return
