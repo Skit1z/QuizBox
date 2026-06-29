@@ -14,11 +14,20 @@ const ALLOWED_HOSTS = [
   'nanaooo.com',
 ]
 
+function getAllowedHosts(): string[] {
+  const custom = (process.env.WEBDAV_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean)
+  return [...ALLOWED_HOSTS, ...custom]
+}
+
 function isAllowed(url: string): boolean {
   try {
     const u = new URL(url)
-    // 允许白名单，也允许自定义（用户自建 Nextcloud 等需自行承担风险）
-    return ALLOWED_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith('.' + h)) || true
+    if (u.protocol !== 'https:') return false
+    const hostname = u.hostname.toLowerCase()
+    return getAllowedHosts().some((h) => hostname === h || hostname.endsWith('.' + h))
   } catch {
     return false
   }

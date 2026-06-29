@@ -46,8 +46,8 @@ export async function parseQuestionsWithAI(
 
 const REPAIR_SYSTEM = `你是题库修复助手。用户给你若干段原始题目文本，规则解析器无法确定其结构。
 请逐段解析，去除乱码/无效内容。如果某段不是有效题目则跳过。
-输出 JSON：{"questions":[{"blockIndex":0,"type","stem","options","answer","analysis","confidence"}]}
-blockIndex 对应输入的序号（从0开始）。type 值：single/multiple/judge/fill/short/essay。
+输出 JSON：{"questions":[{"blockId":"block_0","type","stem","options","answer","analysis","confidence"}]}
+blockId 必须原样使用输入中标注的 blockId，不要重新编号。type 值：single/multiple/judge/fill/short/essay。
 单选/多选 answer 用字母；判断用"T"/"F"；填空用字符串数组。`
 
 const MAX_BATCH_CHARS = 3000
@@ -59,42 +59,55 @@ export async function repairWithAI(
   if (blocks.length === 0) return repaired
 
   // 分批发送，每批不超过 MAX_BATCH_CHARS
-  const batches: { startIdx: number; text: string }[] = []
+  const batches: { indices: number[]; text: string }[] = []
   let batch = ''
-  let batchStart = 0
+  let batchIndices: number[] = []
 
   for (let i = 0; i < blocks.length; i++) {
-    const entry = `--- 题目块 ${i} ---\n${blocks[i]}\n`
+    const entry = `--- blockId: block_${i} ---\n${blocks[i]}\n`
     if (batch.length + entry.length > MAX_BATCH_CHARS && batch) {
-      batches.push({ startIdx: batchStart, text: batch })
+      batches.push({ indices: batchIndices, text: batch })
       batch = ''
-      batchStart = i
+      batchIndices = []
     }
     batch += entry
+    batchIndices.push(i)
   }
-  if (batch) batches.push({ startIdx: batchStart, text: batch })
+  if (batch) batches.push({ indices: batchIndices, text: batch })
 
   // 并行发送所有批次
   const results = await Promise.allSettled(
     batches.map(async (b) => {
-      const res = await chatJson<{ questions: Array<ParsedQuestion & { blockIndex: number }> }>(
+      const res = await chatJson<{
+        questions: Array<ParsedQuestion & { blockId?: string; blockIndex?: number }>
+      }>(
         [
           { role: 'system', content: REPAIR_SYSTEM },
           { role: 'user', content: b.text },
         ],
         { temperature: 0.1 },
       )
-      return res.questions || []
+      return { batch: b, questions: res.questions || [] }
     }),
   )
 
   for (const r of results) {
     if (r.status !== 'fulfilled') continue
-    for (const q of r.value) {
-      const { blockIndex, ...question } = q
-      if (blockIndex !== undefined && question.stem) {
+    for (const q of r.value.questions) {
+      const { blockId, blockIndex, ...question } = q
+      const idMatch = blockId?.match(/^block_(\d+)$/)
+      let idx = idMatch ? Number(idMatch[1]) : undefined
+
+      // 兼容旧模型输出：有些模型仍会返回批内 blockIndex。
+      if (idx === undefined && blockIndex !== undefined) {
+        idx = r.value.batch.indices.includes(blockIndex)
+          ? blockIndex
+          : r.value.batch.indices[blockIndex]
+      }
+
+      if (idx !== undefined && idx >= 0 && idx < blocks.length && question.stem) {
         question.confidence = Math.max(question.confidence ?? 0.8, 0.7)
-        repaired.set(blockIndex, question)
+        repaired.set(idx, question)
       }
     }
   }

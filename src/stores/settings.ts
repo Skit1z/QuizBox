@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { db } from '@/db'
-import { encryptSecret, decryptSecret } from '@/utils/crypto'
+import { encryptSecret, decryptSecret, SecretDecryptError } from '@/utils/crypto'
 import { findProvider } from '@/services/ai-providers'
 import { DEFAULT_THEME_COLOR, type ThemeColor } from '@/themes/tokens'
 
@@ -72,6 +72,7 @@ export const useSettingsStore = defineStore('settings', {
     ocr: { ...DEFAULT_OCR },
     theme: 'auto' as 'light' | 'dark' | 'auto',
     themeColor: DEFAULT_THEME_COLOR,
+    secretErrors: [] as string[],
     loaded: false,
   }),
   actions: {
@@ -87,33 +88,47 @@ export const useSettingsStore = defineStore('settings', {
       if (aiMeta) {
         const raw = JSON.parse(aiMeta.value) as StoredAi
         const provider = raw.providerId ? findProvider(raw.providerId) : undefined
+        const apiKey = await this.tryDecrypt(raw.apiKey, 'AI API Key')
         this.ai = {
           providerId: raw.providerId || 'custom',
           // 若是已知供应商，baseUrl 以预设为准（避免配置漂移）
           baseUrl: provider && !provider.custom ? provider.baseUrl : raw.baseUrl,
-          apiKey: await decryptSecret(raw.apiKey),
+          apiKey,
           model: raw.model || provider?.model || '',
         }
       }
       if (wdMeta) {
         const raw = JSON.parse(wdMeta.value) as StoredWebdav
+        const password = await this.tryDecrypt(raw.password, 'WebDAV 密码')
         this.webdav = {
           enabled: raw.enabled,
           // url 为空时回退默认值（坚果云），兼容旧版存了空字符串的用户
           url: raw.url || DEFAULT_WEBDAV.url,
           username: raw.username,
-          password: await decryptSecret(raw.password),
+          password,
           remotePath: raw.remotePath || '/QuizBox',
         }
       }
       if (ocrMeta) {
         const raw = JSON.parse(ocrMeta.value) as { token: string }
-        this.ocr = { token: await decryptSecret(raw.token) }
+        this.ocr = { token: await this.tryDecrypt(raw.token, 'OCR Token') }
       }
       if (themeMeta) this.theme = JSON.parse(themeMeta.value)
       if (colorMeta) this.themeColor = JSON.parse(colorMeta.value) as ThemeColor
       this.loaded = true
       this.applyAll()
+    },
+
+    async tryDecrypt(stored: string, label: string): Promise<string> {
+      try {
+        return await decryptSecret(stored)
+      } catch (e) {
+        if (e instanceof SecretDecryptError) {
+          if (!this.secretErrors.includes(label)) this.secretErrors.push(label)
+          return ''
+        }
+        throw e
+      }
     },
 
     /** 选择供应商：自动填入 baseUrl 与默认 model */
@@ -135,6 +150,7 @@ export const useSettingsStore = defineStore('settings', {
         model: this.ai.model,
       }
       await db.syncMeta.put({ key: META_KEY_AI, value: JSON.stringify(stored) })
+      this.secretErrors = this.secretErrors.filter((x) => x !== 'AI API Key')
     },
 
     async saveWebdav(settings: Partial<WebdavSettings>) {
@@ -147,6 +163,7 @@ export const useSettingsStore = defineStore('settings', {
         remotePath: this.webdav.remotePath,
       }
       await db.syncMeta.put({ key: META_KEY_WEBDAV, value: JSON.stringify(stored) })
+      this.secretErrors = this.secretErrors.filter((x) => x !== 'WebDAV 密码')
       const { resetSyncClient } = await import('@/services/sync')
       resetSyncClient()
     },
@@ -157,6 +174,7 @@ export const useSettingsStore = defineStore('settings', {
         token: this.ocr.token ? await encryptSecret(this.ocr.token) : '',
       }
       await db.syncMeta.put({ key: META_KEY_OCR, value: JSON.stringify(stored) })
+      this.secretErrors = this.secretErrors.filter((x) => x !== 'OCR Token')
     },
 
     async setTheme(theme: 'light' | 'dark' | 'auto') {

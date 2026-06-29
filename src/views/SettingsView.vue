@@ -185,6 +185,11 @@ onMounted(async () => {
       <h1 class="page-title">设置</h1>
     </div>
 
+    <div v-if="settings.secretErrors.length" class="test-result test-result--err secret-warning">
+      <van-icon name="warning-o" />
+      <span>{{ settings.secretErrors.join('、') }} 解密失败，请重新填写并保存。</span>
+    </div>
+
     <!-- ===== AI 接口 ===== -->
     <div class="section-title">AI 接口</div>
     <div class="card">
@@ -392,6 +397,9 @@ onMounted(async () => {
 .test-result--err {
   color: var(--danger);
   background: rgba(245, 63, 63, 0.08);
+}
+.secret-warning {
+  margin-bottom: var(--sp-4);
 }
 .field-group {
   display: flex;

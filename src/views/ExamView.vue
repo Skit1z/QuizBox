@@ -5,12 +5,14 @@ import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'
 import { wrongBookRepo } from '@/db/wrongbook'
+import { attemptsRepo } from '@/db/attempts'
+import { examSessionsRepo } from '@/db/examSessions'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
 import ExamResult from '@/components/ExamResult.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
-import type { ExamSubMode } from '@/types'
+import type { ExamSession, ExamSubMode } from '@/types'
 import type { Question } from '@/types'
 
 const router = useRouter()
@@ -20,6 +22,7 @@ const started = ref(false)
 const finished = ref(false)
 const questions = ref<Question[]>([])
 const result = ref<any>(null)
+const restoredSession = ref<ExamSession | null>(null)
 
 const subjectId = ref('')
 const subMode = ref<ExamSubMode>('classic')
@@ -46,7 +49,7 @@ async function start() {
     return
   }
   const base = await questionsRepo.filter({ subjectId: subjectId.value })
-  let qs: Question[] = []
+  let qs: Question[]
 
   switch (subMode.value) {
     case 'wrong_redo':
@@ -57,9 +60,15 @@ async function start() {
         qs = base.filter((q) => wMap.has(q.id))
         qs = shuffle(qs)
       } else {
-        // weak：错题优先排序，带随机扰动
+        const stats = await attemptsRepo.getObjectiveStats(base.map((q) => q.id))
+        // weak：按真实错题率和错题本状态加权，带随机扰动
         qs = base
-          .map((q) => ({ q, w: wMap.get(q.id) || 0, r: Math.random() }))
+          .map((q) => {
+            const s = stats.get(q.id)
+            const wrongRate = s?.total ? s.wrong / s.total : 0
+            const wrongBookBoost = wMap.has(q.id) ? 1 : 0
+            return { q, w: wrongBookBoost + wrongRate, r: Math.random() }
+          })
           .sort((a, b) => b.w - a.w || a.r - b.r)
           .map((x) => x.q)
       }
@@ -78,6 +87,7 @@ async function start() {
     return
   }
   questions.value = qs
+  restoredSession.value = null
   started.value = true
 }
 
@@ -90,6 +100,23 @@ function onFinish(r: any) {
 onMounted(async () => {
   await subjectsStore.load()
   if (subjectsStore.list.length === 1) subjectId.value = subjectsStore.list[0].id
+  const inProgress = await examSessionsRepo.findInProgress()
+  if (!inProgress) return
+  const rows = await questionsRepo.findByIds(inProgress.questionIds)
+  if (rows.length === 0) {
+    await examSessionsRepo.abandon(inProgress.id)
+    return
+  }
+  const byId = new Map(rows.map((q) => [q.id, q]))
+  questions.value = inProgress.questionIds
+    .map((id) => byId.get(id))
+    .filter((q): q is Question => !!q)
+  subjectId.value = inProgress.config.subjectId
+  subMode.value = inProgress.config.subMode
+  count.value = inProgress.config.count
+  durationMin.value = inProgress.config.durationMin || durationMin.value
+  restoredSession.value = inProgress
+  started.value = true
 })
 </script>
 
@@ -116,6 +143,8 @@ onMounted(async () => {
       :classic="classicModes.includes(subMode)"
       :duration-min="durationMin"
       :questions="questions"
+      :initial-session="restoredSession || undefined"
+      :exam-sub-mode="subMode"
       @finish="onFinish"
     />
 

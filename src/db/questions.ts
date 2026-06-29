@@ -14,6 +14,7 @@ export interface QuestionInput {
   attachments?: string[]
   difficulty?: Difficulty
   tags?: string[]
+  sourceHash?: string
 }
 
 export const questionsRepo = {
@@ -76,9 +77,7 @@ export const questionsRepo = {
 
   async create(input: QuestionInput): Promise<Question> {
     const now = Date.now()
-    const sourceHash = await sha256(
-      input.stem + '|' + JSON.stringify(input.answer ?? ''),
-    )
+    const sourceHash = input.sourceHash || await sha256(input.stem + '|' + JSON.stringify(input.answer ?? ''))
     const q: Question = {
       id: uid('q_'),
       subjectId: input.subjectId,
@@ -99,6 +98,31 @@ export const questionsRepo = {
     await db.questions.put(q)
     autoSync()
     return q
+  },
+
+  async createBulk(inputs: QuestionInput[]): Promise<Question[]> {
+    if (inputs.length === 0) return []
+    const now = Date.now()
+    const rows: Question[] = await Promise.all(inputs.map(async (input) => ({
+      id: uid('q_'),
+      subjectId: input.subjectId,
+      chapterId: input.chapterId ?? null,
+      type: input.type,
+      stem: input.stem,
+      options: input.options,
+      answer: input.answer,
+      analysis: input.analysis,
+      attachments: input.attachments,
+      difficulty: input.difficulty || 'medium',
+      tags: input.tags,
+      sourceHash: input.sourceHash || await sha256(input.stem + '|' + JSON.stringify(input.answer ?? '')),
+      updatedAt: now,
+      deletedAt: 0,
+      revision: 1,
+    })))
+    await db.questions.bulkPut(rows)
+    autoSync()
+    return rows
   },
 
   async update(id: string, patch: Partial<QuestionInput>): Promise<void> {
@@ -126,6 +150,20 @@ export const questionsRepo = {
       .equals(hash)
       .toArray()
     return arr.find((q) => q.subjectId === subjectId && !isDeleted(q.deletedAt))
+  },
+
+  async findDuplicateHashes(subjectId: string, hashes: string[]): Promise<Set<string>> {
+    const uniqueHashes = [...new Set(hashes.filter(Boolean))]
+    if (uniqueHashes.length === 0) return new Set()
+    const rows = await db.questions
+      .where('sourceHash')
+      .anyOf(uniqueHashes)
+      .toArray()
+    return new Set(
+      rows
+        .filter((q) => q.subjectId === subjectId && q.sourceHash && !isDeleted(q.deletedAt))
+        .map((q) => q.sourceHash!),
+    )
   },
 
   /** 高效计数：用索引 count 而非拉全表 */

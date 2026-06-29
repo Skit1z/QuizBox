@@ -353,7 +353,7 @@ function detectType(
   sectionType?: QuestionType,
 ): QuestionType {
   // 硬证据优先：有选项 → 一定是选择题（覆盖 sectionType）
-  if (options.length >= 2) {
+  if (options.length >= 1) {
     const letters = answer.match(/[A-Ha-h]/g)
     if (letters && letters.length > 1) return 'multiple'
     return 'single'

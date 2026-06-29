@@ -15,6 +15,7 @@ type SyncTable = (typeof SYNC_TABLES)[number]
 
 const SYNC_FILE = 'sync.json'
 const ATTACH_DIR = 'attachments'
+const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 let client: WebDAVClient | null = null
 let syncing = false
@@ -118,9 +119,10 @@ export async function sync(): Promise<{ pulled: number; pushed: number; ok: bool
   currentSync = (async () => {
     try {
       await ensureDirs(c)
+      await pruneLocalTombstones()
       const remote = await fetchRemote(c)
       const local = await exportLocal()
-      const merged = mergeAll(local, remote)
+      const merged = pruneMergedTombstones(mergeAll(local, remote))
       await importLocal(merged)
       await uploadSyncFile(c, merged)
       await syncAttachments(c)
@@ -140,7 +142,7 @@ export async function sync(): Promise<{ pulled: number; pushed: number; ok: bool
 /** 防抖自动同步 */
 export const autoSync = debounce(() => {
   void sync()
-}, 5000)
+}, 30000)
 
 /** 启动时拉取 */
 export async function syncOnStartup() {
@@ -186,6 +188,10 @@ async function exportLocal(): Promise<SyncFileData> {
   return { version: 1, tables }
 }
 
+function isExpiredTombstone(row: any, now = Date.now()): boolean {
+  return isDeleted(row?.deletedAt) && now - Number(row.deletedAt) > TOMBSTONE_RETENTION_MS
+}
+
 interface MergeStats {
   pulled: number
   pushed: number
@@ -227,6 +233,38 @@ function mergeAll(local: SyncFileData, remote: SyncFileData): SyncFileData & { s
     merged.tables[t] = out
   }
   return { ...merged, stats: { pulled, pushed } }
+}
+
+function pruneMergedTombstones(
+  merged: SyncFileData & { stats: MergeStats },
+): SyncFileData & { stats: MergeStats } {
+  const now = Date.now()
+  for (const t of SYNC_TABLES) {
+    const table = merged.tables[t] || {}
+    for (const [id, row] of Object.entries(table)) {
+      if (isExpiredTombstone(row, now)) delete table[id]
+    }
+  }
+  return merged
+}
+
+async function pruneLocalTombstones() {
+  const now = Date.now()
+  const expiredBefore = now - TOMBSTONE_RETENTION_MS
+  for (const t of SYNC_TABLES) {
+    const rows = await (db as any)[t]
+      .where('deletedAt')
+      .between(1, expiredBefore, true, true)
+      .toArray()
+      .catch(async () => {
+        const all = await (db as any)[t].toArray()
+        return all.filter((row: any) => isExpiredTombstone(row, now))
+      })
+    const ids = rows
+      .filter((row: any) => isExpiredTombstone(row, now))
+      .map((row: any) => row.id)
+    if (ids.length) await (db as any)[t].bulkDelete(ids)
+  }
 }
 
 async function importLocal(merged: SyncFileData & { stats: MergeStats }) {

@@ -34,7 +34,8 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 /** 同步用的软删除/时间戳基类 */
 export interface SyncRecord {
   updatedAt: number
-  deletedAt: number | null
+  /** 0 表示未删除，时间戳(>0)表示软删除时间；兼容读取旧 null 数据由 isDeleted 处理 */
+  deletedAt: number
   revision: number
 }
 

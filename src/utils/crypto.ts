@@ -1,10 +1,17 @@
 // 敏感信息（API Key / WebDAV 密码）的本地加密存储。
 // 采用 AES-GCM，密钥由本机生成的随机盐 + 固定口令派生。
-// 注：纯前端环境下无法做到真正的密钥隔离，此方案可防止 IndexedDB
-// 被简单明文读取，提升对脚本/XSS 直接 dump 的门槛。
+// 注：纯前端环境无法做到真正的密钥隔离；此方案只避免 IndexedDB 明文落盘，
+// 不应被视为能抵御本地攻击者或 XSS。解密失败必须显式暴露，避免凭据被静默清空。
 
 const SALT_KEY = '__qa_salt__'
 const ENC_PREFIX = 'enc::'
+
+export class SecretDecryptError extends Error {
+  constructor() {
+    super('敏感信息解密失败，请重新填写并保存')
+    this.name = 'SecretDecryptError'
+  }
+}
 
 async function getSalt(): Promise<string> {
   let salt = localStorage.getItem(SALT_KEY)
@@ -77,7 +84,7 @@ export async function decryptSecret(stored: string): Promise<string> {
     )
     return new TextDecoder().decode(plain)
   } catch {
-    return ''
+    throw new SecretDecryptError()
   }
 }
 

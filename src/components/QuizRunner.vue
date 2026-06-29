@@ -9,7 +9,7 @@ import { gradeObjective } from '@/services/grading'
 import { attemptsRepo } from '@/db/attempts'
 import { wrongBookRepo } from '@/db/wrongbook'
 import { examSessionsRepo } from '@/db/examSessions'
-import type { AttemptMode, ExamSession } from '@/types'
+import type { AttemptMode, ExamSession, ExamSubMode } from '@/types'
 
 const props = defineProps<{
   questions: Question[]
@@ -18,6 +18,9 @@ const props = defineProps<{
   classic?: boolean
   /** 考试时长（分钟），仅 classic 模式 */
   durationMin?: number
+  /** 未完成考试恢复 */
+  initialSession?: ExamSession
+  examSubMode?: ExamSubMode
 }>()
 
 const emit = defineEmits<{
@@ -61,7 +64,7 @@ function fmtTime(sec: number): string {
 
 function startTimer() {
   if (!props.classic || !durationMinVal.value) return
-  remainingSec.value = durationMinVal.value * 60
+  if (remainingSec.value <= 0) remainingSec.value = durationMinVal.value * 60
   timer = setInterval(() => {
     remainingSec.value--
     if (remainingSec.value <= 0) {
@@ -81,13 +84,23 @@ function stopTimer() {
 // ===== ExamSession 持久化（考试模式） =====
 async function initSession() {
   if (props.mode !== 'exam') return
+  if (props.initialSession) {
+    session.value = props.initialSession
+    answers.value = { ...props.initialSession.answers }
+    startedAt.value = props.initialSession.startTime
+    if (props.classic && durationMinVal.value) {
+      const elapsedSec = Math.floor((Date.now() - props.initialSession.startTime) / 1000)
+      remainingSec.value = Math.max(durationMinVal.value * 60 - elapsedSec, 0)
+    }
+    return
+  }
   try {
     session.value = await examSessionsRepo.create(
       {
         subjectId: props.questions[0]?.subjectId || '',
         count: total.value,
         durationMin: durationMinVal.value,
-        subMode: props.classic ? 'classic' : 'wrong_redo',
+        subMode: props.examSubMode || (props.classic ? 'classic' : 'wrong_redo'),
       },
       props.questions.map((q) => q.id),
     )
@@ -261,11 +274,16 @@ function submitSelf(rating: number) {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!total.value) return
-  startedAt.value = Date.now()
+  await initSession()
+  if (!session.value) startedAt.value = Date.now()
+  if (props.initialSession && props.classic && durationMinVal.value && remainingSec.value <= 0) {
+    showToast('考试已超时，自动交卷')
+    finishPractice(true)
+    return
+  }
   startTimer()
-  void initSession()
 })
 
 onBeforeUnmount(() => {
@@ -274,10 +292,6 @@ onBeforeUnmount(() => {
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
-  }
-  // 考试模式中途退出标记为放弃
-  if (session.value && props.mode === 'exam') {
-    examSessionsRepo.abandon(session.value.id).catch(() => {})
   }
 })
 

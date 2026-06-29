@@ -193,6 +193,10 @@ async function saveAll() {
 
   await saveImages(images)
 
+  const candidates: QuestionInput[] = []
+  const candidateHashes: string[] = []
+  const seenInFile = new Set<string>()
+
   for (const p of parsed.value) {
     const stem = p.stem?.trim()
     if (!stem) {
@@ -201,11 +205,11 @@ async function saveAll() {
     }
 
     const hash = await sha256(stem + '|' + JSON.stringify(p.answer ?? ''))
-    const duplicate = await questionsRepo.findDuplicate(subjectId, hash)
-    if (duplicate) {
+    if (seenInFile.has(hash)) {
       skipped++
       continue
     }
+    seenInFile.add(hash)
 
     const attachments = (p.imagePlaceholders || [])
       .map(toHash)
@@ -219,13 +223,26 @@ async function saveAll() {
       answer: p.answer ?? '',
       analysis: p.analysis,
       attachments,
+      sourceHash: hash,
     }
-    try {
-      await questionsRepo.create(input)
-      imported++
-    } catch {
+    candidates.push(input)
+    candidateHashes.push(hash)
+  }
+
+  const duplicates = await questionsRepo.findDuplicateHashes(subjectId, candidateHashes)
+  const inputs = candidates.filter((input) => {
+    if (input.sourceHash && duplicates.has(input.sourceHash)) {
       skipped++
+      return false
     }
+    return true
+  })
+
+  try {
+    const created = await questionsRepo.createBulk(inputs)
+    imported = created.length
+  } catch {
+    skipped += inputs.length
   }
 
   showSuccessToast(`已导入 ${imported} 题${skipped ? `，跳过 ${skipped} 题` : ''}`)

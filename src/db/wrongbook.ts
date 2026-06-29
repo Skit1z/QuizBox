@@ -114,21 +114,35 @@ export const wrongBookRepo = {
   },
 
   async setStatus(id: string, status: WrongStatus): Promise<void> {
-    await db.wrongBook.update(id, { status, updatedAt: Date.now() })
+    const existing = await db.wrongBook.get(id)
+    await db.wrongBook.update(id, {
+      status,
+      updatedAt: Date.now(),
+      revision: (existing?.revision || 0) + 1,
+    })
     autoSync()
   },
 
   /** 批量更新状态（单次事务，避免 N 次写入） */
   async setStatusBulk(ids: string[], status: WrongStatus): Promise<void> {
     const now = Date.now()
-    await db.wrongBook.bulkUpdate(ids.map((id) => ({ key: id, changes: { status, updatedAt: now } })))
+    const rows = await db.wrongBook.where('id').anyOf(ids).toArray()
+    const revisionMap = new Map(rows.map((row) => [row.id, (row.revision || 0) + 1]))
+    await db.wrongBook.bulkUpdate(ids.map((id) => ({
+      key: id,
+      changes: { status, updatedAt: now, revision: revisionMap.get(id) || 1 },
+    })))
     autoSync()
   },
 
   /** 把所有待复习错题标记为已掌握（单次 modify） */
   async markAllMastered(): Promise<void> {
     const now = Date.now()
-    await db.wrongBook.where('status').equals('pending').modify({ status: 'mastered', updatedAt: now })
+    await db.wrongBook.where('status').equals('pending').modify((row) => {
+      row.status = 'mastered'
+      row.updatedAt = now
+      row.revision = (row.revision || 0) + 1
+    })
     autoSync()
   },
 }
