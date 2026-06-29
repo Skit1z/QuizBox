@@ -46,7 +46,9 @@ export default async function handler(req: any, res: any) {
       const latest = blobs.sort(
         (a, b) => +new Date(b.uploadedAt) - +new Date(a.uploadedAt),
       )[0]
-      const r = await fetch(latest.url, { cache: 'no-store' as any })
+      // 加时间戳绕过 Blob CDN 缓存，确保拉到最新快照
+      const fresh = `${latest.url}${latest.url.includes('?') ? '&' : '?'}t=${Date.now()}`
+      const r = await fetch(fresh, { cache: 'no-store' as any })
       const data = await r.json()
       res.status(200).json(data)
       return

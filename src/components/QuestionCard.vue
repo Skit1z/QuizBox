@@ -110,25 +110,24 @@ const formattedUserAnswer = computed(() => {
 .q-card__option {
   display: flex;
   align-items: flex-start;
-  gap: var(--sp-2.5);
+  gap: var(--sp-3);
   padding: var(--sp-3) 0;
   font-size: 14px;
   color: var(--text-2);
 }
 .q-card__option-key {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--r-full);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  color: var(--text-2);
+  background: var(--brand-soft);
+  color: var(--brand);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .q-card__answer {
   margin-top: var(--sp-3);
