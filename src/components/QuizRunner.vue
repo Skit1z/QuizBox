@@ -42,6 +42,8 @@ const total = computed(() => props.questions.length)
 const answers = ref<Record<string, string | string[]>>({})
 const submitted = ref<Record<string, boolean>>({})
 const gradeMap = ref<Record<string, boolean>>({})
+/** 已记录 attempt 的题目 id，防止恢复会话后重做重复记录 */
+const recorded = ref<Set<string>>(new Set())
 
 const selfRating = ref<Record<string, number>>({})
 const aiResult = ref<Record<string, { score: number; feedback: string }>>({})
@@ -180,6 +182,8 @@ function submit() {
 }
 
 function recordAttempt(qid: string, ans: string | string[], correct: boolean) {
+  if (recorded.value.has(qid)) return
+  recorded.value.add(qid)
   attemptsRepo.record({ questionId: qid, mode: props.mode, userAnswer: ans, isCorrect: correct })
   wrongBookRepo.recordAttempt({ questionId: qid, isCorrect: correct })
 }
@@ -208,26 +212,32 @@ async function finishPractice(auto = false) {
           recordAttempt(q.id, ans, res.isCorrect)
         } else {
           submitted.value[q.id] = true
-          attemptsRepo.record({
-            questionId: q.id,
-            mode: props.mode,
-            userAnswer: ans,
-          })
+          if (!recorded.value.has(q.id)) {
+            recorded.value.add(q.id)
+            attemptsRepo.record({
+              questionId: q.id,
+              mode: props.mode,
+              userAnswer: ans,
+            })
+          }
         }
       }
     }
   }
 
-  let correct = 0
+  // 统计口径：correct 仅计客观题答对数（与 score 一致），answered 计实际作答题数
   const detail = props.questions.map((q) => {
-    const c = gradeMap.value[q.id]
-    if (c) correct++
+    const ans = answers.value[q.id]
+    const hasAns = ans != null && (!Array.isArray(ans) || ans.length > 0) && ans !== ''
+    const objective = isObjective(q.type)
     return {
       questionId: q.id,
-      correct: isObjective(q.type) ? (submitted.value[q.id] ? c : null) : null,
-      answered: !!submitted.value[q.id] || answers.value[q.id] != null,
+      correct: objective ? (hasAns ? !!gradeMap.value[q.id] : null) : null,
+      answered: hasAns,
     }
   })
+  const correct = detail.filter((d) => d.correct === true).length
+  const answered = detail.filter((d) => d.answered).length
 
   // 持久化考试场次结果
   const finalSession = session.value
@@ -247,7 +257,7 @@ async function finishPractice(auto = false) {
   emit('finish', {
     total: total.value,
     correct,
-    answered: Object.keys(submitted.value).length,
+    answered,
     durationMs,
     session: finalSession || undefined,
     detail,
@@ -313,6 +323,11 @@ onBeforeUnmount(() => {
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
+  }
+  // classic 模式：若已超时但未交卷，自动完成并记录结果（避免 session 卡在 in_progress）
+  if (props.classic && session.value && remainingSec.value <= 0) {
+    finishPractice(true)
+    return
   }
   flushAnswers()
 })

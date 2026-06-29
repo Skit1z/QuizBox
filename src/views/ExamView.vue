@@ -41,7 +41,7 @@ const subModes: { value: ExamSubMode; label: string; desc: string }[] = [
   { value: 'weak', label: '薄弱点加权', desc: '优先抽出错率高的题' },
 ]
 
-const classicModes: ExamSubMode[] = ['classic', 'random', 'shuffle', 'weak']
+const classicModes: ExamSubMode[] = ['classic', 'random', 'shuffle', 'weak', 'wrong_redo']
 
 async function start() {
   if (!subjectId.value) {
@@ -181,11 +181,35 @@ onMounted(async () => {
       <div class="card">
         <div class="num-row">
           <span class="num-row__label">题量</span>
-          <van-stepper v-model="count" :min="1" :max="100" />
+          <div class="num-input">
+            <button type="button" class="num-input__btn" :disabled="count <= 1" @click="count = Math.max(1, count - 1)">−</button>
+            <input
+              v-model.number="count"
+              type="number"
+              inputmode="numeric"
+              class="num-input__field"
+              :min="1"
+              :max="999"
+              @blur="count = Math.max(1, Math.min(999, Math.floor(Number(count)) || 1))"
+            />
+            <button type="button" class="num-input__btn" :disabled="count >= 999" @click="count = Math.min(999, count + 1)">+</button>
+          </div>
         </div>
         <div class="num-row">
           <span class="num-row__label">时长（分钟）</span>
-          <van-stepper v-model="durationMin" :min="1" :max="300" />
+          <div class="num-input">
+            <button type="button" class="num-input__btn" :disabled="durationMin <= 1" @click="durationMin = Math.max(1, durationMin - 5)">−</button>
+            <input
+              v-model.number="durationMin"
+              type="number"
+              inputmode="numeric"
+              class="num-input__field"
+              :min="1"
+              :max="600"
+              @blur="durationMin = Math.max(1, Math.min(600, Math.floor(Number(durationMin)) || 1))"
+            />
+            <button type="button" class="num-input__btn" :disabled="durationMin >= 600" @click="durationMin = Math.min(600, durationMin + 5)">+</button>
+          </div>
         </div>
       </div>
 
@@ -302,5 +326,55 @@ onMounted(async () => {
 .num-row__label {
   font-size: 15px;
   color: var(--text);
+}
+.num-input {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.num-input__btn {
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+.num-input__btn:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--brand);
+}
+.num-input__btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.num-input__field {
+  width: 64px;
+  height: 38px;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: transparent;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  -moz-appearance: textfield;
+}
+.num-input__field::-webkit-outer-spin-button,
+.num-input__field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 </style>

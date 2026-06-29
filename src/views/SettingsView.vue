@@ -32,6 +32,24 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const adminLoginPwd = ref('')
 const adminNewPwd = ref('')
 const adminConfirmPwd = ref('')
+const adminPulling = ref(false)
+
+/** 从云端同步管理员密码（拉取 meta 分片后 applyRemoteHash 生效） */
+async function pullAdminFromCloud() {
+  if (adminPulling.value) return
+  adminPulling.value = true
+  try {
+    const { syncBank } = await import('@/services/sync')
+    const res = await syncBank()
+    if (res.ok) {
+      showSuccessToast(adminStore.hasPassword ? '已同步云端管理员密码' : '云端未设置管理员密码')
+    } else {
+      showFailToast(res.error || '同步失败')
+    }
+  } finally {
+    adminPulling.value = false
+  }
+}
 
 /** 未设密码时：设置初始密码 */
 async function setAdminPassword() {
@@ -593,8 +611,21 @@ onMounted(async () => {
         </template>
       </div>
       <p class="field__tip">
-        设置管理密码后，导入/删除/新建科目等操作将需要验证密码。刷新页面后需重新验证。
+        管理员密码跨设备共享（随云端题库同步）。设置/修改后下次同步生效。刷新页面需重新验证。
       </p>
+
+      <!-- 从云端同步（在未登录或本地无密码时可用） -->
+      <div v-if="!adminStore.isAdmin" style="margin-bottom: var(--sp-3)">
+        <van-button
+          block
+          plain
+          round
+          :loading="adminPulling"
+          @click="pullAdminFromCloud"
+        >
+          {{ adminPulling ? '同步中…' : '从云端同步密码' }}
+        </van-button>
+      </div>
 
       <!-- 情况一：设置密码 -->
       <div v-if="!adminStore.hasPassword" class="btn-row">
