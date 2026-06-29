@@ -76,17 +76,17 @@ QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有
 
 ## 技术栈
 
-| 层 | 技术 |
-|----|------|
-| 框架 | Vue 3 + TypeScript（Composition API） |
-| 构建 | Vite 6 |
-| UI | Vant 4（移动优先，按需引入） |
-| 状态管理 | Pinia |
-| 本地存储 | Dexie.js（IndexedDB） |
-| 同步 | WebDAV（坚果云 / Nextcloud），或 Vercel Serverless + Blob 云端题库同步 |
-| Word 解析 | mammoth.js |
-| 公式渲染 | KaTeX |
-| 桌面打包 | Tauri 2 |
+| 层        | 技术                                                                   |
+| --------- | ---------------------------------------------------------------------- |
+| 框架      | Vue 3 + TypeScript（Composition API）                                  |
+| 构建      | Vite 6                                                                 |
+| UI        | Vant 4（移动优先，按需引入）                                           |
+| 状态管理  | Pinia                                                                  |
+| 本地存储  | Dexie.js（IndexedDB）                                                  |
+| 同步      | WebDAV（坚果云 / Nextcloud），或 Vercel Serverless + Blob 云端题库同步 |
+| Word 解析 | mammoth.js                                                             |
+| 公式渲染  | KaTeX                                                                  |
+| 桌面打包  | Tauri 2                                                                |
 
 ---
 
@@ -104,11 +104,11 @@ npm run build      # Web 版
 npm run tauri build  # 桌面端（需要 Rust 环境）
 ```
 
-| 命令 | 说明 |
-|------|------|
+| 命令                 | 说明                |
+| -------------------- | ------------------- |
 | `npm run type-check` | TypeScript 类型检查 |
-| `npm run tauri dev` | 桌面端开发调试 |
-| `npm run preview` | 预览生产构建产物 |
+| `npm run tauri dev`  | 桌面端开发调试      |
+| `npm run preview`    | 预览生产构建产物    |
 
 ---
 
@@ -148,7 +148,7 @@ npm run tauri build
 
 **WebDAV 同步** — 填写服务器地址、账号与密码。坚果云用户请使用「应用密码」而非登录密码。
 
-**云端题库同步** — 部署到 Vercel 后可用。设置中启用、接口地址留空（同源）、填共享密钥即可跨设备共享题库。配置详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)。
+**云端题库同步** — 部署到 Vercel 后可用。设置中启用并填共享密钥即可通过同源 `/api/bank` 跨设备共享题库。配置详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)。
 
 **外观** — 支持亮色 / 暗色 / 跟随系统三种主题模式，以及三套主题色切换。
 

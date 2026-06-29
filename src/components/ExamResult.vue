@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { isObjective, QUESTION_TYPE_LABELS, type Question } from '@/types'
+import { QUESTION_TYPE_LABELS, type Question } from '@/types'
 
 const props = defineProps<{
   result: {

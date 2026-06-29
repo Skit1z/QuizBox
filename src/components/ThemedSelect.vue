@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onBeforeUnmount, nextTick } from 'vue'
 
 export interface SelectOption {
   value: string
@@ -35,9 +35,7 @@ const menuRef = ref<HTMLElement | null>(null)
 /** 下拉菜单向上展开（当触发器靠近视口底部时） */
 const dropUp = ref(false)
 
-const selected = computed(
-  () => props.options.find((o) => o.value === props.modelValue),
-)
+const selected = computed(() => props.options.find((o) => o.value === props.modelValue))
 
 const displayText = computed(() => {
   if (!props.modelValue && props.clearable) return props.clearLabel
@@ -105,11 +103,7 @@ onBeforeUnmount(() => {
     </button>
 
     <transition name="ts-drop">
-      <div
-        v-if="open"
-        ref="menuRef"
-        :class="['ts__menu', dropUp && 'ts__menu--up']"
-      >
+      <div v-if="open" ref="menuRef" :class="['ts__menu', dropUp && 'ts__menu--up']">
         <div class="ts__menu-scroll">
           <div
             v-if="clearable"
@@ -129,9 +123,7 @@ onBeforeUnmount(() => {
             <van-icon v-if="modelValue === o.value" name="success" size="14" color="var(--brand)" />
           </div>
           <!-- 空状态：无可选项（且非 clearable 的「不限」） -->
-          <div v-if="!options.length && !clearable" class="ts__empty">
-            暂无可选项
-          </div>
+          <div v-if="!options.length && !clearable" class="ts__empty">暂无可选项</div>
         </div>
       </div>
     </transition>
@@ -238,7 +230,9 @@ onBeforeUnmount(() => {
 /* ===== 展开动画 ===== */
 .ts-drop-enter-active,
 .ts-drop-leave-active {
-  transition: opacity 0.15s, transform 0.15s;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
 }
 .ts-drop-enter-from,
 .ts-drop-leave-to {

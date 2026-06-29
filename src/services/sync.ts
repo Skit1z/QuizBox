@@ -13,11 +13,7 @@ import type {
 } from '@/types'
 
 // 需要参与同步的 Dexie 表名（带 updatedAt/deletedAt 的）
-const SYNC_TABLES = [
-  'subjects',
-  'chapters',
-  'questions',
-] as const
+const SYNC_TABLES = ['subjects', 'chapters', 'questions'] as const
 type SyncTable = (typeof SYNC_TABLES)[number]
 
 const SYNC_FILE = 'sync.json'
@@ -25,7 +21,6 @@ const ATTACH_DIR = 'attachments'
 const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 let client: WebDAVClient | null = null
-let syncing = false
 let currentSync: Promise<{ pulled: number; pushed: number; ok: boolean }> | null = null
 
 /**
@@ -122,7 +117,6 @@ export async function sync(): Promise<{ pulled: number; pushed: number; ok: bool
   if (!c) return { pulled: 0, pushed: 0, ok: false }
   // 已有同步进行中：复用其结果，避免并发写冲突
   if (currentSync) return currentSync
-  syncing = true
   currentSync = (async () => {
     try {
       await ensureDirs(c)
@@ -139,7 +133,6 @@ export async function sync(): Promise<{ pulled: number; pushed: number; ok: bool
       console.warn('[sync] failed', e)
       return { pulled: 0, pushed: 0, ok: false }
     } finally {
-      syncing = false
       currentSync = null
     }
   })()
@@ -270,9 +263,7 @@ async function pruneLocalTombstones() {
         const all = await (db as any)[t].toArray()
         return all.filter((row: any) => isExpiredTombstone(row, now))
       })
-    const ids = rows
-      .filter((row: any) => isExpiredTombstone(row, now))
-      .map((row: any) => row.id)
+    const ids = rows.filter((row: any) => isExpiredTombstone(row, now)).map((row: any) => row.id)
     if (ids.length) await (db as any)[t].bulkDelete(ids)
   }
 }
@@ -293,10 +284,14 @@ async function uploadSyncFile(c: WebDAVClient, merged: SyncFileData) {
 
 async function syncAttachments(c: WebDAVClient) {
   // 只取未同步项（用 synced 索引，避免全量 Blob 载入内存）
-  const local = await db.attachments.where('synced').equals(0 as any).toArray().catch(async () => {
-    const all = await db.attachments.toArray()
-    return all.filter((a) => !a.synced)
-  })
+  const local = await db.attachments
+    .where('synced')
+    .equals(0 as any)
+    .toArray()
+    .catch(async () => {
+      const all = await db.attachments.toArray()
+      return all.filter((a) => !a.synced)
+    })
   for (const att of local) {
     const remoteFile = remotePath(`${ATTACH_DIR}/${att.hash}`)
     try {
@@ -319,9 +314,7 @@ async function syncAttachments(c: WebDAVClient) {
 //   - 兼容：远端若仍是旧版 bank.json，自动全量拉取后升级为分片格式
 
 function bankEndpoint(): string {
-  const s = useSettingsStore()
-  const base = (s.bankSync.baseUrl || '').replace(/\/$/, '')
-  return base ? `${base}/api/bank` : '/api/bank'
+  return '/api/bank'
 }
 
 function bankAuthHeaders(): Record<string, string> {
@@ -431,13 +424,8 @@ function shardPath(subjectId: string, index: number): string {
  * 将一个科目的题目按 250KB 上限拆分为多个分片。
  * 题目按 updatedAt 升序排列，使新修改的题目集中在最后分片，旧分片哈希保持稳定。
  */
-function splitIntoShards(
-  subjectId: string,
-  questions: Record<string, Question>,
-): QuestionShard[] {
-  const sorted = Object.values(questions).sort(
-    (a, b) => (a.updatedAt || 0) - (b.updatedAt || 0),
-  )
+function splitIntoShards(subjectId: string, questions: Record<string, Question>): QuestionShard[] {
+  const sorted = Object.values(questions).sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0))
   const shards: QuestionShard[] = []
   let current: Record<string, Question> = {}
   let currentSize = 0
@@ -465,10 +453,7 @@ function splitIntoShards(
 }
 
 /** 找出本地缓存 manifest 与远端 manifest 之间哈希变化的分片 */
-function diffManifestShards(
-  local: BankManifest | null,
-  remote: BankManifest,
-): ShardEntry[] {
+function diffManifestShards(local: BankManifest | null, remote: BankManifest): ShardEntry[] {
   if (!local) return remote.shards
   const localByPath = new Map(local.shards.map((s) => [s.path, s]))
   return remote.shards.filter((rs) => {
@@ -486,10 +471,7 @@ function isMetaChanged(local: BankManifest | null, remote: BankManifest): boolea
 // ----- 本地数据导出（按科目） -----
 
 async function exportMetaShard(): Promise<MetaShard> {
-  const [subjects, chapters] = await Promise.all([
-    db.subjects.toArray(),
-    db.chapters.toArray(),
-  ])
+  const [subjects, chapters] = await Promise.all([db.subjects.toArray(), db.chapters.toArray()])
   const subjectMap: Record<string, any> = {}
   for (const s of subjects) subjectMap[s.id] = s
   const chapterMap: Record<string, any> = {}
@@ -584,12 +566,8 @@ async function detectLocalChanges(
 
   // 检查 subjects/chapters 变更
   const [changedSubjects, changedChapters] = await Promise.all([
-    lastSync
-      ? db.subjects.where('updatedAt').above(lastSync).toArray()
-      : db.subjects.toArray(),
-    lastSync
-      ? db.chapters.where('updatedAt').above(lastSync).toArray()
-      : db.chapters.toArray(),
+    lastSync ? db.subjects.where('updatedAt').above(lastSync).toArray() : db.subjects.toArray(),
+    lastSync ? db.chapters.where('updatedAt').above(lastSync).toArray() : db.chapters.toArray(),
   ])
 
   // 管理员密码哈希是否与云端不同（设/改密码后需推送）
@@ -690,7 +668,10 @@ export async function syncBank(): Promise<BankSyncResult> {
             version: 2,
             baseManifestUpdatedAt: 0,
             meta: changes.meta || undefined,
-            shards: changes.shards.map((c) => ({ path: shardPath(c.subjectId, c.index), content: c.content })),
+            shards: changes.shards.map((c) => ({
+              path: shardPath(c.subjectId, c.index),
+              content: c.content,
+            })),
             deletePaths: changes.deletePaths,
           })
           await saveLocalManifest(newManifest)
@@ -710,9 +691,12 @@ export async function syncBank(): Promise<BankSyncResult> {
 
       // 2. 拉取变化的分片
       if (isMetaChanged(localManifest, remoteManifest)) {
-        const metaRes = await fetch(`${bankEndpoint()}?shard=${encodeURIComponent(remoteManifest.meta.path)}`, {
-          headers: bankAuthHeaders(),
-        })
+        const metaRes = await fetch(
+          `${bankEndpoint()}?shard=${encodeURIComponent(remoteManifest.meta.path)}`,
+          {
+            headers: bankAuthHeaders(),
+          },
+        )
         if (metaRes.ok) {
           const meta = (await metaRes.json()) as MetaShard
           pulled += await mergeMetaToLocal(meta)
@@ -747,7 +731,10 @@ export async function syncBank(): Promise<BankSyncResult> {
               version: 2,
               baseManifestUpdatedAt: remoteManifest.updatedAt,
               meta: changes.meta || undefined,
-              shards: changes.shards.map((c) => ({ path: shardPath(c.subjectId, c.index), content: c.content })),
+              shards: changes.shards.map((c) => ({
+                path: shardPath(c.subjectId, c.index),
+                content: c.content,
+              })),
               deletePaths: changes.deletePaths,
             })
             remoteManifest = newManifest
@@ -776,14 +763,11 @@ export async function syncBank(): Promise<BankSyncResult> {
 }
 
 /** 用当前配置测试云端题库接口连通性（GET meta 一次） */
-export async function testBankSync(config: {
-  baseUrl: string
-  key: string
-}): Promise<BankSnapshotMeta> {
-  const base = (config.baseUrl || '').replace(/\/$/, '')
-  const url = base ? `${base}/api/bank?meta=1` : '/api/bank?meta=1'
-  const headers: Record<string, string> = config.key ? { Authorization: `Bearer ${config.key}` } : {}
-  const res = await fetch(url, { headers })
+export async function testBankSync(config: { key: string }): Promise<BankSnapshotMeta> {
+  const headers: Record<string, string> = config.key
+    ? { Authorization: `Bearer ${config.key}` }
+    : {}
+  const res = await fetch('/api/bank?meta=1', { headers })
   if (res.status === 401) throw new Error('密钥不匹配')
   if (!res.ok) throw new Error(`接口不可用：${await readErrorMessage(res)} (${res.status})`)
   return await res.json().catch(() => {

@@ -86,6 +86,30 @@
   --brand-soft: #fff0e8;
   --brand-rgb: 255, 107, 53;
 }
+/* 主题色：紫罗兰 */
+:root[data-theme-color='purple'] {
+  --brand: #8b5cf6;
+  --brand-soft: #f5f3ff;
+  --brand-rgb: 139, 92, 246;
+}
+/* 主题色：珊瑚红 */
+:root[data-theme-color='red'] {
+  --brand: #ef4444;
+  --brand-soft: #fef2f2;
+  --brand-rgb: 239, 68, 68;
+}
+/* 主题色：青瓷绿 */
+:root[data-theme-color='teal'] {
+  --brand: #0d9488;
+  --brand-soft: #f0fdfa;
+  --brand-rgb: 13, 148, 136;
+}
+/* 主题色：樱花粉 */
+:root[data-theme-color='pink'] {
+  --brand: #ec4899;
+  --brand-soft: #fdf2f8;
+  --brand-rgb: 236, 72, 153;
+}
 
 /* ===== 暗黑模式 ===== */
 .dark,
@@ -143,7 +167,9 @@
   /* Vant Picker */
   --van-picker-background: #202329;
   --van-picker-option-text-color: #f0f1f3;
-  --van-picker-mask-color: linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)), linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
+  --van-picker-mask-color:
+    linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)),
+    linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
   --van-picker-loading-icon-color: var(--brand);
   color-scheme: dark;
 }
@@ -204,7 +230,9 @@
     /* Vant Picker */
     --van-picker-background: #202329;
     --van-picker-option-text-color: #f0f1f3;
-    --van-picker-mask-color: linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)), linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
+    --van-picker-mask-color:
+      linear-gradient(180deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4)),
+      linear-gradient(0deg, rgba(32, 35, 41, 0.9), rgba(32, 35, 41, 0.4));
     --van-picker-loading-icon-color: var(--brand);
     color-scheme: dark;
   }
@@ -220,12 +248,15 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Helvetica Neue', Helvetica,
+    Arial, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.2s, color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s;
   color-scheme: light;
 }
 
@@ -378,7 +409,9 @@ body {
 }
 .card--clickable {
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
 }
 .card--clickable:active {
   transform: scale(0.98);
@@ -489,12 +522,16 @@ body {
 .swipe-card--selected {
   border-color: var(--brand) !important;
   background: var(--brand-soft) !important;
-  box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 1.5px var(--brand) !important;
 }
 .wrong-card--selected {
   border-color: var(--brand) !important;
   background: var(--brand-soft) !important;
-  box-shadow: var(--shadow-md), 0 0 0 1.5px var(--brand) !important;
+  box-shadow:
+    var(--shadow-md),
+    0 0 0 1.5px var(--brand) !important;
 }
 
 /* ===== Popover 危险操作样式 ===== */
@@ -512,5 +549,3 @@ body {
 .van-popover__arrow {
   color: var(--surface) !important;
 }
-
-

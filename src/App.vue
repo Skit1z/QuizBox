@@ -51,7 +51,7 @@ onMounted(async () => {
   try {
     const { db } = await import('@/db')
     await db.open()
-  } catch (e) {
+  } catch {
     showToast('数据库初始化失败')
   }
   // 一次性加载设置并应用主题。同步是可选能力，不阻塞手机端本地使用。

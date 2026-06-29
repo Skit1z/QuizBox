@@ -15,11 +15,11 @@ const syncStore = useSyncStore()
 const stats = ref({ subjects: 0, questions: 0, wrong: 0 })
 const greeting = computed(() => {
   const h = new Date().getHours()
-  if (h < 6) return '夜深了，注意休息'
-  if (h < 12) return '早上好，开始学习'
-  if (h < 14) return '中午好，小憩一下'
-  if (h < 18) return '下午好，继续刷题'
-  return '晚上好，温故知新'
+  if (h < 6) return '夜深了，记得早点休息哦 🌌'
+  if (h < 12) return '一日之计在于晨，今天也要加油呀 ☀️'
+  if (h < 14) return '中午好，吃饱了也别忘了让大脑小憩一下 ☕️'
+  if (h < 18) return '下午好，来一场酣畅淋漓的刷题之旅吧 🚀'
+  return '今晚，让我们把学过的知识都巩固一遍 ✨'
 })
 
 /** 日期 + 星期 */
@@ -39,7 +39,7 @@ const deviceText = computed(() => {
   const ipadMatch = ua.match(/iPad([0-9]+,[0-9]+)/)
   if (/Android/.test(ua)) {
     const m = ua.match(/Android[^;]*;\s*([^)]+?)\s*Build/i)
-    model = m ? m[1].trim() : 'Android 设备'
+    model = m ? m[1].trim() : 'Android 手机'
   } else if (iphoneMatch) {
     model = 'iPhone'
   } else if (ipadMatch) {
@@ -47,14 +47,22 @@ const deviceText = computed(() => {
   } else if (/Macintosh|Mac OS X/.test(ua)) {
     model = /Tauri/.test(ua) ? '桌面端' : 'Mac'
   } else if (/Windows/.test(ua)) {
-    model = 'Windows'
+    model = 'Windows PC'
   } else if (/Linux/.test(ua)) {
     model = 'Linux'
   }
-  // 桌面端优先用 Tauri 标识
+  
+  // 优先使用 Tauri
   const isDesktop = (window as any).__TAURI__
-  if (isDesktop) return `桌面端${model ? ' · ' + model : ''}`
-  return model || ''
+  const deviceName = isDesktop ? `桌面端${model ? ' · ' + model : ''}` : (model || '移动端')
+  
+  // 根据设备类型加点有意思的尾缀
+  const isMobile = /Android|iPhone|iPad/i.test(ua)
+  if (isMobile) {
+    return `${deviceName} · 随时随地，碎片时间刷刷题 📱`
+  } else {
+    return `${deviceName} · 大屏幕大视角，复习效率加倍 ✨`
+  }
 })
 
 const features = [
@@ -254,5 +262,11 @@ onBeforeUnmount(() => {
   color: var(--text-3);
   margin-top: 2px;
 }
-
+.page-device {
+  font-size: 13px !important;
+  font-weight: 500;
+  color: var(--text-2) !important;
+  opacity: 0.9 !important;
+  margin-top: 4px !important;
+}
 </style>

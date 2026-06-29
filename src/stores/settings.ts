@@ -29,8 +29,6 @@ export interface OcrSettings {
 export interface BankSyncSettings {
   /** 启用云端题库同步（跨设备共享） */
   enabled: boolean
-  /** 接口基址：留空=同源 /api/bank（网页端推荐）；桌面端需填部署站点完整地址 */
-  baseUrl: string
   /** 共享密钥（可选，须与服务端 BANK_KEY 一致） */
   key: string
 }
@@ -41,7 +39,6 @@ const DEFAULT_OCR: OcrSettings = {
 
 const DEFAULT_BANK: BankSyncSettings = {
   enabled: true,
-  baseUrl: '',
   key: 'skit1z',
 }
 
@@ -132,11 +129,10 @@ export const useSettingsStore = defineStore('settings', {
         this.ocr = { token: await this.tryDecrypt(raw.token, 'OCR Token') }
       }
       if (bankMeta) {
-        const raw = JSON.parse(bankMeta.value) as { enabled: boolean; baseUrl: string; key: string }
+        const raw = JSON.parse(bankMeta.value) as { enabled?: boolean; key?: string }
         const key = raw.key ? await this.tryDecrypt(raw.key, '云题库密钥') : DEFAULT_BANK.key
         this.bankSync = {
-          enabled: !!raw.enabled,
-          baseUrl: raw.baseUrl || '',
+          enabled: raw.enabled ?? DEFAULT_BANK.enabled,
           key: key || DEFAULT_BANK.key,
         }
       }
@@ -215,7 +211,6 @@ export const useSettingsStore = defineStore('settings', {
       this.bankSync = { ...this.bankSync, ...settings }
       const stored = {
         enabled: this.bankSync.enabled,
-        baseUrl: this.bankSync.baseUrl,
         key: this.bankSync.key ? await encryptSecret(this.bankSync.key) : '',
       }
       await db.syncMeta.put({ key: META_KEY_BANK, value: JSON.stringify(stored) })
