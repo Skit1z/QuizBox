@@ -53,6 +53,9 @@ const RE_BLANK = /_{2,}|（\s*）|\(\s*\)/
 // 垃圾行：分隔线、纯符号
 const RE_JUNK_LINE = /^[\s　]*[=\-_─━═~·•●■□▪▫◆◇]{3,}[\s　]*$/
 
+// 常见中文标点（用于可读性判断）
+const RE_CN_PUNCT = /[。，、；：！？""''（）《》【】\-—…·]/g
+
 export function parseWithRules(text: string): ParsedQuestion[] {
   const lines = text.split(/\r?\n/)
   const expanded = expandInlineOptions(lines)
@@ -144,8 +147,9 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
     const trimmed = line.trim()
     if (!trimmed) continue
 
-    // 跳过垃圾行（分隔线等）
+    // 跳过垃圾行（分隔线、乱码）
     if (RE_JUNK_LINE.test(trimmed)) continue
+    if (isGarbledLine(trimmed)) continue
 
     // 答案标记
     if (RE_ANSWER.test(trimmed)) {
@@ -245,7 +249,25 @@ function parseBlock(block: RawBlock): ParsedQuestion | null {
 
 // ===== 辅助函数 =====
 
-/** 判断是否为垃圾块（标题、分隔线、非题目内容） */
+/** 判断单行是否为乱码（二进制提取噪声） */
+function isGarbledLine(line: string): boolean {
+  const t = line.trim()
+  if (t.length < 30) return false
+
+  // 日文假名、罕见符号密集出现 → 大概率是 .doc 二进制噪声
+  const exoticChars = t.match(/[゠-ヿ぀-ゟ＀-￯∷○◆◇■□●◎△▲▽▼※†‡§¶]/g)
+  if (exoticChars && exoticChars.length / t.length > 0.05) return true
+
+  // 长行（>80字）且几乎无中文标点 → 可能是乱码
+  if (t.length > 80) {
+    const punctCount = (t.match(RE_CN_PUNCT) || []).length
+    if (punctCount / t.length < 0.005) return true
+  }
+
+  return false
+}
+
+/** 判断是否为垃圾块（标题、分隔线、乱码、非题目内容） */
 function isJunkBlock(text: string): boolean {
   const t = text.trim()
   // 纯分隔线/符号
@@ -255,13 +277,13 @@ function isJunkBlock(text: string): boolean {
   // 纯数字/标点
   if (/^[\d.、．\s　:：()（）]+$/.test(t)) return true
 
-  // 多行块：逐行剥离垃圾行和标题行，看剩余是否有实质内容
+  // 多行块：逐行剥离垃圾行、乱码行、标题行，看剩余是否有实质内容
   const contentLines = t.split(/\r?\n/).filter((line) => {
     const l = line.trim()
     if (!l) return false
     if (RE_JUNK_LINE.test(l)) return false
+    if (isGarbledLine(l)) return false
     if (/^《[^》]+》/.test(l)) return false
-    // 纯短乱码/非汉字内容（如 "双几"）
     if (l.length <= 4 && !/[一-鿿]{2,}/.test(l)) return false
     return true
   })
@@ -300,23 +322,22 @@ function detectType(
   answer: string,
   sectionType?: QuestionType,
 ): QuestionType {
-  // 区段标题优先
-  if (sectionType) return sectionType
-
-  // 有选项 → 选择题
+  // 硬证据优先：有选项 → 一定是选择题（覆盖 sectionType）
   if (options.length >= 2) {
-    // 答案含多个字母 → 多选
     const letters = answer.match(/[A-Ha-h]/g)
     if (letters && letters.length > 1) return 'multiple'
     return 'single'
   }
 
-  // 答案本身含多个字母（从题干提取的） → 即使没解析到选项也是多选
+  // 硬证据：答案含多个字母 → 多选（即使无选项）
   if (answer) {
     const letters = answer.match(/[A-Ha-h]/g)
     if (letters && letters.length > 1) return 'multiple'
-    if (letters && letters.length === 1 && options.length <= 1) return 'single'
+    if (letters && letters.length === 1) return 'single'
   }
+
+  // 无硬证据时才使用区段标题提示
+  if (sectionType) return sectionType
 
   // 判断题特征
   if (RE_JUDGE_TRUE.test(answer) || RE_JUDGE_FALSE.test(answer)) return 'judge'
@@ -373,5 +394,12 @@ function computeConfidence(
   if (answer) score += 0.2
   if ((type === 'single' || type === 'multiple') && options.length >= 3) score += 0.1
 
-  return Math.min(score, 1)
+  // 选项内容含乱码 → 降低置信度
+  const garbledOpts = options.filter((o) => isGarbledLine(o)).length
+  if (garbledOpts > 0) score -= 0.3
+
+  // 题干过短或过长且无标点 → 可疑
+  if (stem.length > 200 && (stem.match(RE_CN_PUNCT) || []).length < 2) score -= 0.2
+
+  return Math.max(0, Math.min(score, 1))
 }
