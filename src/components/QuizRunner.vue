@@ -332,7 +332,13 @@ const isWrongOption = (letter: string) => {
       </van-tag>
     </div>
 
-    <QuestionCard :question="current" :show-answer="!props.classic && submitted[current.id]" hide-options />
+    <QuestionCard
+      :question="current"
+      :show-answer="!props.classic && submitted[current.id]"
+      hide-options
+      :user-answer="answers[current.id]"
+      :user-answer-correct="gradeMap[current.id]"
+    />
 
     <!-- 答题区 -->
     <div class="answer-area">

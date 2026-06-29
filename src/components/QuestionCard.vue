@@ -13,6 +13,10 @@ const props = defineProps<{
   highlight?: boolean
   /** 是否隐藏静态选项 */
   hideOptions?: boolean
+  /** 用户答案 */
+  userAnswer?: string | string[]
+  /** 用户答案是否正确 */
+  userAnswerCorrect?: boolean
 }>()
 
 const typeLabel = computed(() => QUESTION_TYPE_LABELS[props.question.type])
@@ -21,6 +25,13 @@ const answerText = computed(() => {
   const a = props.question.answer
   if (Array.isArray(a)) return a.join('、')
   return a
+})
+
+const formattedUserAnswer = computed(() => {
+  const u = props.userAnswer
+  if (u == null) return ''
+  if (Array.isArray(u)) return u.join('、')
+  return u
 })
 </script>
 
@@ -48,6 +59,12 @@ const answerText = computed(() => {
 
     <!-- 答案与解析 -->
     <div v-if="showAnswer" class="q-card__answer">
+      <div v-if="userAnswer != null && userAnswer !== '' && (!Array.isArray(userAnswer) || userAnswer.length > 0)" class="q-card__answer-row" style="margin-bottom: var(--sp-2)">
+        <van-tag :type="userAnswerCorrect ? 'success' : 'danger'">您的答案</van-tag>
+        <span class="q-card__answer-text" :class="{ 'q-card__answer-text--wrong': !userAnswerCorrect }">
+          {{ formattedUserAnswer }}
+        </span>
+      </div>
       <div class="q-card__answer-row">
         <van-tag type="success">参考答案</van-tag>
         <span class="q-card__answer-text">{{ answerText }}</span>
@@ -114,6 +131,9 @@ const answerText = computed(() => {
 .q-card__answer-text {
   font-weight: 600;
   color: var(--success);
+}
+.q-card__answer-text--wrong {
+  color: var(--danger) !important;
 }
 .q-card__analysis {
   margin-top: var(--sp-3);
