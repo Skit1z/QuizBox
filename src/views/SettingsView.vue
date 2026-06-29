@@ -29,37 +29,42 @@ const bankResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
 // ===== 管理密码 =====
+const adminLoginPwd = ref('')
 const adminNewPwd = ref('')
 const adminConfirmPwd = ref('')
-const adminOldPwd = ref('')
 
-async function saveAdminPassword() {
+/** 未设密码时：设置初始密码 */
+async function setAdminPassword() {
   const pwd = adminNewPwd.value.trim()
   const confirm = adminConfirmPwd.value.trim()
   if (!pwd) { showFailToast('请输入密码'); return }
   if (pwd !== confirm) { showFailToast('两次输入不一致'); return }
-  // 修改密码时需先验证旧密码
-  if (adminStore.hasPassword) {
-    const old = adminOldPwd.value.trim()
-    if (!old) { showFailToast('请输入当前密码'); return }
-    const ok = await adminStore.verify(old)
-    if (!ok) { showFailToast('当前密码错误'); return }
-  }
   await adminStore.setPassword(pwd)
   adminNewPwd.value = ''
   adminConfirmPwd.value = ''
-  adminOldPwd.value = ''
-  showSuccessToast(adminStore.hasPassword ? '管理密码已更新' : '管理密码已设置')
+  showSuccessToast('管理密码已设置')
 }
 
-async function clearAdminPassword() {
-  const old = adminOldPwd.value.trim()
-  if (!old) { showFailToast('请输入当前密码'); return }
-  const ok = await adminStore.verify(old)
+/** 已设密码但未登录：用密码登录 */
+async function loginAdmin() {
+  const pwd = adminLoginPwd.value.trim()
+  if (!pwd) { showFailToast('请输入密码'); return }
+  const ok = await adminStore.verify(pwd)
   if (!ok) { showFailToast('密码错误'); return }
-  await adminStore.clearPassword()
-  adminOldPwd.value = ''
-  showSuccessToast('已清除管理密码')
+  adminLoginPwd.value = ''
+  showSuccessToast('已登入管理员')
+}
+
+/** 已登录管理员：修改密码 */
+async function changeAdminPassword() {
+  const pwd = adminNewPwd.value.trim()
+  const confirm = adminConfirmPwd.value.trim()
+  if (!pwd) { showFailToast('请输入新密码'); return }
+  if (pwd !== confirm) { showFailToast('两次输入不一致'); return }
+  await adminStore.setPassword(pwd)
+  adminNewPwd.value = ''
+  adminConfirmPwd.value = ''
+  showSuccessToast('管理密码已更新')
 }
 
 const currentProvider = computed(
@@ -238,12 +243,13 @@ async function manualBankSync() {
     const { syncBank } = await import('@/services/sync')
     const res = await syncBank()
     if (res.ok) {
-      const rows = res.remoteRows ?? res.localRows ?? 0
+      const pulledMsg = res.pulled > 0 ? `拉取 ${res.pulled} 条` : '本地已是最新'
+      const pushedMsg = res.pushed > 0 ? `推送 ${res.shardsPushed} 分片` : '无变更推送'
       bankResult.value = {
         type: 'success',
-        msg: `已写入 ${rows} 条记录到 ${res.pathname || 'quizbox/bank.json'}（${res.size || 0} B）`,
+        msg: `增量同步完成：${pulledMsg}，${pushedMsg}`,
       }
-      showSuccessToast(`云端同步成功：${rows} 条`)
+      showSuccessToast(`云端同步成功：${pulledMsg}`)
     } else {
       bankResult.value = { type: 'error', msg: res.error || '云端同步失败，请检查接口与密钥' }
       showFailToast(res.error || '云端同步失败')
@@ -547,34 +553,65 @@ onMounted(async () => {
             <van-icon name="lock" size="14" /> 受保护模式
           </span>
         </div>
-        <div v-if="adminStore.hasPassword" class="field">
-          <label class="field__label">当前密码</label>
-          <input v-model="adminOldPwd" class="field__input" type="password" placeholder="输入当前管理密码" />
-        </div>
-        <div class="field">
-          <label class="field__label">{{ adminStore.hasPassword ? '新密码' : '设置管理密码' }}</label>
-          <input v-model="adminNewPwd" class="field__input" type="password" placeholder="输入密码" />
-        </div>
-        <div class="field">
-          <label class="field__label">确认密码</label>
-          <input v-model="adminConfirmPwd" class="field__input" type="password" placeholder="再次输入密码" />
-        </div>
+
+        <!-- 情况一：未设置密码 → 设置初始密码 -->
+        <template v-if="!adminStore.hasPassword">
+          <div class="field">
+            <label class="field__label">设置管理密码</label>
+            <input v-model="adminNewPwd" class="field__input" type="password" placeholder="输入密码" />
+          </div>
+          <div class="field">
+            <label class="field__label">确认密码</label>
+            <input v-model="adminConfirmPwd" class="field__input" type="password" placeholder="再次输入密码" />
+          </div>
+        </template>
+
+        <!-- 情况二：已设置密码但未登录 → 单一输入框登录 -->
+        <template v-else-if="!adminStore.isAdmin">
+          <div class="field">
+            <label class="field__label">管理员密码</label>
+            <input
+              v-model="adminLoginPwd"
+              class="field__input"
+              type="password"
+              placeholder="输入管理密码以登入"
+              @keyup.enter="loginAdmin"
+            />
+          </div>
+        </template>
+
+        <!-- 情况三：已登录 → 修改密码 -->
+        <template v-else>
+          <div class="field">
+            <label class="field__label">新密码</label>
+            <input v-model="adminNewPwd" class="field__input" type="password" placeholder="输入新密码" />
+          </div>
+          <div class="field">
+            <label class="field__label">确认密码</label>
+            <input v-model="adminConfirmPwd" class="field__input" type="password" placeholder="再次输入新密码" />
+          </div>
+        </template>
       </div>
       <p class="field__tip">
         设置管理密码后，导入/删除/新建科目等操作将需要验证密码。刷新页面后需重新验证。
       </p>
-      <div class="btn-row">
-        <van-button type="primary" round @click="saveAdminPassword">
-          {{ adminStore.hasPassword ? '修改密码' : '设置密码' }}
-        </van-button>
-        <van-button v-if="adminStore.hasPassword" plain type="danger" round @click="clearAdminPassword">
-          清除密码
-        </van-button>
+
+      <!-- 情况一：设置密码 -->
+      <div v-if="!adminStore.hasPassword" class="btn-row">
+        <van-button type="primary" round @click="setAdminPassword">设置密码</van-button>
       </div>
-      <div v-if="adminStore.hasPassword" style="margin-top: var(--sp-3)">
-        <van-button v-if="adminStore.isAdmin" block plain round @click="adminStore.logout()">
-          退出管理员
-        </van-button>
+      <!-- 情况二：登录 -->
+      <div v-else-if="!adminStore.isAdmin" class="btn-row">
+        <van-button type="primary" round @click="loginAdmin">登入</van-button>
+      </div>
+      <!-- 情况三：修改密码 + 退出 -->
+      <div v-else>
+        <div class="btn-row">
+          <van-button type="primary" round @click="changeAdminPassword">修改密码</van-button>
+        </div>
+        <div style="margin-top: var(--sp-3)">
+          <van-button block plain round @click="adminStore.logout()">退出管理员</van-button>
+        </div>
       </div>
     </div>
 

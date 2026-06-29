@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { sync, syncOnStartup, autoSync } from '@/services/sync'
+import { sync, syncBank, syncOnStartup, autoSync } from '@/services/sync'
 import { db } from '@/db'
 
 function notifyDataChanged() {
@@ -34,6 +34,18 @@ export const useSyncStore = defineStore('sync', {
       this.lastResult = res
       if (res.ok) {
         const meta = await db.syncMeta.get('lastSyncAt')
+        if (meta) this.lastSyncAt = Number(meta.value)
+        notifyDataChanged()
+      }
+      this.syncing = false
+      return res
+    },
+    /** 触发一次云端题库增量同步（供首页下拉刷新调用） */
+    async runBank() {
+      this.syncing = true
+      const res = await syncBank()
+      if (res.ok) {
+        const meta = await db.syncMeta.get('lastBankSyncAt')
         if (meta) this.lastSyncAt = Number(meta.value)
         notifyDataChanged()
       }
