@@ -1,6 +1,6 @@
 [package]
 name = "qasystem"
-version = "1.56"
+version = "1.57"
 description = "题盒 QuizBox"
 authors = ["you"]
 edition = "2021"
