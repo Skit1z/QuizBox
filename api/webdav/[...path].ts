@@ -7,12 +7,7 @@ export const config = {
 }
 
 // 允许的 WebDAV 域名白名单（防止代理被滥用做开放中转）
-const ALLOWED_HOSTS = [
-  'dav.jianguoyun.com',
-  'dav.box.com',
-  'webdav.4shared.com',
-  'nanaooo.com',
-]
+const ALLOWED_HOSTS = ['dav.jianguoyun.com', 'dav.box.com', 'webdav.4shared.com', 'nanaooo.com']
 
 function getAllowedHosts(): string[] {
   const custom = (process.env.WEBDAV_ALLOWED_HOSTS || '')
@@ -56,7 +51,15 @@ export default async function handler(req: any, res: any) {
 
   // 透传 WebDAV 认证头（Authorization）和内容类型
   const forwardHeaders: Record<string, string> = {}
-  const passThrough = ['authorization', 'content-type', 'depth', 'overwrite', 'destination', 'if-match', 'if-none-match']
+  const passThrough = [
+    'authorization',
+    'content-type',
+    'depth',
+    'overwrite',
+    'destination',
+    'if-match',
+    'if-none-match',
+  ]
   for (const h of passThrough) {
     if (req.headers[h]) forwardHeaders[h] = req.headers[h]
   }

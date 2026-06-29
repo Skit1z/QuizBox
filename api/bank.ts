@@ -363,9 +363,8 @@ async function handlePut(req: any, res: any) {
   const hasChanges = !!parsed.meta || !!parsed.shards?.length || !!parsed.deletePaths?.length
   if (hasChanges) {
     manifest.updatedAt = Date.now()
-    manifest.shards = shardEntries.sort(
-      (a, b) =>
-        a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : a.index - b.index,
+    manifest.shards = shardEntries.sort((a, b) =>
+      a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : a.index - b.index,
     )
     // 清理旧版 bank.json：仅首次迁移时做一次 head+del，之后用 legacyCleaned 标记跳过
     // （head/del 都是 Advanced Operations，每次 PUT 都查会快速耗尽配额）

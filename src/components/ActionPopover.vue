@@ -33,7 +33,7 @@ const emit = defineEmits<{
   /** 当处于禁用状态下被点击时触发（例如触发父组件的鉴权弹窗） */
   'click-disabled': []
   /** 选择任意选项时触发 */
-  'select': [action: PopoverAction]
+  select: [action: PopoverAction]
 }>()
 
 const innerShow = ref(false)
@@ -94,7 +94,7 @@ function onSelect(action: PopoverAction) {
     @select="onSelect"
   >
     <template #reference>
-      <div @click="onReferenceClick" style="display: inline-flex;">
+      <div @click="onReferenceClick" style="display: inline-flex">
         <slot></slot>
       </div>
     </template>

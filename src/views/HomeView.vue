@@ -51,11 +51,11 @@ const deviceText = computed(() => {
   } else if (/Linux/.test(ua)) {
     model = 'Linux'
   }
-  
+
   // 优先使用 Tauri
   const isDesktop = (window as any).__TAURI__
-  const deviceName = isDesktop ? `桌面端${model ? ' · ' + model : ''}` : (model || '移动端')
-  
+  const deviceName = isDesktop ? `桌面端${model ? ' · ' + model : ''}` : model || '移动端'
+
   // 根据设备类型加点有意思的尾缀
   const isMobile = /Android|iPhone|iPad/i.test(ua)
   if (isMobile) {
@@ -74,10 +74,7 @@ const features = [
 
 async function loadStats() {
   await subjectsStore.load()
-  const [w, totalQ] = await Promise.all([
-    wrongBookRepo.listAll(),
-    questionsRepo.countAll(),
-  ])
+  const [w, totalQ] = await Promise.all([wrongBookRepo.listAll(), questionsRepo.countAll()])
   stats.value = {
     subjects: subjectsStore.list.length,
     questions: totalQ,
@@ -92,8 +89,7 @@ async function onPullRefresh() {
   try {
     const res = await syncStore.runBank()
     if (res.ok) {
-      const pulledMsg =
-        res.pulled > 0 ? `已同步 ${res.pulled} 条` : '已是最新'
+      const pulledMsg = res.pulled > 0 ? `已同步 ${res.pulled} 条` : '已是最新'
       showToast(pulledMsg)
     } else if (res.error) {
       showToast(res.error)
@@ -146,7 +142,9 @@ onBeforeUnmount(() => {
         </div>
         <div class="stat__sep"></div>
         <div class="stat">
-          <div class="stat__num" :class="{ 'stat__num--accent': stats.wrong > 0 }">{{ stats.wrong }}</div>
+          <div class="stat__num" :class="{ 'stat__num--accent': stats.wrong > 0 }">
+            {{ stats.wrong }}
+          </div>
           <div class="stat__label">待复习</div>
         </div>
       </div>
@@ -170,7 +168,6 @@ onBeforeUnmount(() => {
           <van-icon name="arrow" size="14" color="var(--text-3)" />
         </div>
       </div>
-
     </div>
   </van-pull-refresh>
 </template>

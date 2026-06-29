@@ -23,7 +23,12 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'app-icons/180x180.png', 'app-icons/192x192.png', 'app-icons/512x512.png'],
+      includeAssets: [
+        'favicon.svg',
+        'app-icons/180x180.png',
+        'app-icons/192x192.png',
+        'app-icons/512x512.png',
+      ],
       manifest: {
         name: '题盒 · QuizBox',
         short_name: '题盒',

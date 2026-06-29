@@ -93,9 +93,7 @@ function main() {
   }
 
   // package.json
-  patchFile('package.json', (s) =>
-    s.replace(/"version":\s*"[^"]*"/, `"version": "${nextStr}"`),
-  )
+  patchFile('package.json', (s) => s.replace(/"version":\s*"[^"]*"/, `"version": "${nextStr}"`))
   // package-lock.json（只同步根包版本，依赖树版本不动）
   patchFile('package-lock.json', (s) => {
     const lock = JSON.parse(s)

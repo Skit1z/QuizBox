@@ -73,8 +73,7 @@ function matchFill(user: string, std: string, strategy: MatchStrategy): boolean 
   }
   // contains（默认）：忽略大小写，去除标点空白后，用户答案须与标准答案
   // 等价 或 用户答案完整包含标准答案（不允许标准答案反向短匹配用户答案）
-  const norm = (x: string) =>
-    x.toLowerCase().replace(/[\s，。、；：,.;:!！?？'""''()（）]/g, '')
+  const norm = (x: string) => x.toLowerCase().replace(/[\s，。、；：,.;:!！?？'""''()（）]/g, '')
   const nu = norm(u)
   const ns = norm(s)
   if (!ns) return false

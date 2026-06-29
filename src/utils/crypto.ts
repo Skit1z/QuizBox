@@ -57,11 +57,7 @@ export async function encryptSecret(plain: string): Promise<string> {
   const key = await deriveKey()
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const enc = new TextEncoder()
-  const cipher = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    enc.encode(plain),
-  )
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plain))
   // 拼接 iv + cipher
   const combined = new Uint8Array(iv.length + cipher.byteLength)
   combined.set(iv, 0)
@@ -77,11 +73,7 @@ export async function decryptSecret(stored: string): Promise<string> {
     const combined = new Uint8Array(b64ToBuf(stored.slice(ENC_PREFIX.length)))
     const iv = combined.slice(0, 12)
     const cipher = combined.slice(12)
-    const plain = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      cipher,
-    )
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher)
     return new TextDecoder().decode(plain)
   } catch {
     throw new SecretDecryptError()

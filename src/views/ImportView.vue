@@ -637,8 +637,10 @@ function onAdminDialogClose() {
                   @click="genAnswer(p, i)"
                 >
                   <van-loading v-if="aiGen[i]" size="12" />
-                  <template v-else><van-icon name="bulb-o" size="12" /> AI
-                    {{ answerText(p) ? '校对' : '补答案' }}</template>
+                  <template v-else
+                    ><van-icon name="bulb-o" size="12" /> AI
+                    {{ answerText(p) ? '校对' : '补答案' }}</template
+                  >
                 </button>
               </div>
               <div v-if="p.analysis" class="q-item__analysis">
@@ -732,7 +734,9 @@ function onAdminDialogClose() {
       <!-- 底部操作 -->
       <div class="bottom-actions">
         <van-button round :disabled="saving" @click="step = 2">返回重试</van-button>
-        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll">导入 {{ parsed.length }} 题</van-button>
+        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll"
+          >导入 {{ parsed.length }} 题</van-button
+        >
       </div>
     </div>
 

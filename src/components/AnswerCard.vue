@@ -47,7 +47,10 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
         :class="[
           'ac-cell',
           cell.isCurrent && 'ac-cell--current',
-          !cell.isCurrent && cell.isAnswered && (cell.correct === undefined || !showCorrectness) && 'ac-cell--answered',
+          !cell.isCurrent &&
+            cell.isAnswered &&
+            (cell.correct === undefined || !showCorrectness) &&
+            'ac-cell--answered',
           showCorrectness && cell.correct === true && 'ac-cell--correct',
           showCorrectness && cell.correct === false && 'ac-cell--wrong',
         ]"
@@ -61,8 +64,12 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
     <div class="answer-card__legend">
       <span class="legend-item"><i class="legend-dot legend-dot--current"></i>当前</span>
       <span class="legend-item"><i class="legend-dot legend-dot--answered"></i>已答</span>
-      <span v-if="showCorrectness" class="legend-item"><i class="legend-dot legend-dot--correct"></i>正确</span>
-      <span v-if="showCorrectness" class="legend-item"><i class="legend-dot legend-dot--wrong"></i>错误</span>
+      <span v-if="showCorrectness" class="legend-item"
+        ><i class="legend-dot legend-dot--correct"></i>正确</span
+      >
+      <span v-if="showCorrectness" class="legend-item"
+        ><i class="legend-dot legend-dot--wrong"></i>错误</span
+      >
       <span class="legend-item"><i class="legend-dot legend-dot--unanswered"></i>未答</span>
     </div>
   </div>

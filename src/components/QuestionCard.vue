@@ -61,9 +61,20 @@ const formattedUserAnswer = computed(() => {
 
     <!-- 答案与解析 -->
     <div v-if="showAnswer" class="q-card__answer">
-      <div v-if="userAnswer != null && userAnswer !== '' && (!Array.isArray(userAnswer) || userAnswer.length > 0)" class="q-card__answer-row" style="margin-bottom: var(--sp-2)">
+      <div
+        v-if="
+          userAnswer != null &&
+          userAnswer !== '' &&
+          (!Array.isArray(userAnswer) || userAnswer.length > 0)
+        "
+        class="q-card__answer-row"
+        style="margin-bottom: var(--sp-2)"
+      >
         <van-tag :type="userAnswerCorrect ? 'success' : 'danger'">您的答案</van-tag>
-        <span class="q-card__answer-text" :class="{ 'q-card__answer-text--wrong': !userAnswerCorrect }">
+        <span
+          class="q-card__answer-text"
+          :class="{ 'q-card__answer-text--wrong': !userAnswerCorrect }"
+        >
           {{ formattedUserAnswer }}
         </span>
       </div>

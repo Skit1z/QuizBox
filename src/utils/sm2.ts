@@ -26,10 +26,7 @@ export function sm2Next(
     else interval = Math.round(interval * easiness)
   }
 
-  easiness = Math.max(
-    1.3,
-    easiness + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)),
-  )
+  easiness = Math.max(1.3, easiness + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
 
   const nextReviewAt = Date.now() + interval * 86400000
   return { easiness, interval, reviewCount, nextReviewAt }

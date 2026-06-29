@@ -99,7 +99,9 @@ onMounted(load)
           </div>
         </div>
         <div class="session-card__actions">
-          <van-button size="small" type="primary" plain round @click="resume(session)">继续</van-button>
+          <van-button size="small" type="primary" plain round @click="resume(session)"
+            >继续</van-button
+          >
           <van-button size="small" plain round @click="abandon(session)">移除</van-button>
         </div>
       </div>

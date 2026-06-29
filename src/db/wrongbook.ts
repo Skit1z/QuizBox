@@ -10,10 +10,7 @@ export const wrongBookRepo = {
     selfRating?: number
     reason?: string
   }): Promise<WrongItem | undefined> {
-    const existing = await db.wrongBook
-      .where('questionId')
-      .equals(opts.questionId)
-      .first()
+    const existing = await db.wrongBook.where('questionId').equals(opts.questionId).first()
     const now = Date.now()
 
     if (!opts.isCorrect) {
@@ -78,7 +75,9 @@ export const wrongBookRepo = {
         .where('[status+nextReviewAt]')
         .between(['pending', 0], ['pending', now], true, true)
         .toArray()
-      return arr.filter((w) => !isDeleted(w.deletedAt)).sort((a, b) => (a.nextReviewAt || 0) - (b.nextReviewAt || 0))
+      return arr
+        .filter((w) => !isDeleted(w.deletedAt))
+        .sort((a, b) => (a.nextReviewAt || 0) - (b.nextReviewAt || 0))
     } catch {
       const all = await db.wrongBook.toArray()
       return all
@@ -103,9 +102,12 @@ export const wrongBookRepo = {
   async listByQuestionIds(ids: string[]): Promise<WrongItem[]> {
     if (ids.length === 0) return []
     const map = new Map<string, WrongItem>()
-    await db.wrongBook.where('questionId').anyOf(ids).each((w) => {
-      if (!isDeleted(w.deletedAt)) map.set(w.questionId, w)
-    })
+    await db.wrongBook
+      .where('questionId')
+      .anyOf(ids)
+      .each((w) => {
+        if (!isDeleted(w.deletedAt)) map.set(w.questionId, w)
+      })
     return [...map.values()]
   },
 
@@ -123,19 +125,24 @@ export const wrongBookRepo = {
     const now = Date.now()
     const rows = await db.wrongBook.where('id').anyOf(ids).toArray()
     const revisionMap = new Map(rows.map((row) => [row.id, (row.revision || 0) + 1]))
-    await db.wrongBook.bulkUpdate(ids.map((id) => ({
-      key: id,
-      changes: { status, updatedAt: now, revision: revisionMap.get(id) || 1 },
-    })))
+    await db.wrongBook.bulkUpdate(
+      ids.map((id) => ({
+        key: id,
+        changes: { status, updatedAt: now, revision: revisionMap.get(id) || 1 },
+      })),
+    )
   },
 
   /** 把所有待复习错题标记为已掌握（单次 modify） */
   async markAllMastered(): Promise<void> {
     const now = Date.now()
-    await db.wrongBook.where('status').equals('pending').modify((row) => {
-      row.status = 'mastered'
-      row.updatedAt = now
-      row.revision = (row.revision || 0) + 1
-    })
+    await db.wrongBook
+      .where('status')
+      .equals('pending')
+      .modify((row) => {
+        row.status = 'mastered'
+        row.updatedAt = now
+        row.revision = (row.revision || 0) + 1
+      })
   },
 }

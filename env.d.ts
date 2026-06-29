@@ -18,23 +18,23 @@ declare module 'vue-virtual-scroller' {
 
 declare module 'word-extractor' {
   class Document {
-    getBody(options?: { filterUnicode?: boolean }): string;
-    getFootnotes(options?: { filterUnicode?: boolean }): string;
-    getEndnotes(options?: { filterUnicode?: boolean }): string;
-    getHeaders(options?: { filterUnicode?: boolean; includeFooters?: boolean }): string;
-    getFooters(options?: { filterUnicode?: boolean }): string;
-    getAnnotations(options?: { filterUnicode?: boolean }): string;
+    getBody(options?: { filterUnicode?: boolean }): string
+    getFootnotes(options?: { filterUnicode?: boolean }): string
+    getEndnotes(options?: { filterUnicode?: boolean }): string
+    getHeaders(options?: { filterUnicode?: boolean; includeFooters?: boolean }): string
+    getFooters(options?: { filterUnicode?: boolean }): string
+    getAnnotations(options?: { filterUnicode?: boolean }): string
     getTextboxes(options?: {
-      filterUnicode?: boolean;
-      includeHeadersAndFooters?: boolean;
-      includeBody?: boolean;
-    }): string;
+      filterUnicode?: boolean
+      includeHeadersAndFooters?: boolean
+      includeBody?: boolean
+    }): string
   }
 
   class WordExtractor {
-    constructor();
-    extract(source: string | ArrayBuffer | Buffer): Promise<Document>;
+    constructor()
+    extract(source: string | ArrayBuffer | Buffer): Promise<Document>
   }
 
-  export default WordExtractor;
+  export default WordExtractor
 }

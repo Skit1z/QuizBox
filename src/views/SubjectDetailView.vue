@@ -333,9 +333,13 @@ onMounted(async () => {
         <span>已选 {{ selectedCount }} / {{ filteredQuestions.length }}</span>
         <div class="batch-bar__actions">
           <van-button size="small" plain round @click="selectVisible">全选当前</van-button>
-          <van-button size="small" type="primary" plain round @click="practiceSelected">自测</van-button>
+          <van-button size="small" type="primary" plain round @click="practiceSelected"
+            >自测</van-button
+          >
           <van-button size="small" plain round @click="guardedAction(openMove)">移动</van-button>
-          <van-button size="small" type="danger" plain round @click="guardedAction(batchRemove)">删除</van-button>
+          <van-button size="small" type="danger" plain round @click="guardedAction(batchRemove)"
+            >删除</van-button
+          >
         </div>
       </div>
     </div>

@@ -618,7 +618,9 @@ onMounted(async () => {
       <div class="field-group">
         <div class="field field--row">
           <label class="field__label">状态</label>
-          <span v-if="!adminStore.hasPassword" class="admin-status admin-status--off">未设置密码（所有人可操作）</span>
+          <span v-if="!adminStore.hasPassword" class="admin-status admin-status--off"
+            >未设置密码（所有人可操作）</span
+          >
           <span v-else-if="adminStore.isAdmin" class="admin-status admin-status--on">
             <van-icon name="shield-o" size="14" /> 管理员已登入
           </span>

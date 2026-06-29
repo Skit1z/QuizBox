@@ -31,7 +31,9 @@ export const attemptsRepo = {
     return all.sort((a, b) => b.createdAt - a.createdAt)
   },
 
-  async getObjectiveStats(questionIds: string[]): Promise<Map<string, { total: number; wrong: number }>> {
+  async getObjectiveStats(
+    questionIds: string[],
+  ): Promise<Map<string, { total: number; wrong: number }>> {
     const stats = new Map<string, { total: number; wrong: number }>()
     if (questionIds.length === 0) return stats
     const rows = await db.attempts.where('questionId').anyOf(questionIds).toArray()

@@ -588,9 +588,9 @@ const isWrongOption = (letter: string) => {
         <div
           v-if="
             !props.classic &&
-              !submitted[current.id] &&
-              current.type !== 'single' &&
-              current.type !== 'judge'
+            !submitted[current.id] &&
+            current.type !== 'single' &&
+            current.type !== 'judge'
           "
           style="padding: 12px"
         >

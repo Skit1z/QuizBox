@@ -2,15 +2,17 @@
 
 <img src="public/favicon.svg" alt="题盒" width="96" height="96">
 
-# 题盒 · QuizBox
+# QuizBox
 
-**Word 题库导入 → 移动端刷题 → 错题自动间隔复习**
+**离线优先的个人刷题工具：导入题库、移动端练习、考试自测、错题复习。**
 
-本地优先 · WebDAV / Vercel 云端跨设备同步
+本地优先 · 可选 WebDAV 同步 · 可部署到 Vercel 开启云端题库同步
 
 ![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)
 ![Tauri](https://img.shields.io/badge/Tauri-2-FFC131.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Skit1z/QuizBox)
 
 </div>
 
@@ -18,12 +20,13 @@
 
 ## 简介
 
-QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有好用的刷题工具」的问题。
+QuizBox 面向个人题库使用场景：把已有 Word / Markdown / PDF 题库整理成可刷题的数据，主要数据保存在浏览器 IndexedDB 中，不依赖账号系统，也不强制上云。
 
-1. 上传 `.docx` 文件，规则解析为主、AI 兜底，自动结构化为题目
-2. 支持自测和限时考试两种刷题模式
-3. 错题自动收录，基于 SM-2 间隔重复算法安排复习
-4. 多设备同步：WebDAV（如坚果云），或部署到 Vercel 后一键开启**云端题库同步**——电脑导入、手机接着做
+典型使用方式：
+
+1. 在电脑端导入题库，按科目管理题目。
+2. 在手机或电脑上进行自测、考试和错题复习。
+3. 需要跨设备共享题库时，选择 WebDAV 或部署到 Vercel 后启用云端题库同步。
 
 ---
 
@@ -56,37 +59,32 @@ QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有
 
 ## 功能
 
-**题库管理** — 支持单选、多选、判断、填空、简答、论述六种题型，题干支持 LaTeX 公式与图片附件，按科目分类管理。
+**题库管理** — 支持科目、章节、题目管理；题型包含单选、多选、判断、填空、简答、论述；题干支持 LaTeX 和图片附件。
 
-**AI 导入** — 上传 Word 文档，由 AI 自动解析为结构化题目。支持 DeepSeek、智谱 GLM、通义千问、Kimi、OpenAI 等供应商，也可接入自定义的 OpenAI 兼容接口。低置信度的解析结果会标红提示，支持逐题编辑后入库。
+**题库导入** — 支持 `.docx`、`.md`、`.pdf` 导入。规则解析为主，低置信度内容可用 AI 辅助修复，导入前可逐题校对。
 
-**双模式刷题** — 自测模式逐题反馈，适合日常练习；考试模式支持限时交卷，并提供错题重做、随机抽查、薄弱点加权等组卷策略。完成后生成成绩详情与错题回顾。
+**自测与考试** — 自测模式即时反馈；考试模式支持限时交卷，并按题库中实际存在的题型设置抽题数量。
 
-**间隔复习** — 错题自动收录至错题本，通过 SM-2 算法动态调整复习间隔：答错缩短、答对延长，无需手动管理复习计划。
+**错题本** — 客观题答错后自动进入错题本，支持按科目筛选、多选后重新自测。错题本仅保存在当前浏览器本地。
 
-**主观题评分** — 客观题由系统自动判分；简答与论述题支持 AI 评分（0-100 分 + 评语）及自评打分。
+**我的自测** — 自测和考试会保存未完成记录，退出后可以继续。记录仅保存在当前浏览器本地。
 
-**数据安全** — 全部数据存储于浏览器 IndexedDB，本地优先。API Key 与密码经 AES-GCM 加密后存储。
+**主观题评分** — 客观题自动判分；简答、论述支持 AI 评分和自评。
 
-**跨设备同步** — 两种方式任选：① WebDAV（坚果云 / Nextcloud 等，免费额度即可）；② 部署到 Vercel 后开启**云端题库同步**——题库快照存入 Vercel Blob，电脑导入后手机打开同一网址自动拉取、接着做题。错题本与我的自测按浏览器本地保存，不跨设备覆盖。后者与网页同源，零 CORS、自动 HTTPS（详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)）。
+**跨设备题库同步** — 可选择 WebDAV，或部署到 Vercel 后使用 `/api/bank` + Vercel Blob 同步题库快照。错题本和我的自测不参与云端题库同步。
 
-**界面设计** — 三套主题色可选（蓝灰 / 墨绿 / 橙），支持暗黑模式与跟随系统，移动端与桌面端自适应布局。
+**外观** — 支持亮色、暗色、跟随系统，以及多套主题色。
 
 ---
 
 ## 技术栈
 
-| 层        | 技术                                                                   |
-| --------- | ---------------------------------------------------------------------- |
-| 框架      | Vue 3 + TypeScript（Composition API）                                  |
-| 构建      | Vite 6                                                                 |
-| UI        | Vant 4（移动优先，按需引入）                                           |
-| 状态管理  | Pinia                                                                  |
-| 本地存储  | Dexie.js（IndexedDB）                                                  |
-| 同步      | WebDAV（坚果云 / Nextcloud），或 Vercel Serverless + Blob 云端题库同步 |
-| Word 解析 | mammoth.js                                                             |
-| 公式渲染  | KaTeX                                                                  |
-| 桌面打包  | Tauri 2                                                                |
+- Vue 3 + TypeScript + Vite
+- Vant 4 + Pinia + Vue Router
+- Dexie / IndexedDB 本地存储
+- Vercel Serverless Functions + Vercel Blob 云端题库同步
+- WebDAV 可选同步
+- Tauri 2 桌面端打包
 
 ---
 
@@ -107,6 +105,9 @@ npm run tauri build  # 桌面端（需要 Rust 环境）
 | 命令                 | 说明                |
 | -------------------- | ------------------- |
 | `npm run type-check` | TypeScript 类型检查 |
+| `npm run build`      | 生产构建            |
+| `npm run lint`       | ESLint 检查         |
+| `npm run format`     | 格式化代码          |
 | `npm run tauri dev`  | 桌面端开发调试      |
 | `npm run preview`    | 预览生产构建产物    |
 
@@ -125,8 +126,7 @@ npm i -g vercel && vercel --prod
 部署到 Vercel 还能一键开启**云端题库同步**（电脑导入、手机接着做），完整步骤见
 **[docs/vercel-deploy.md](docs/vercel-deploy.md)**（含 Blob 存储与共享密钥配置）。
 
-也可部署到任意静态托管（Cloudflare Pages 等），但 `/api/bank` 云同步函数仅在
-支持 Serverless 的平台（Vercel / Netlify）生效；纯静态托管只能用 WebDAV 同步。
+也可部署到任意静态托管，但 `/api/bank` 云同步依赖 serverless 函数和 Blob 存储；纯静态托管只能使用 WebDAV 或本地数据。
 
 部署完成后，移动端浏览器访问并「添加到主屏幕」即可作为 PWA 使用。
 
@@ -150,7 +150,21 @@ npm run tauri build
 
 **云端题库同步** — 部署到 Vercel 后可用。设置中启用并填共享密钥即可通过同源 `/api/bank` 跨设备共享题库。配置详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)。
 
-**外观** — 支持亮色 / 暗色 / 跟随系统三种主题模式，以及三套主题色切换。
+**外观** — 支持亮色 / 暗色 / 跟随系统三种主题模式，以及多套主题色切换。
+
+---
+
+## CI
+
+仓库提供 GitHub Actions CI，覆盖：
+
+- `npm ci`
+- `npm run format:check`
+- `npm run type-check`
+- `npm run build`
+- `npm run lint`
+
+CI 不运行测试，也不会引入测试框架；当前项目验收以类型检查、构建、格式和 lint 为准。
 
 ---
 
