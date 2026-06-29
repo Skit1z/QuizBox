@@ -153,7 +153,9 @@ async function doParse() {
         return
       }
     } else {
-      qs = await parseQuestionsWithAI(result.text, hint.value || undefined)
+      qs = await parseQuestionsWithAI(result.text, hint.value || undefined, (done, total) => {
+        pdfProgress.value = `AI 解析中（${done}/${total} 批）`
+      })
     }
 
     if (qs.length === 0) {
