@@ -61,7 +61,13 @@ function openEdit(q: Question) {
   editStem.value = q.stem || ''
   editOptions.value = q.options ? [...q.options] : []
   const a = q.answer
-  if (isChoiceLike(q.type)) {
+  if (q.type === 'judge') {
+    editAnswer.value = String(a ?? '')
+      .toUpperCase()
+      .startsWith('F')
+      ? 'F'
+      : 'T'
+  } else if (isChoiceLike(q.type)) {
     editAnswer.value = Array.isArray(a) ? a.join('') : String(a ?? '')
   } else {
     editAnswer.value = Array.isArray(a) ? a.join('\n') : String(a ?? '')
@@ -110,7 +116,14 @@ async function saveEdit() {
     let answer: string | string[]
     if (type === 'multiple') {
       // 多选答案：去重保留顺序，如 "AC" → ['A','C']
-      answer = Array.from(new Set(editAnswer.value.toUpperCase().split('').filter((c) => /[A-Z]/.test(c))))
+      answer = Array.from(
+        new Set(
+          editAnswer.value
+            .toUpperCase()
+            .split('')
+            .filter((c) => /[A-Z]/.test(c)),
+        ),
+      )
       if (!answer.length) {
         showFailToast('请填写答案（如 AC）')
         return
@@ -118,21 +131,34 @@ async function saveEdit() {
     } else if (type === 'judge') {
       answer = editAnswer.value.toUpperCase().startsWith('F') ? 'F' : 'T'
     } else if (isChoiceLike(type)) {
-      answer = editAnswer.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1)
+      answer = editAnswer.value
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .slice(0, 1)
       if (!answer) {
         showFailToast('请填写答案字母')
         return
       }
     } else {
       // 填空：按行拆为多个空；简答/论述：单个字符串
-      const lines = editAnswer.value.split('\n').map((s) => s.trim()).filter(Boolean)
-      answer = type === 'fill' ? (lines.length > 1 ? lines : (lines[0] || '')) : editAnswer.value.trim()
+      const lines = editAnswer.value
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      answer =
+        type === 'fill' ? (lines.length > 1 ? lines : lines[0] || '') : editAnswer.value.trim()
       if (!answer || (Array.isArray(answer) && !answer.length)) {
         showFailToast('请填写答案')
         return
       }
     }
-    const patch: Partial<{ type: QuestionType; stem: string; options?: string[]; answer: string | string[]; analysis: string }> = {
+    const patch: Partial<{
+      type: QuestionType
+      stem: string
+      options?: string[]
+      answer: string | string[]
+      analysis: string
+    }> = {
       type,
       stem,
       answer,
@@ -160,9 +186,7 @@ const typeOptions = computed<SelectOption[]>(() => [
 ])
 
 const moveSubjectOptions = computed<SelectOption[]>(() =>
-  subjectsStore.list
-    .filter((s) => s.id !== subjectId)
-    .map((s) => ({ value: s.id, label: s.name })),
+  subjectsStore.list.filter((s) => s.id !== subjectId).map((s) => ({ value: s.id, label: s.name })),
 )
 
 const filteredQuestions = computed(() => {
@@ -182,10 +206,7 @@ const selectedCount = computed(() => selectedIds.value.length)
 
 async function load() {
   loading.value = true
-  const [qs, sub] = await Promise.all([
-    questionsRepo.listBySubject(subjectId),
-    subjectsStore.load(),
-  ])
+  const [qs] = await Promise.all([questionsRepo.listBySubject(subjectId), subjectsStore.load()])
   questions.value = qs
   subjectName.value = subjectsStore.list.find((s) => s.id === subjectId)?.name || ''
   selectedIds.value = selectedIds.value.filter((id) => qs.some((q) => q.id === id))
@@ -296,7 +317,10 @@ onMounted(async () => {
         <button class="icon-btn" @click="guardedAction(toggleManage)">
           <van-icon :name="managing ? 'cross' : 'records-o'" size="18" />
         </button>
-        <button class="fab" @click="guardedAction(() => router.push({ name: 'import', query: { subjectId } }))">
+        <button
+          class="fab"
+          @click="guardedAction(() => router.push({ name: 'import', query: { subjectId } }))"
+        >
           <van-icon name="add-o" size="18" />
         </button>
       </div>
@@ -334,11 +358,7 @@ onMounted(async () => {
 
     <!-- 题量大时用虚拟滚动；少量时直接渲染 -->
     <div v-else-if="filteredQuestions.length <= 30">
-      <div
-        v-for="(q, i) in filteredQuestions"
-        :key="q.id"
-        class="scroller-item-wrap"
-      >
+      <div v-for="(q, i) in filteredQuestions" :key="q.id" class="scroller-item-wrap">
         <van-swipe-cell
           class="swipe-card"
           :class="{ 'swipe-card--selected': managing && selectedIds.includes(q.id) }"
@@ -350,10 +370,19 @@ onMounted(async () => {
                 v-model:show="showPopoverMap[q.id]"
                 :actions="[
                   { text: '编辑题目', icon: 'edit', callback: () => openEdit(q) },
-                  { text: '删除题目', icon: 'delete-o', className: 'popover-danger-action', callback: () => removeQuestion(q.id) },
+                  {
+                    text: '删除题目',
+                    icon: 'delete-o',
+                    className: 'popover-danger-action',
+                    callback: () => removeQuestion(q.id),
+                  },
                 ]"
                 :disabled="!adminStore.canOperate()"
-                @click-disabled="guardedAction(() => { showPopoverMap[q.id] = true })"
+                @click-disabled="
+                  guardedAction(() => {
+                    showPopoverMap[q.id] = true
+                  })
+                "
               >
                 <button class="q-action-btn" @click.stop>
                   <van-icon name="ellipsis" size="16" />
@@ -362,8 +391,20 @@ onMounted(async () => {
             </template>
           </QuestionCard>
           <template #right>
-            <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(q))" />
-            <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(q.id))" />
+            <van-button
+              square
+              type="primary"
+              text="编辑"
+              style="height: 100%"
+              @click.stop="guardedAction(() => openEdit(q))"
+            />
+            <van-button
+              square
+              type="danger"
+              text="删除"
+              style="height: 100%"
+              @click.stop="guardedAction(() => removeQuestion(q.id))"
+            />
           </template>
         </van-swipe-cell>
       </div>
@@ -384,16 +425,30 @@ onMounted(async () => {
               :class="{ 'swipe-card--selected': managing && selectedIds.includes(item.id) }"
               @click="managing ? toggleSelect(item.id) : null"
             >
-              <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id">
+              <QuestionCard
+                :question="item"
+                :index="index"
+                :show-answer="true"
+                :highlight="focusId === item.id"
+              >
                 <template #action>
                   <ActionPopover
                     v-model:show="showPopoverMap[item.id]"
                     :actions="[
                       { text: '编辑题目', icon: 'edit', callback: () => openEdit(item) },
-                      { text: '删除题目', icon: 'delete-o', className: 'popover-danger-action', callback: () => removeQuestion(item.id) },
+                      {
+                        text: '删除题目',
+                        icon: 'delete-o',
+                        className: 'popover-danger-action',
+                        callback: () => removeQuestion(item.id),
+                      },
                     ]"
                     :disabled="!adminStore.canOperate()"
-                    @click-disabled="guardedAction(() => { showPopoverMap[item.id] = true })"
+                    @click-disabled="
+                      guardedAction(() => {
+                        showPopoverMap[item.id] = true
+                      })
+                    "
                   >
                     <button class="q-action-btn" @click.stop>
                       <van-icon name="ellipsis" size="16" />
@@ -402,8 +457,20 @@ onMounted(async () => {
                 </template>
               </QuestionCard>
               <template #right>
-                <van-button square type="primary" text="编辑" style="height: 100%" @click.stop="guardedAction(() => openEdit(item))" />
-                <van-button square type="danger" text="删除" style="height: 100%" @click.stop="guardedAction(() => removeQuestion(item.id))" />
+                <van-button
+                  square
+                  type="primary"
+                  text="编辑"
+                  style="height: 100%"
+                  @click.stop="guardedAction(() => openEdit(item))"
+                />
+                <van-button
+                  square
+                  type="danger"
+                  text="删除"
+                  style="height: 100%"
+                  @click.stop="guardedAction(() => removeQuestion(item.id))"
+                />
               </template>
             </van-swipe-cell>
           </div>
@@ -413,7 +480,11 @@ onMounted(async () => {
 
     <van-dialog v-model:show="showMove" title="移动到科目" show-cancel-button @confirm="batchMove">
       <div class="dialog-body">
-        <ThemedSelect v-model="targetSubjectId" :options="moveSubjectOptions" placeholder="选择目标科目" />
+        <ThemedSelect
+          v-model="targetSubjectId"
+          :options="moveSubjectOptions"
+          placeholder="选择目标科目"
+        />
       </div>
     </van-dialog>
 
@@ -456,13 +527,13 @@ onMounted(async () => {
         <template v-if="editType === 'single' || editType === 'multiple'">
           <div class="edit-q__field">
             <label class="edit-q__label">选项</label>
-            <div
-              v-for="(opt, i) in editOptions"
-              :key="i"
-              class="edit-q__option"
-            >
+            <div v-for="(opt, i) in editOptions" :key="i" class="edit-q__option">
               <span class="edit-q__option-key">{{ String.fromCharCode(65 + i) }}</span>
-              <input v-model="editOptions[i]" class="edit-q__input" :placeholder="`选项 ${String.fromCharCode(65 + i)}`" />
+              <input
+                v-model="editOptions[i]"
+                class="edit-q__input"
+                :placeholder="`选项 ${String.fromCharCode(65 + i)}`"
+              />
               <button
                 v-if="editOptions.length > 2"
                 type="button"
@@ -480,17 +551,46 @@ onMounted(async () => {
             答案
             <span class="edit-q__hint">
               {{
-                editType === 'multiple' ? '（如 AC，多选填字母）' :
-                editType === 'judge' ? '（T 正确 / F 错误）' :
-                editType === 'fill' ? '（多个空用换行分隔）' : ''
+                editType === 'multiple'
+                  ? '（如 AC，多选填字母）'
+                  : editType === 'judge'
+                    ? '（T 正确 / F 错误）'
+                    : editType === 'fill'
+                      ? '（多个空用换行分隔）'
+                      : ''
               }}
             </span>
           </label>
+          <div v-if="editType === 'judge'" class="edit-q__judge">
+            <button
+              type="button"
+              class="edit-q__judge-btn"
+              :class="{ 'edit-q__judge-btn--active': editAnswer === 'T' }"
+              @click="editAnswer = 'T'"
+            >
+              T
+            </button>
+            <button
+              type="button"
+              class="edit-q__judge-btn"
+              :class="{ 'edit-q__judge-btn--active': editAnswer === 'F' }"
+              @click="editAnswer = 'F'"
+            >
+              F
+            </button>
+          </div>
           <textarea
+            v-else
             v-model="editAnswer"
             class="edit-q__textarea"
             :rows="editType === 'fill' || editType === 'short' || editType === 'essay' ? 3 : 1"
-            :placeholder="editType === 'single' ? '答案字母，如 A' : editType === 'multiple' ? '答案字母，如 ACD' : '答案'"
+            :placeholder="
+              editType === 'single'
+                ? '答案字母，如 A'
+                : editType === 'multiple'
+                  ? '答案字母，如 ACD'
+                  : '答案'
+            "
           ></textarea>
         </div>
         <div class="edit-q__field">
@@ -505,11 +605,7 @@ onMounted(async () => {
       </div>
     </van-dialog>
 
-    <AdminDialog
-      v-model:show="showAdminDialog"
-      @verified="onAdminVerified"
-    />
-
+    <AdminDialog v-model:show="showAdminDialog" @verified="onAdminVerified" />
   </div>
 </template>
 
@@ -681,6 +777,26 @@ onMounted(async () => {
 .edit-q__textarea:focus,
 .edit-q__input:focus {
   border-color: var(--brand);
+}
+.edit-q__judge {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.edit-q__judge-btn {
+  height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.edit-q__judge-btn--active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #ffffff;
 }
 .edit-q__option {
   display: flex;

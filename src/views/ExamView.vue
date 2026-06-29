@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showFailToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -24,21 +24,77 @@ const result = ref<any>(null)
 const restoredSession = ref<ExamSession | null>(null)
 
 const subjectId = ref('')
-const selectedTypes = ref<QuestionType[]>([])
-const count = ref(20)
+const subjectQuestions = ref<Question[]>([])
+const typeQuotas = ref<Partial<Record<QuestionType, number>>>({})
 const durationMin = ref(30)
+const DEFAULT_EXAM_COUNT = 20
 
 const subjectOptions = computed<SelectOption[]>(() =>
   subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
 )
 
-function toggleType(type: QuestionType) {
-  const index = selectedTypes.value.indexOf(type)
-  if (index > -1) {
-    selectedTypes.value.splice(index, 1)
-  } else {
-    selectedTypes.value.push(type)
+const typeStats = computed(() => {
+  const counts = new Map<QuestionType, number>()
+  for (const q of subjectQuestions.value) {
+    counts.set(q.type, (counts.get(q.type) || 0) + 1)
   }
+  return Object.entries(QUESTION_TYPE_LABELS)
+    .map(([type, label]) => ({
+      type: type as QuestionType,
+      label,
+      available: counts.get(type as QuestionType) || 0,
+    }))
+    .filter((item) => item.available > 0)
+})
+
+const selectedTypes = computed<QuestionType[]>(() =>
+  typeStats.value
+    .filter((item) => Number(typeQuotas.value[item.type] || 0) > 0)
+    .map((item) => item.type),
+)
+
+const totalCount = computed(() =>
+  typeStats.value.reduce((sum, item) => sum + Number(typeQuotas.value[item.type] || 0), 0),
+)
+
+function buildDefaultQuotas(stats: typeof typeStats.value) {
+  const quotas: Partial<Record<QuestionType, number>> = {}
+  const totalAvailable = stats.reduce((sum, item) => sum + item.available, 0)
+  let remaining = Math.min(DEFAULT_EXAM_COUNT, totalAvailable)
+  for (const item of stats) quotas[item.type] = 0
+  while (remaining > 0) {
+    let changed = false
+    for (const item of stats) {
+      const current = quotas[item.type] || 0
+      if (current >= item.available) continue
+      quotas[item.type] = current + 1
+      remaining--
+      changed = true
+      if (remaining <= 0) break
+    }
+    if (!changed) break
+  }
+  return quotas
+}
+
+async function loadSubjectQuestions(id: string) {
+  if (!id) {
+    subjectQuestions.value = []
+    typeQuotas.value = {}
+    return
+  }
+  subjectQuestions.value = await questionsRepo.filter({ subjectId: id })
+  typeQuotas.value = buildDefaultQuotas(typeStats.value)
+}
+
+function setTypeQuota(type: QuestionType, value: number) {
+  const available = typeStats.value.find((item) => item.type === type)?.available || 0
+  const next = Math.max(0, Math.min(available, Math.floor(Number(value)) || 0))
+  typeQuotas.value = { ...typeQuotas.value, [type]: next }
+}
+
+function adjustTypeQuota(type: QuestionType, delta: number) {
+  setTypeQuota(type, Number(typeQuotas.value[type] || 0) + delta)
 }
 
 async function start() {
@@ -46,18 +102,25 @@ async function start() {
     showFailToast('请选择科目')
     return
   }
-  let base = await questionsRepo.filter({ subjectId: subjectId.value })
-  if (selectedTypes.value.length > 0) {
-    base = base.filter((q) => selectedTypes.value.includes(q.type))
+  if (totalCount.value <= 0) {
+    showFailToast('请至少设置一种题型的题量')
+    return
   }
 
-  if (base.length === 0) {
+  const picked: Question[] = []
+  for (const item of typeStats.value) {
+    const quota = Number(typeQuotas.value[item.type] || 0)
+    if (quota <= 0) continue
+    const pool = subjectQuestions.value.filter((q) => q.type === item.type)
+    picked.push(...shuffle(pool).slice(0, quota))
+  }
+
+  if (picked.length === 0) {
     showFailToast('没有符合条件的题目')
     return
   }
 
-  const qs = shuffle(base).slice(0, count.value)
-  questions.value = qs
+  questions.value = shuffle(picked)
   restoredSession.value = null
   started.value = true
 }
@@ -83,15 +146,13 @@ onMounted(async () => {
     .map((id) => byId.get(id))
     .filter((q): q is Question => !!q)
   subjectId.value = inProgress.config.subjectId
-  if (inProgress.config.questionTypes) {
-    selectedTypes.value = inProgress.config.questionTypes
-  } else {
-    selectedTypes.value = []
-  }
-  count.value = inProgress.config.count
   durationMin.value = inProgress.config.durationMin || durationMin.value
   restoredSession.value = inProgress
   started.value = true
+})
+
+watch(subjectId, (id) => {
+  void loadSubjectQuestions(id)
 })
 </script>
 
@@ -139,51 +200,69 @@ onMounted(async () => {
         <div class="form-item">
           <div class="form-item__header">
             <van-icon name="filter-o" class="form-item__icon" />
-            <span class="form-item__title">考试题型（不选默认全部）</span>
+            <span class="form-item__title">题型与题量</span>
           </div>
-          <div class="type-chips">
-            <button
-              v-for="(label, value) in QUESTION_TYPE_LABELS"
-              :key="value"
-              type="button"
-              class="chip-btn"
-              :class="{ 'chip-btn--active': selectedTypes.includes(value) }"
-              @click="toggleType(value)"
-            >
-              {{ label }}
-            </button>
+          <div v-if="!subjectId" class="empty-hint">先选择科目后配置题型。</div>
+          <div v-else-if="typeStats.length === 0" class="empty-hint">
+            当前科目还没有可抽取的题目。
+          </div>
+          <div v-else class="type-quota-list">
+            <div v-for="item in typeStats" :key="item.type" class="type-quota">
+              <div class="type-quota__info">
+                <span class="type-quota__label">{{ item.label }}</span>
+                <span class="type-quota__count">题库 {{ item.available }} 道</span>
+              </div>
+              <div class="num-input">
+                <button
+                  type="button"
+                  class="num-input__btn"
+                  :disabled="Number(typeQuotas[item.type] || 0) <= 0"
+                  @click="adjustTypeQuota(item.type, -1)"
+                >
+                  −
+                </button>
+                <input
+                  :value="Number(typeQuotas[item.type] || 0)"
+                  type="number"
+                  inputmode="numeric"
+                  class="num-input__field"
+                  :min="0"
+                  :max="item.available"
+                  @input="
+                    setTypeQuota(item.type, Number(($event.target as HTMLInputElement).value))
+                  "
+                  @blur="setTypeQuota(item.type, Number(($event.target as HTMLInputElement).value))"
+                />
+                <button
+                  type="button"
+                  class="num-input__btn"
+                  :disabled="Number(typeQuotas[item.type] || 0) >= item.available"
+                  @click="adjustTypeQuota(item.type, 1)"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div class="type-summary">本次考试共 {{ totalCount }} 道题</div>
           </div>
         </div>
 
-        <!-- 题量与时长 -->
+        <!-- 时长 -->
         <div class="form-item-grid">
-          <div class="form-item">
-            <div class="form-item__header">
-              <van-icon name="records-o" class="form-item__icon" />
-              <span class="form-item__title">考试题量</span>
-            </div>
-            <div class="num-input">
-              <button type="button" class="num-input__btn" :disabled="count <= 1" @click="count = Math.max(1, count - 1)">−</button>
-              <input
-                v-model.number="count"
-                type="number"
-                inputmode="numeric"
-                class="num-input__field"
-                :min="1"
-                :max="999"
-                @blur="count = Math.max(1, Math.min(999, Math.floor(Number(count)) || 1))"
-              />
-              <button type="button" class="num-input__btn" :disabled="count >= 999" @click="count = Math.min(999, count + 1)">+</button>
-            </div>
-          </div>
-
           <div class="form-item">
             <div class="form-item__header">
               <van-icon name="clock-o" class="form-item__icon" />
               <span class="form-item__title">考试时长（分钟）</span>
             </div>
             <div class="num-input">
-              <button type="button" class="num-input__btn" :disabled="durationMin <= 1" @click="durationMin = Math.max(1, durationMin - 5)">−</button>
+              <button
+                type="button"
+                class="num-input__btn"
+                :disabled="durationMin <= 1"
+                @click="durationMin = Math.max(1, durationMin - 5)"
+              >
+                −
+              </button>
               <input
                 v-model.number="durationMin"
                 type="number"
@@ -191,9 +270,18 @@ onMounted(async () => {
                 class="num-input__field"
                 :min="1"
                 :max="600"
-                @blur="durationMin = Math.max(1, Math.min(600, Math.floor(Number(durationMin)) || 1))"
+                @blur="
+                  durationMin = Math.max(1, Math.min(600, Math.floor(Number(durationMin)) || 1))
+                "
               />
-              <button type="button" class="num-input__btn" :disabled="durationMin >= 600" @click="durationMin = Math.min(600, durationMin + 5)">+</button>
+              <button
+                type="button"
+                class="num-input__btn"
+                :disabled="durationMin >= 600"
+                @click="durationMin = Math.min(600, durationMin + 5)"
+              >
+                +
+              </button>
             </div>
           </div>
         </div>
@@ -270,31 +358,48 @@ onMounted(async () => {
   }
 }
 
-.type-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-.chip-btn {
-  padding: 8px 16px;
+.empty-hint {
+  padding: var(--sp-4);
   border-radius: var(--r-md);
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-2);
   font-size: 13px;
+}
+.type-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.type-quota {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.type-quota__info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.type-quota__label {
+  font-size: 14px;
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text);
 }
-.chip-btn:hover {
-  border-color: var(--brand);
-  color: var(--brand);
+.type-quota__count {
+  font-size: 12px;
+  color: var(--text-3);
 }
-.chip-btn--active {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #ffffff !important;
-  box-shadow: var(--shadow-brand);
+.type-summary {
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: right;
 }
 
 .num-input {
@@ -371,5 +476,15 @@ onMounted(async () => {
 }
 .btn-start:active {
   transform: translateY(0);
+}
+
+@media (max-width: 576px) {
+  .type-quota {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .type-summary {
+    text-align: left;
+  }
 }
 </style>

@@ -26,14 +26,16 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  finish: [result: {
-    total: number
-    correct: number
-    answered: number
-    durationMs: number
-    session?: ExamSession
-    detail: { questionId: string; correct: boolean | null; answered: boolean }[]
-  }]
+  finish: [
+    result: {
+      total: number
+      correct: number
+      answered: number
+      durationMs: number
+      session?: ExamSession
+      detail: { questionId: string; correct: boolean | null; answered: boolean }[]
+    },
+  ]
 }>()
 
 const router = useRouter()
@@ -137,9 +139,10 @@ async function initSession() {
         subjectId: props.questions[0]?.subjectId || '',
         count: total.value,
         durationMin: durationMinVal.value,
-        subMode: props.mode === 'practice'
-          ? 'practice'
-          : props.examSubMode || (props.classic ? 'classic' : 'wrong_redo'),
+        subMode:
+          props.mode === 'practice'
+            ? 'practice'
+            : props.examSubMode || (props.classic ? 'classic' : 'wrong_redo'),
         questionTypes: props.questionTypes,
       },
       props.questions.map((q) => q.id),
@@ -232,7 +235,7 @@ function prev() {
   if (idx.value > 0) idx.value--
 }
 
-async function finishPractice(auto = false) {
+async function finishPractice(_auto = false) {
   stopTimer()
   const durationMs = Date.now() - startedAt.value
 
@@ -398,12 +401,20 @@ const isWrongOption = (letter: string) => {
 
   <div v-else :class="['quiz-shell', isDesktop && 'quiz-shell--desktop']">
     <div class="quiz-main">
-      <van-progress :percentage="progress" color="var(--brand)" track-color="var(--border)" :show-pivot="true" />
+      <van-progress
+        :percentage="progress"
+        color="var(--brand)"
+        track-color="var(--border)"
+        :show-pivot="true"
+      />
 
       <div class="quiz-header">
         <span>{{ idx + 1 }} / {{ total }}</span>
         <van-tag plain>{{ QUESTION_TYPE_LABELS[current.type] }}</van-tag>
-        <van-tag v-if="props.classic && remainingSec > 0" :type="remainingSec < 60 ? 'danger' : 'primary'">
+        <van-tag
+          v-if="props.classic && remainingSec > 0"
+          :type="remainingSec < 60 ? 'danger' : 'primary'"
+        >
           ⏱ {{ fmtTime(remainingSec) }}
         </van-tag>
       </div>
@@ -428,10 +439,20 @@ const isWrongOption = (letter: string) => {
               :class="{
                 'option-item--selected': isSelected(String.fromCharCode(65 + i)),
                 'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
-                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
+                'option-item--correct':
+                  !props.classic &&
+                  submitted[current.id] &&
+                  isCorrectOption(String.fromCharCode(65 + i)),
+                'option-item--wrong':
+                  !props.classic &&
+                  submitted[current.id] &&
+                  isWrongOption(String.fromCharCode(65 + i)),
               }"
-              @click="(!props.classic && submitted[current.id]) ? null : setUserAnswerSingle(String.fromCharCode(65 + i))"
+              @click="
+                !props.classic && submitted[current.id]
+                  ? null
+                  : setUserAnswerSingle(String.fromCharCode(65 + i))
+              "
             >
               <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
               <div class="option-text"><RichText :text="opt" /></div>
@@ -449,10 +470,20 @@ const isWrongOption = (letter: string) => {
               :class="{
                 'option-item--selected': isSelected(String.fromCharCode(65 + i)),
                 'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
-                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
+                'option-item--correct':
+                  !props.classic &&
+                  submitted[current.id] &&
+                  isCorrectOption(String.fromCharCode(65 + i)),
+                'option-item--wrong':
+                  !props.classic &&
+                  submitted[current.id] &&
+                  isWrongOption(String.fromCharCode(65 + i)),
               }"
-              @click="(!props.classic && submitted[current.id]) ? null : toggleMulti(String.fromCharCode(65 + i))"
+              @click="
+                !props.classic && submitted[current.id]
+                  ? null
+                  : toggleMulti(String.fromCharCode(65 + i))
+              "
             >
               <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
               <div class="option-text"><RichText :text="opt" /></div>
@@ -468,10 +499,11 @@ const isWrongOption = (letter: string) => {
               :class="{
                 'option-item--selected': isSelected('T'),
                 'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption('T'),
-                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('T')
+                'option-item--correct':
+                  !props.classic && submitted[current.id] && isCorrectOption('T'),
+                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('T'),
               }"
-              @click="(!props.classic && submitted[current.id]) ? null : setUserAnswerSingle('T')"
+              @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('T')"
             >
               <div class="option-badge">
                 <van-icon name="success" v-if="isSelected('T')" />
@@ -484,10 +516,11 @@ const isWrongOption = (letter: string) => {
               :class="{
                 'option-item--selected': isSelected('F'),
                 'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct': !props.classic && submitted[current.id] && isCorrectOption('F'),
-                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('F')
+                'option-item--correct':
+                  !props.classic && submitted[current.id] && isCorrectOption('F'),
+                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('F'),
               }"
-              @click="(!props.classic && submitted[current.id]) ? null : setUserAnswerSingle('F')"
+              @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('F')"
             >
               <div class="option-badge">
                 <van-icon name="cross" v-if="isSelected('F')" />
@@ -502,12 +535,12 @@ const isWrongOption = (letter: string) => {
         <template v-else-if="current.type === 'fill'">
           <van-cell-group inset>
             <van-field
-              v-for="(_, i) in (Array.isArray(current.answer) ? current.answer : [current.answer])"
+              v-for="(_, i) in Array.isArray(current.answer) ? current.answer : [current.answer]"
               :key="i"
               :label="`空${i + 1}`"
               placeholder="请输入"
               :model-value="((answers[current.id] as string[]) || [])[i]"
-              @update:model-value="(v:string) => setFill(i, v)"
+              @update:model-value="(v: string) => setFill(i, v)"
               :disabled="!props.classic && submitted[current.id]"
             />
           </van-cell-group>
@@ -521,18 +554,29 @@ const isWrongOption = (letter: string) => {
               placeholder="请输入你的答案"
               rows="4"
               autosize
-              :model-value="(answers[current.id] as string)"
-              @update:model-value="(v:string) => setSubjective(v)"
+              :model-value="answers[current.id] as string"
+              @update:model-value="(v: string) => setSubjective(v)"
             />
           </van-cell-group>
 
           <div v-if="!props.classic" class="subjective-grade card">
-            <van-button size="small" plain type="primary" :loading="aiLoading[current.id]" @click="callAi">
+            <van-button
+              size="small"
+              plain
+              type="primary"
+              :loading="aiLoading[current.id]"
+              @click="callAi"
+            >
               AI 评分
             </van-button>
             <div class="self-rate">
               <span>自评：</span>
-              <van-stepper :min="0" :max="100" :step="10" @change="(v:any) => submitSelf(Number(v))" />
+              <van-stepper
+                :min="0"
+                :max="100"
+                :step="10"
+                @change="(v: any) => submitSelf(Number(v))"
+              />
             </div>
           </div>
           <div v-if="aiResult[current.id]" class="ai-feedback card">
@@ -541,7 +585,15 @@ const isWrongOption = (letter: string) => {
           </div>
         </template>
 
-        <div v-if="!props.classic && !submitted[current.id] && current.type !== 'single' && current.type !== 'judge'" style="padding: 12px">
+        <div
+          v-if="
+            !props.classic &&
+              !submitted[current.id] &&
+              current.type !== 'single' &&
+              current.type !== 'judge'
+          "
+          style="padding: 12px"
+        >
           <van-button block type="primary" round @click="submit">确认答案</van-button>
         </div>
         <div v-if="!props.classic && submitted[current.id]" class="feedback-tag">
@@ -574,11 +626,17 @@ const isWrongOption = (letter: string) => {
         >
           {{ props.classic ? '交卷' : '完成' }} <van-icon name="passed" />
         </van-button>
-        <van-button round plain @click="router.back()" class="quiz-action-btn quiz-action-btn--exit">
+        <van-button
+          round
+          plain
+          @click="router.back()"
+          class="quiz-action-btn quiz-action-btn--exit"
+        >
           <van-icon name="close" /> 退出
         </van-button>
       </div>
-    </div><!-- /.quiz-main -->
+    </div>
+    <!-- /.quiz-main -->
 
     <!-- 桌面端：右侧答题卡侧栏 -->
     <aside v-if="isDesktop" class="quiz-aside">

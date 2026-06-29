@@ -136,9 +136,7 @@ onMounted(async () => {
       <div class="card">
         <!-- 题型多选 -->
         <div class="field">
-          <label class="field__label"
-            >题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label
-          >
+          <label class="field__label">题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label>
           <div class="multi-chips">
             <button
               v-for="t in allTypes"

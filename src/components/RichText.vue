@@ -10,6 +10,8 @@ const html = computed(() => renderRichText(props.text))
 </script>
 
 <template>
+  <!-- renderRichText 已统一处理 KaTeX/富文本输出，这里保留 HTML 渲染入口。 -->
+  <!-- eslint-disable-next-line vue/no-v-html -->
   <div class="rich-text" v-html="html"></div>
 </template>
 

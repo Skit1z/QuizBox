@@ -28,6 +28,51 @@ const bankResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 // 版本号由 vite define 在构建期从 package.json 注入
 const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
+const showHistory = ref(false)
+const updateHistory = [
+  {
+    version: '1.6.2',
+    date: '2026-06-29',
+    logs: [
+      '管理菜单改版：重构科目和题目编辑菜单为气泡弹出框（Popover），支持鉴权及外部自动关闭',
+      '考试模式改版：整合设置到单卡片，支持“单选/多选/判断/简答”等多题型合并筛选出题',
+      '主题系统升级：新增极光紫、珊瑚红、青瓷绿、樱花粉四套高品质主题，可选配色增至 7 种',
+      '布局细节微调：缩小题库列表上下卡片间距，整体排版更加精致紧凑',
+      '暗黑模式重塑：修复答题结果、测试连接等 plain 镂空按钮以及弹出气泡白底白字问题',
+      '桌面端布局优化：优化 PC 做题页布局，答题卡展开不再强行挤压做题区域',
+      '同步安全加固：解决多设备同步时可能意外导致本地管理员密码丢失的问题',
+    ],
+  },
+  {
+    version: '1.6.0',
+    date: '2026-06-28',
+    logs: [
+      '同步架构升级：支持按科目分片进行 SHA-256 哈希增量云端同步，管理员密码哈希跨端共享',
+      '功能完善：支持快捷对已导入的科目、题目进行二次编辑和删除',
+      '安全鉴权：引入操作管理员拦截机制，增加管理员授权校验 Dialog 弹窗',
+      '体验优化：默认启用云端题库同步，将本地练习与进度分离保存',
+    ],
+  },
+  {
+    version: '1.5.0',
+    date: '2026-06-25',
+    logs: [
+      '同步优化：支持私有云端 Blob snapshot 分片备份与快速恢复',
+      '细节打磨：适配移动端状态同步流程，解决弹出窗口自适应样式裁剪问题',
+      '体验优化：精简主页模块，默认折叠并隐藏不常用的 WebDAV 高阶配置',
+    ],
+  },
+  {
+    version: '1.4.0',
+    date: '2026-06-20',
+    logs: [
+      '基础核心构建：实现 Word/Excel 题库一键智能解析与导入',
+      '核心功能：开发卡片练习、自测评估、随机抽题、错题本与自测记录等模块',
+      'UI 适配：引入克制蓝灰、温和墨绿、活力橙等基础主题，支持系统级黑暗模式',
+    ],
+  },
+]
+
 // ===== 管理密码 =====
 const adminLoginPwd = ref('')
 const adminNewPwd = ref('')
@@ -55,8 +100,14 @@ async function pullAdminFromCloud() {
 async function setAdminPassword() {
   const pwd = adminNewPwd.value.trim()
   const confirm = adminConfirmPwd.value.trim()
-  if (!pwd) { showFailToast('请输入密码'); return }
-  if (pwd !== confirm) { showFailToast('两次输入不一致'); return }
+  if (!pwd) {
+    showFailToast('请输入密码')
+    return
+  }
+  if (pwd !== confirm) {
+    showFailToast('两次输入不一致')
+    return
+  }
   await adminStore.setPassword(pwd)
   adminNewPwd.value = ''
   adminConfirmPwd.value = ''
@@ -66,9 +117,15 @@ async function setAdminPassword() {
 /** 已设密码但未登录：用密码登录 */
 async function loginAdmin() {
   const pwd = adminLoginPwd.value.trim()
-  if (!pwd) { showFailToast('请输入密码'); return }
+  if (!pwd) {
+    showFailToast('请输入密码')
+    return
+  }
   const ok = await adminStore.verify(pwd)
-  if (!ok) { showFailToast('密码错误'); return }
+  if (!ok) {
+    showFailToast('密码错误')
+    return
+  }
   adminLoginPwd.value = ''
   showSuccessToast('已登入管理员')
 }
@@ -77,8 +134,14 @@ async function loginAdmin() {
 async function changeAdminPassword() {
   const pwd = adminNewPwd.value.trim()
   const confirm = adminConfirmPwd.value.trim()
-  if (!pwd) { showFailToast('请输入新密码'); return }
-  if (pwd !== confirm) { showFailToast('两次输入不一致'); return }
+  if (!pwd) {
+    showFailToast('请输入新密码')
+    return
+  }
+  if (pwd !== confirm) {
+    showFailToast('两次输入不一致')
+    return
+  }
   await adminStore.setPassword(pwd)
   adminNewPwd.value = ''
   adminConfirmPwd.value = ''
@@ -147,7 +210,7 @@ async function testModel() {
       model: ai.value.model,
     })
     testResult.value = { type: 'success', msg: '连接成功' }
-  } catch (e: any) {
+  } catch {
     testResult.value = { type: 'error', msg: '连接失败' }
   } finally {
     testing.value = false
@@ -214,7 +277,6 @@ async function saveBank() {
   }
   await settings.saveBankSync({
     enabled: bank.value.enabled,
-    baseUrl: bank.value.baseUrl.trim(),
     key: bank.value.key.trim(),
   })
   showSuccessToast('云端题库设置已保存')
@@ -234,7 +296,7 @@ async function testBank() {
   bankResult.value = null
   try {
     const { testBankSync } = await import('@/services/sync')
-    const meta = await testBankSync({ baseUrl: bank.value.baseUrl.trim(), key: bank.value.key.trim() })
+    const meta = await testBankSync({ key: bank.value.key.trim() })
     const rows = meta.tableCounts
       ? Object.values(meta.tableCounts).reduce((sum, n) => sum + Number(n || 0), 0)
       : 0
@@ -421,14 +483,6 @@ onMounted(async () => {
           />
         </div>
         <div class="field">
-          <label class="field__label">接口地址</label>
-          <input
-            v-model="bank.baseUrl"
-            class="field__input"
-            placeholder="留空 = 同源 /api/bank（网页端推荐）"
-          />
-        </div>
-        <div class="field">
           <label class="field__label">共享密钥（可选）</label>
           <input
             v-model="bank.key"
@@ -465,7 +519,11 @@ onMounted(async () => {
     <button type="button" class="collapse-head" @click="webdavExpanded = !webdavExpanded">
       <span class="collapse-head__title">WebDAV 同步</span>
       <span v-if="webdav.enabled" class="collapse-head__badge">已启用</span>
-      <van-icon :name="webdavExpanded ? 'arrow-up' : 'arrow-down'" size="14" color="var(--text-3)" />
+      <van-icon
+        :name="webdavExpanded ? 'arrow-up' : 'arrow-down'"
+        size="14"
+        color="var(--text-3)"
+      />
     </button>
     <div v-show="webdavExpanded" class="card">
       <div class="field-group">
@@ -573,11 +631,21 @@ onMounted(async () => {
         <template v-if="!adminStore.hasPassword">
           <div class="field">
             <label class="field__label">设置管理密码</label>
-            <input v-model="adminNewPwd" class="field__input" type="password" placeholder="输入密码" />
+            <input
+              v-model="adminNewPwd"
+              class="field__input"
+              type="password"
+              placeholder="输入密码"
+            />
           </div>
           <div class="field">
             <label class="field__label">确认密码</label>
-            <input v-model="adminConfirmPwd" class="field__input" type="password" placeholder="再次输入密码" />
+            <input
+              v-model="adminConfirmPwd"
+              class="field__input"
+              type="password"
+              placeholder="再次输入密码"
+            />
           </div>
         </template>
 
@@ -599,11 +667,21 @@ onMounted(async () => {
         <template v-else>
           <div class="field">
             <label class="field__label">新密码</label>
-            <input v-model="adminNewPwd" class="field__input" type="password" placeholder="输入新密码" />
+            <input
+              v-model="adminNewPwd"
+              class="field__input"
+              type="password"
+              placeholder="输入新密码"
+            />
           </div>
           <div class="field">
             <label class="field__label">确认密码</label>
-            <input v-model="adminConfirmPwd" class="field__input" type="password" placeholder="再次输入新密码" />
+            <input
+              v-model="adminConfirmPwd"
+              class="field__input"
+              type="password"
+              placeholder="再次输入新密码"
+            />
           </div>
         </template>
       </div>
@@ -613,13 +691,7 @@ onMounted(async () => {
 
       <!-- 从云端同步：仅在本机尚未设置密码时可用（用于新设备继承共享管理员密码） -->
       <div v-if="!adminStore.hasPassword" style="margin-bottom: var(--sp-3)">
-        <van-button
-          block
-          plain
-          round
-          :loading="adminPulling"
-          @click="pullAdminFromCloud"
-        >
+        <van-button block plain round :loading="adminPulling" @click="pullAdminFromCloud">
           {{ adminPulling ? '同步中…' : '使用云端管理员密码' }}
         </van-button>
         <p class="field__tip" style="margin-top: 6px">
@@ -698,6 +770,10 @@ onMounted(async () => {
         <span class="about-row__label">开源协议</span>
         <span class="about-row__value">MIT License</span>
       </div>
+      <div class="about-row about-row--clickable" @click="showHistory = true">
+        <span class="about-row__label">更新历史</span>
+        <van-icon name="arrow" size="14" color="var(--text-3)" />
+      </div>
       <a
         class="github-btn"
         href="https://github.com/Skit1z/QuizBox"
@@ -713,6 +789,35 @@ onMounted(async () => {
         Skit1z/QuizBox
       </a>
     </div>
+
+    <!-- 更新历史弹窗 -->
+    <van-popup
+      v-model:show="showHistory"
+      position="right"
+      style="width: 100%; height: 100%; background: var(--bg)"
+    >
+      <div class="page history-page">
+        <div class="page-head page-head--row">
+          <div class="page-head__left" @click="showHistory = false">
+            <van-icon name="arrow-left" size="20" />
+            <h1 class="page-title page-title--sm">更新历史</h1>
+          </div>
+        </div>
+        <div class="history-content">
+          <div v-for="h in updateHistory" :key="h.version" class="history-item card">
+            <div class="history-item__header">
+              <span class="history-item__version">v{{ h.version }}</span>
+              <span class="history-item__date">{{ h.date }}</span>
+            </div>
+            <ul class="history-item__logs">
+              <li v-for="(log, idx) in h.logs" :key="idx" class="history-item__log">
+                {{ log }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -967,5 +1072,62 @@ onMounted(async () => {
   color: var(--text-3);
   margin: var(--sp-3) 0 0;
   line-height: 1.5;
+}
+.about-row--clickable {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.about-row--clickable:active {
+  opacity: 0.7;
+}
+
+/* ===== 更新历史 ===== */
+.history-page {
+  padding: var(--sp-4) var(--sp-5) var(--sp-8);
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+.history-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+  max-width: var(--content-max);
+  margin-left: auto;
+  margin-right: auto;
+}
+.history-item {
+  padding: var(--sp-4) var(--sp-5);
+}
+.history-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.history-item__version {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brand);
+}
+.history-item__date {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.history-item__logs {
+  padding-left: 18px;
+  margin: 0;
+  list-style-type: disc;
+}
+.history-item__log {
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+.history-item__log:last-child {
+  margin-bottom: 0;
 }
 </style>

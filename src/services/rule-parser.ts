@@ -837,7 +837,7 @@ export function detectType(
 export function normalizeAnswer(
   type: QuestionType,
   raw: string,
-  options: string[],
+  _options: string[],
 ): string | string[] {
   if (!raw) return type === 'fill' ? [] : ''
 

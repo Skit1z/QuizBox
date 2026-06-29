@@ -6,7 +6,7 @@ import { useSubjectsStore } from '@/stores/subjects'
 import { useSettingsStore } from '@/stores/settings'
 import { questionsRepo, type QuestionInput } from '@/db/questions'
 import { sha256 } from '@/utils/hash'
-import { parseFile, getFileExt, ACCEPT_EXTENSIONS, EXT_LABELS } from '@/services/file-parser'
+import { parseFile, getFileExt, ACCEPT_EXTENSIONS } from '@/services/file-parser'
 import { saveImages, type ParsedImage } from '@/services/docx-parser'
 import { repairWithAI, generateAnswer, type ParsedQuestion } from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
@@ -134,8 +134,6 @@ function removeOption(p: ParsedQuestion, i: number) {
   p.options?.splice(i, 1)
   pruneChoiceAnswer(p)
 }
-
-const fileExt = computed(() => (fileRef.value ? getFileExt(fileRef.value.name) : null))
 
 function prioritizeReviewQuestions(
   questions: ParsedQuestion[],
@@ -639,10 +637,8 @@ function onAdminDialogClose() {
                   @click="genAnswer(p, i)"
                 >
                   <van-loading v-if="aiGen[i]" size="12" />
-                  <template v-else
-                    ><van-icon name="bulb-o" size="12" /> AI
-                    {{ answerText(p) ? '校对' : '补答案' }}</template
-                  >
+                  <template v-else><van-icon name="bulb-o" size="12" /> AI
+                    {{ answerText(p) ? '校对' : '补答案' }}</template>
                 </button>
               </div>
               <div v-if="p.analysis" class="q-item__analysis">
@@ -736,16 +732,18 @@ function onAdminDialogClose() {
       <!-- 底部操作 -->
       <div class="bottom-actions">
         <van-button round :disabled="saving" @click="step = 2">返回重试</van-button>
-        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll"
-          >导入 {{ parsed.length }} 题</van-button
-        >
+        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll">导入 {{ parsed.length }} 题</van-button>
       </div>
     </div>
 
     <AdminDialog
       v-model:show="showAdminDialog"
       @verified="onAdminVerified"
-      @update:show="(v) => { if (!v) onAdminDialogClose() }"
+      @update:show="
+        (v) => {
+          if (!v) onAdminDialogClose()
+        }
+      "
     />
   </div>
 </template>
