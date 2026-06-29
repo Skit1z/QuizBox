@@ -23,6 +23,7 @@ export class QADatabase extends Dexie {
   examSessions!: Table<ExamSession, string>
   attachments!: Table<Attachment, string>
   syncMeta!: Table<SyncMeta, string>
+  parseCache!: Table<{ hash: string; value: string; createdAt: number }, string>
 
   constructor() {
     super('QuizBoxDB')
@@ -41,10 +42,16 @@ export class QADatabase extends Dexie {
 
     // version 2：新增利于查询的复合索引（[status+nextReviewAt] 用于错题到期查询）
     this.version(2).stores({
-      wrongBook: 'id, questionId, status, nextReviewAt, updatedAt, deletedAt, [status+nextReviewAt]',
+      wrongBook:
+        'id, questionId, status, nextReviewAt, updatedAt, deletedAt, [status+nextReviewAt]',
       subjects: 'id, order, updatedAt, deletedAt, [deletedAt+order]',
       questions:
         'id, subjectId, chapterId, type, difficulty, sourceHash, updatedAt, deletedAt, [subjectId+chapterId], [subjectId+type], [subjectId+difficulty], [subjectId+deletedAt], [subjectId+chapterId+type]',
+    })
+
+    // version 3：AI 低置信块解析结果缓存
+    this.version(3).stores({
+      parseCache: 'hash, createdAt',
     })
   }
 }

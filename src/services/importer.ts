@@ -1,5 +1,8 @@
 import { chatJson } from './ai'
 import type { QuestionType } from '@/types'
+import { db } from '@/db'
+import { sha256 } from '@/utils/hash'
+import { detectType, normalizeAnswer, splitRawChunks } from './rule-parser'
 
 /** AI 解析返回的单道题（中间结构） */
 export interface ParsedQuestion {
@@ -14,8 +17,10 @@ export interface ParsedQuestion {
   confidence?: number
 }
 
-const MAX_BATCH_CHARS = 4000
+const SINGLE_CALL_LIMIT = 6000
+const MAX_BATCH_CHARS = 8000
 const MAX_BATCH_BLOCKS = 15
+const CACHE_VERSION = 'repair-v1'
 
 const SYSTEM_PROMPT = `你是一个题库结构化解析助手。用户给你若干道题的原始文本（已是按题切分的块，每个块是一道题及其选项/答案/解析）。
 请逐块解析为结构化题目。要求：
@@ -28,32 +33,101 @@ const SYSTEM_PROMPT = `你是一个题库结构化解析助手。用户给你若
 严格以 JSON 输出：{"questions":[{"blockId":"block_0","type","stem","options","answer","analysis","imagePlaceholders","confidence"}]}
 blockId 必须原样使用输入中的标注。`
 
-// ===== 纯 AI 模式：分批解析整篇文本 =====
+type IndexedBlock = { idx: number; text: string }
 
-const RE_NUM = /^[ \t]*[(（\[【]?\d{1,3}[)）\]】]?[.、．)\s]/
+function packByChars(
+  items: IndexedBlock[],
+  limit: number,
+): Array<{ items: IndexedBlock[]; text: string }> {
+  const batches: Array<{ items: IndexedBlock[]; text: string }> = []
+  let batchItems: IndexedBlock[] = []
+  let batchText = ''
 
-/**
- * 把整篇文本按题号切成块（用于纯 AI 模式分批）。
- */
-function splitTextIntoBlocks(text: string): string[] {
-  const lines = text.split('\n')
-  const blocks: string[] = []
-  let current: string[] = []
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed) {
-      if (current.length) current.push('')
-      continue
+  for (const item of items) {
+    const entry = `--- blockId: block_${item.idx} ---\n${item.text}\n`
+    const wouldExceed =
+      batchItems.length >= MAX_BATCH_BLOCKS ||
+      (batchText.length + entry.length > limit && batchText.length > 0)
+
+    if (wouldExceed) {
+      batches.push({ items: batchItems, text: batchText })
+      batchItems = []
+      batchText = ''
     }
-    if (RE_NUM.test(trimmed) && current.length) {
-      blocks.push(current.join('\n').trim())
-      current = [trimmed]
-    } else {
-      current.push(trimmed)
-    }
+
+    batchItems.push(item)
+    batchText += entry
   }
-  if (current.length) blocks.push(current.join('\n').trim())
-  return blocks.filter((b) => b.length >= 5)
+
+  if (batchText) batches.push({ items: batchItems, text: batchText })
+  return batches
+}
+
+function dedupeByStem(questions: ParsedQuestion[]): ParsedQuestion[] {
+  const seen = new Set<string>()
+  const result: ParsedQuestion[] = []
+
+  for (const q of questions) {
+    const key = q.stem.trim().replace(/\s+/g, '')
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(q)
+  }
+
+  return result
+}
+
+export function sanitizeParsed(q: ParsedQuestion): ParsedQuestion | null {
+  const stem = (q.stem || '').trim()
+  if (!stem) return null
+
+  const options = q.options?.map((option) => (option ?? '').toString().trim()).filter(Boolean) ?? []
+  const rawAnswer = Array.isArray(q.answer) ? q.answer.join('') : (q.answer ?? '').toString()
+  const shouldPreserveSubjective =
+    (q.type === 'short' || q.type === 'essay') &&
+    options.length === 0 &&
+    !/[A-Ha-h]/.test(rawAnswer)
+  const type = shouldPreserveSubjective ? q.type : detectType(stem, options, rawAnswer)
+  const answer = normalizeAnswer(type, rawAnswer, options)
+
+  return {
+    ...q,
+    type,
+    stem,
+    options: options.length ? options : undefined,
+    answer,
+    confidence: Math.max(0, Math.min(q.confidence ?? 0.8, 1)),
+  }
+}
+
+async function callParseBatch(
+  batchText: string,
+  hint?: string,
+  systemPrompt = SYSTEM_PROMPT,
+): Promise<Map<number, ParsedQuestion>> {
+  const prefix = hint ? `${hint}\n\n` : ''
+  const res = await chatJson<{
+    questions: Array<ParsedQuestion & { blockId?: string; blockIndex?: number }>
+  }>(
+    [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prefix + batchText },
+    ],
+    { temperature: 0.1 },
+  )
+
+  const parsed = new Map<number, ParsedQuestion>()
+  for (const q of res.questions || []) {
+    const { blockId, blockIndex, ...question } = q
+    const idMatch = blockId?.match(/^block_(\d+)$/)
+    const idx = idMatch ? Number(idMatch[1]) : blockIndex
+    if (idx === undefined || idx < 0 || !question.stem) continue
+
+    const sanitized = sanitizeParsed(question as ParsedQuestion)
+    if (sanitized) parsed.set(idx, sanitized)
+  }
+
+  return parsed
 }
 
 /**
@@ -65,62 +139,40 @@ export async function parseQuestionsWithAI(
   hint?: string,
   onProgress?: (done: number, total: number) => void,
 ): Promise<ParsedQuestion[]> {
-  const blocks = splitTextIntoBlocks(text)
+  const chunks = splitRawChunks(text)
+  const blocks = (chunks.length > 0 ? chunks : [text]).map((block, idx) => ({ idx, text: block }))
   if (blocks.length === 0) return []
 
-  // 分批：按题数和字符数双重限制
-  const batches: { indices: number[]; text: string }[] = []
-  let batchText = ''
-  let batchIndices: number[] = []
-
-  for (let i = 0; i < blocks.length; i++) {
-    const entry = `--- blockId: block_${i} ---\n${blocks[i]}\n`
-    const wouldExceed =
-      batchIndices.length >= MAX_BATCH_BLOCKS ||
-      (batchText.length + entry.length > MAX_BATCH_CHARS && batchText)
-
-    if (wouldExceed) {
-      batches.push({ indices: batchIndices, text: batchText })
-      batchText = ''
-      batchIndices = []
-    }
-    batchText += entry
-    batchIndices.push(i)
-  }
-  if (batchText) batches.push({ indices: batchIndices, text: batchText })
+  const batches =
+    text.length <= SINGLE_CALL_LIMIT
+      ? [{ items: blocks, text: packByChars(blocks, Number.POSITIVE_INFINITY)[0]?.text ?? '' }]
+      : packByChars(blocks, MAX_BATCH_CHARS)
 
   const results = new Map<number, ParsedQuestion>()
-  let done = 0
-  for (const batch of batches) {
-    const prefix = hint ? `${hint}\n\n` : ''
+
+  if (text.length <= SINGLE_CALL_LIMIT) {
     try {
-      const res = await chatJson<{
-        questions: Array<ParsedQuestion & { blockId?: string }>
-      }>(
-        [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prefix + batch.text },
-        ],
-        { temperature: 0.1 },
-      )
-      for (const q of res.questions || []) {
-        const m = q.blockId?.match(/^block_(\d+)$/)
-        const idx = m ? Number(m[1]) : undefined
-        if (idx !== undefined && idx >= 0 && idx < blocks.length && q.stem) {
-          const { blockId, ...question } = q
-          results.set(idx, question as ParsedQuestion)
-        }
-      }
+      const parsed = await callParseBatch(batches[0].text, hint)
+      for (const [idx, question] of parsed) results.set(idx, question)
     } catch (e) {
-      console.warn('[importer] batch failed', e)
+      console.warn('[importer] parse failed', e)
     }
-    done++
-    onProgress?.(done, batches.length)
+    onProgress?.(1, 1)
+  } else {
+    const settled = await Promise.allSettled(
+      batches.map((batch) => callParseBatch(batch.text, hint)),
+    )
+    settled.forEach((result, batchIdx) => {
+      if (result.status === 'fulfilled') {
+        for (const [idx, question] of result.value) results.set(idx, question)
+      } else {
+        console.warn('[importer] batch failed', result.reason)
+      }
+      onProgress?.(batchIdx + 1, batches.length)
+    })
   }
 
-  return blocks
-    .map((_, i) => results.get(i))
-    .filter((q): q is ParsedQuestion => !!q)
+  return dedupeByStem(blocks.map((_, i) => results.get(i)).filter((q): q is ParsedQuestion => !!q))
 }
 
 // ===== AI 判定：对规则解析不确定的块做结构化判定 =====
@@ -151,51 +203,49 @@ export async function repairWithAI(
   const repaired = new Map<number, ParsedQuestion>()
   if (blocks.length === 0) return repaired
 
-  // 分批
-  const batches: { indices: number[]; text: string }[] = []
-  let batch = ''
-  let batchIndices: number[] = []
+  const misses: Array<IndexedBlock & { hash: string }> = []
+  await Promise.all(
+    blocks.map(async (text, idx) => {
+      const hash = await blockHash(text)
+      const hit = await db.parseCache.get(hash)
+      if (!hit) {
+        misses.push({ idx, text, hash })
+        return
+      }
 
-  for (let i = 0; i < blocks.length; i++) {
-    const entry = `--- blockId: block_${i} ---\n${blocks[i]}\n`
-    if (batch.length + entry.length > MAX_BATCH_CHARS && batch) {
-      batches.push({ indices: batchIndices, text: batch })
-      batch = ''
-      batchIndices = []
-    }
-    batch += entry
-    batchIndices.push(i)
+      try {
+        const cached = sanitizeParsed(JSON.parse(hit.value) as ParsedQuestion)
+        if (cached) repaired.set(idx, cached)
+      } catch {
+        misses.push({ idx, text, hash })
+      }
+    }),
+  )
+
+  const batches = packByChars(misses, MAX_BATCH_CHARS)
+  if (batches.length === 0) {
+    onProgress?.(1, 1)
+    return repaired
   }
-  if (batch) batches.push({ indices: batchIndices, text: batch })
 
   // 串行发送（避免限流）
   let done = 0
   for (const b of batches) {
     try {
-      const res = await chatJson<{
-        questions: Array<ParsedQuestion & { blockId?: string; blockIndex?: number }>
-      }>(
-        [
-          { role: 'system', content: JUDGE_SYSTEM },
-          { role: 'user', content: b.text },
-        ],
-        { temperature: 0.1 },
-      )
-      for (const q of res.questions || []) {
-        const { blockId, blockIndex, ...question } = q
-        const idMatch = blockId?.match(/^block_(\d+)$/)
-        let idx = idMatch ? Number(idMatch[1]) : undefined
+      const parsed = await callParseBatch(b.text, undefined, JUDGE_SYSTEM)
+      const missByIdx = new Map(misses.map((miss) => [miss.idx, miss]))
+      for (const [idx, question] of parsed) {
+        if (idx < 0 || idx >= blocks.length) continue
+        const miss = missByIdx.get(idx)
+        if (!miss) continue
 
-        if (idx === undefined && blockIndex !== undefined) {
-          idx = b.indices.includes(blockIndex)
-            ? blockIndex
-            : b.indices[blockIndex]
-        }
-
-        if (idx !== undefined && idx >= 0 && idx < blocks.length && question.stem) {
-          question.confidence = Math.max(question.confidence ?? 0.8, 0.7)
-          repaired.set(idx, question as ParsedQuestion)
-        }
+        question.confidence = Math.max(question.confidence ?? 0.8, 0.7)
+        repaired.set(idx, question)
+        await db.parseCache.put({
+          hash: miss.hash,
+          value: JSON.stringify(question),
+          createdAt: Date.now(),
+        })
       }
     } catch (e) {
       console.warn('[importer] judge batch failed', e)
@@ -205,4 +255,8 @@ export async function repairWithAI(
   }
 
   return repaired
+}
+
+async function blockHash(text: string): Promise<string> {
+  return sha256(`${CACHE_VERSION}\0${text}`)
 }

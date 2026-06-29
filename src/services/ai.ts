@@ -55,6 +55,24 @@ export async function chatJson<T = any>(
   opts: { temperature?: number } = {},
 ): Promise<T> {
   const raw = await chat(messages, { jsonMode: true, ...opts })
+  try {
+    return parseJsonPayload<T>(raw)
+  } catch {
+    const fixed = await chat(
+      [
+        {
+          role: 'system',
+          content: '你只修复 JSON 格式。保持原字段和内容不变，仅输出合法 JSON，不要解释。',
+        },
+        { role: 'user', content: raw },
+      ],
+      { jsonMode: true, temperature: 0 },
+    )
+    return parseJsonPayload<T>(fixed)
+  }
+}
+
+function parseJsonPayload<T>(raw: string): T {
   // 部分接口可能仍把 json 包在 markdown 里
   const cleaned = raw.replace(/^```json\s*|\s*```$/g, '').trim()
   try {

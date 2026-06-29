@@ -33,6 +33,7 @@ const pdfProgress = ref('')
 const editingIdx = ref<number | null>(null)
 const repairing = ref(false)
 const repairCount = ref(0)
+const saving = ref(false)
 
 const types: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
 
@@ -125,6 +126,8 @@ async function doParse() {
     images.push(...result.images)
 
     // 统一管线：规则解析为主（零 AI 消耗），仅对低完整度块用 AI 判定
+    // 注意：lowConfidenceIndices 是基于此数组的位置索引，回填/删除完成前不可过滤，
+    // 否则索引会错位。空题干的过滤统一放在所有索引操作之后（见 finalizePreview）。
     const hybrid = parseWithRulesHybrid(result.text)
     let qs: ParsedQuestion[] = hybrid.questions
 
@@ -157,16 +160,19 @@ async function doParse() {
         // AI 判定失败不影响已有结果
       } finally {
         repairing.value = false
+        // 所有索引操作已完成，此时安全过滤空题干，杜绝空白卡片
+        parsed.value = parsed.value.filter(isRenderableQuestion)
       }
       return
     }
 
-    if (qs.length === 0) {
+    const cleaned = qs.filter(isRenderableQuestion)
+    if (cleaned.length === 0) {
       parseError.value = settingsStore.ai.apiKey
         ? '未能识别出题目，请检查文档格式'
         : '未能识别出题目，配置 AI 接口可自动解析不确定的内容'
     } else {
-      parsed.value = qs
+      parsed.value = cleaned
       step.value = 3
     }
   } catch (e: any) {
@@ -186,11 +192,32 @@ function placeholderToHash(): (ph: string) => string | undefined {
   }
 }
 
+/** 题干非空且题型合法，才允许进入预览/导入（杜绝空白卡片） */
+function isRenderableQuestion(q: ParsedQuestion): boolean {
+  return !!q?.stem?.trim() && !!QUESTION_TYPE_LABELS[q.type]
+}
+
 function removeParsed(i: number) {
   parsed.value.splice(i, 1)
 }
 
 async function saveAll() {
+  if (saving.value) return
+  if (parsed.value.length === 0) {
+    showFailToast('没有可导入的题目')
+    return
+  }
+  saving.value = true
+  try {
+    await doSave()
+  } catch (e: any) {
+    showFailToast(e?.message || '导入失败，请重试')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function doSave() {
   const subjectId = selectedSubjectId.value
   const toHash = placeholderToHash()
   let imported = 0
@@ -243,11 +270,9 @@ async function saveAll() {
     return true
   })
 
-  try {
+  if (inputs.length > 0) {
     const created = await questionsRepo.createBulk(inputs)
     imported = created.length
-  } catch {
-    skipped += inputs.length
   }
 
   showSuccessToast(`已导入 ${imported} 题${skipped ? `，跳过 ${skipped} 题` : ''}`)
@@ -459,8 +484,8 @@ onMounted(async () => {
 
       <!-- 底部操作 -->
       <div class="bottom-actions">
-        <van-button round @click="step = 2">返回重试</van-button>
-        <van-button type="primary" round @click="saveAll">导入 {{ parsed.length }} 题</van-button>
+        <van-button round :disabled="saving" @click="step = 2">返回重试</van-button>
+        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll">导入 {{ parsed.length }} 题</van-button>
       </div>
     </div>
   </div>
