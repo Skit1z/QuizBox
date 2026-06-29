@@ -8,7 +8,7 @@ import { questionsRepo, type QuestionInput } from '@/db/questions'
 import { sha256 } from '@/utils/hash'
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS, EXT_LABELS } from '@/services/file-parser'
 import { saveImages, type ParsedImage } from '@/services/docx-parser'
-import { parseQuestionsWithAI, repairWithAI, type ParsedQuestion } from '@/services/importer'
+import { repairWithAI, type ParsedQuestion } from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
@@ -29,9 +29,7 @@ const parseError = ref('')
 
 const parsed = ref<ParsedQuestion[]>([])
 const images: ParsedImage[] = []
-const hint = ref('')
 const pdfProgress = ref('')
-const parseMode = ref<'rule' | 'ai'>('rule')
 const editingIdx = ref<number | null>(null)
 const repairing = ref(false)
 const repairCount = ref(0)
@@ -126,42 +124,36 @@ async function doParse() {
     images.length = 0
     images.push(...result.images)
 
-    let qs: ParsedQuestion[]
-    if (parseMode.value === 'rule') {
-      const hybrid = parseWithRulesHybrid(result.text)
-      qs = hybrid.questions
+    // 统一管线：规则解析为主（零 AI 消耗），仅对低置信度题目用 AI 修复
+    const hybrid = parseWithRulesHybrid(result.text)
+    let qs: ParsedQuestion[] = hybrid.questions
 
-      // 有低置信度题目 + 有 AI 配置 → 自动 AI 修复
-      if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey) {
-        parsed.value = qs
-        step.value = 3
-        repairing.value = true
-        repairCount.value = hybrid.lowConfidenceBlocks.length
-        try {
-          const fixes = await repairWithAI(hybrid.lowConfidenceBlocks)
-          for (const [blockIdx, fixed] of fixes) {
-            const qIdx = hybrid.lowConfidenceIndices[blockIdx]
-            if (qIdx !== undefined && qIdx < parsed.value.length) {
-              parsed.value[qIdx] = fixed
-            }
+    // 有低置信度题目 + 有 AI 配置 → 仅修复这些题（节省 token）
+    if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey) {
+      parsed.value = qs
+      step.value = 3
+      repairing.value = true
+      repairCount.value = hybrid.lowConfidenceBlocks.length
+      try {
+        const fixes = await repairWithAI(hybrid.lowConfidenceBlocks)
+        for (const [blockIdx, fixed] of fixes) {
+          const qIdx = hybrid.lowConfidenceIndices[blockIdx]
+          if (qIdx !== undefined && qIdx < parsed.value.length) {
+            parsed.value[qIdx] = fixed
           }
-        } catch {
-          // AI 修复失败不影响已有结果
-        } finally {
-          repairing.value = false
         }
-        return
+      } catch {
+        // AI 修复失败不影响已有结果
+      } finally {
+        repairing.value = false
       }
-    } else {
-      qs = await parseQuestionsWithAI(result.text, hint.value || undefined, (done, total) => {
-        pdfProgress.value = `AI 解析中（${done}/${total} 批）`
-      })
+      return
     }
 
     if (qs.length === 0) {
-      parseError.value = parseMode.value === 'rule'
-        ? '规则未识别出题目，请检查文档格式或切换到 AI 解析'
-        : 'AI 未识别出题目，请检查文档或添加解析提示后重试'
+      parseError.value = settingsStore.ai.apiKey
+        ? '未能识别出题目，请检查文档格式或在下方添加解析提示后重试'
+        : '未能识别出题目，配置 AI 接口可自动修复低置信度题目'
     } else {
       parsed.value = qs
       step.value = 3
@@ -327,57 +319,23 @@ onMounted(async () => {
         <van-icon name="cross" size="16" color="var(--text-3)" @click="reselectFile" />
       </div>
 
-      <!-- 解析方式 -->
+      <!-- 解析说明 -->
       <div class="card">
-        <div class="field">
-          <label class="field__label">解析方式</label>
-          <div class="mode-seg">
-            <button
-              :class="['mode-seg__btn', parseMode === 'rule' && 'mode-seg__btn--active']"
-              @click="parseMode = 'rule'"
-            >
-              <van-icon name="records" size="16" />
-              <span>规则解析</span>
-              <span class="mode-seg__badge">免费</span>
-            </button>
-            <button
-              :class="['mode-seg__btn', parseMode === 'ai' && 'mode-seg__btn--active']"
-              @click="parseMode = 'ai'"
-            >
-              <van-icon name="fire-o" size="16" />
-              <span>AI 解析</span>
-            </button>
+        <div class="parse-info">
+          <van-icon name="records" size="18" color="var(--brand)" />
+          <div>
+            <div class="parse-info__title">智能解析</div>
+            <div class="parse-info__desc">
+              优先本地规则匹配题号、选项、答案{{ settingsStore.ai.apiKey ? '，低置信度题目自动 AI 修复' : '。配置 AI 后可自动修复低置信度题目，提升准确率' }}
+            </div>
           </div>
-          <p class="field__desc" v-if="parseMode === 'rule'">
-            使用规则匹配题号、选项、答案标记{{ settingsStore.ai.apiKey ? '，低置信度题目自动 AI 修复' : '，配置 AI 后可自动修复低置信度题目' }}
-          </p>
-          <p class="field__desc" v-else>
-            调用 AI 智能识别题目结构，适合格式不规范或混排的文档（消耗 Token）
-          </p>
-        </div>
-      </div>
-
-      <!-- AI 解析提示（仅 AI 模式） -->
-      <div v-if="parseMode === 'ai'" class="card">
-        <div class="field">
-          <label class="field__label">解析提示（可选）</label>
-          <textarea
-            v-model="hint"
-            class="field__textarea"
-            rows="3"
-            placeholder="告诉 AI 文档格式，例如：&#10;每题以「题号.」开头，答案在题后「答案：」标记处"
-          ></textarea>
-        </div>
-        <div class="tip">
-          <van-icon name="info-o" size="14" />
-          <span>提示越具体，解析准确率越高。留空则由 AI 自动判断。</span>
         </div>
       </div>
 
       <!-- 解析按钮 -->
       <div class="btn-center">
-        <van-button type="primary" round block :loading="parsing" :loading-text="pdfProgress || (parseMode === 'ai' ? 'AI 解析中…' : '规则解析中…')" @click="doParse">
-          开始{{ parseMode === 'ai' ? ' AI ' : '规则' }}解析
+        <van-button type="primary" round block :loading="parsing" :loading-text="pdfProgress || '解析中…'" @click="doParse">
+          开始解析
         </van-button>
         <transition name="page-fade">
           <div v-if="parseError" class="parse-error">
@@ -670,44 +628,21 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-/* ===== 解析模式切换 ===== */
-.mode-seg {
+/* ===== 解析说明 ===== */
+.parse-info {
   display: flex;
-  gap: 8px;
+  align-items: flex-start;
+  gap: var(--sp-3);
 }
-.mode-seg__btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px 8px;
-  border: 2px solid var(--border-strong);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.mode-seg__btn--active {
-  border-color: var(--brand);
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-.mode-seg__badge {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 99px;
-  background: var(--success);
-  color: #fff;
+.parse-info__title {
+  font-size: 15px;
   font-weight: 600;
+  color: var(--text);
 }
-.field__desc {
+.parse-info__desc {
   font-size: 12px;
   color: var(--text-3);
-  margin: 0;
+  margin-top: 2px;
   line-height: 1.5;
 }
 
