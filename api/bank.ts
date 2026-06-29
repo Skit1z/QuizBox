@@ -7,7 +7,7 @@
 // 可选：设置环境变量 BANK_KEY 作为共享密钥（非账号系统，仅防陌生人覆盖），
 // 客户端在「设置」里填同样的密钥即可。
 
-import { del, put, list } from '@vercel/blob'
+import { del, get, put, list } from '@vercel/blob'
 
 export const config = { runtime: 'nodejs' }
 
@@ -16,6 +16,13 @@ const BANK_PATH = 'quizbox/bank.json'
 async function listBankBlobs() {
   const { blobs } = await list({ prefix: BANK_PATH })
   return blobs.filter((blob) => blob.pathname === BANK_PATH)
+}
+
+async function readBankJson() {
+  const blob = await get(BANK_PATH, { access: 'private' })
+  if (!blob?.stream) return { version: 1, tables: {} }
+  const text = await new Response(blob.stream).text()
+  return JSON.parse(text)
 }
 
 function countTables(data: any) {
@@ -75,10 +82,7 @@ export default async function handler(req: any, res: any) {
       const latest = blobs.sort(
         (a, b) => +new Date(b.uploadedAt) - +new Date(a.uploadedAt),
       )[0]
-      // 加时间戳绕过 Blob CDN 缓存，确保拉到最新快照
-      const fresh = `${latest.url}${latest.url.includes('?') ? '&' : '?'}t=${Date.now()}`
-      const r = await fetch(fresh, { cache: 'no-store' as any })
-      const data = await r.json()
+      const data = await readBankJson()
       if (req.query?.meta === '1') {
         res.status(200).json({ ok: true, ...blobMeta(latest, data) })
         return
@@ -98,10 +102,10 @@ export default async function handler(req: any, res: any) {
       }
       const existing = await listBankBlobs()
       if (existing.length) {
-        await del(existing.map((blob) => blob.url))
+        await del(existing.map((blob) => blob.pathname))
       }
       const uploaded = await put(BANK_PATH, body, {
-        access: 'public',
+        access: 'private',
         contentType: 'application/json',
         addRandomSuffix: false,
       })

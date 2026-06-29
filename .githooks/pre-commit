@@ -23,10 +23,11 @@ if [ -z "$STAGED_FILES" ]; then
 fi
 
 VERSION_FILES="package.json
+package-lock.json
 src-tauri/Cargo.toml
 src-tauri/tauri.conf.json"
 
-NON_VERSION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -vxF -e 'package.json' -e 'src-tauri/Cargo.toml' -e 'src-tauri/tauri.conf.json' || true)"
+NON_VERSION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -vxF -e 'package.json' -e 'package-lock.json' -e 'src-tauri/Cargo.toml' -e 'src-tauri/tauri.conf.json' || true)"
 if [ -z "$NON_VERSION_FILES" ]; then
   exit 0
 fi

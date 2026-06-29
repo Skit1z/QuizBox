@@ -11,6 +11,7 @@
 //
 // 同步更新的文件：
 //   package.json            version
+//   package-lock.json       packages[""].version
 //   src-tauri/tauri.conf.json  version
 //   src-tauri/Cargo.toml    version
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -81,6 +82,13 @@ function main() {
   patchFile('package.json', (s) =>
     s.replace(/"version":\s*"[^"]*"/, `"version": "${nextStr}"`),
   )
+  // package-lock.json（只同步根包版本，依赖树版本不动）
+  patchFile('package-lock.json', (s) => {
+    const lock = JSON.parse(s)
+    lock.version = nextStr
+    if (lock.packages?.['']) lock.packages[''].version = nextStr
+    return `${JSON.stringify(lock, null, 2)}\n`
+  })
   // tauri.conf.json
   patchFile('src-tauri/tauri.conf.json', (s) =>
     s.replace(/"version":\s*"[^"]*"/, `"version": "${nextStr}"`),
