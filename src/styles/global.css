@@ -338,3 +338,15 @@ body {
   background: transparent !important;
 }
 
+/* ===== 选中状态高亮 ===== */
+.swipe-card--selected {
+  border-color: var(--brand) !important;
+  background: var(--brand-soft) !important;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--brand) !important;
+}
+.wrong-card--selected {
+  border-color: var(--brand) !important;
+  background: var(--brand-soft) !important;
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--brand) !important;
+}
+

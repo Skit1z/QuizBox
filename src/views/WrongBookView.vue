@@ -149,11 +149,13 @@ onMounted(async () => {
       </div>
 
       <div class="wrong-list">
-        <div v-for="item in filteredItems" :key="item.id" class="wrong-card card">
-          <van-checkbox
-            :model-value="selectedIds.includes(item.questionId)"
-            @update:model-value="() => toggleSelect(item.questionId)"
-          />
+        <div
+          v-for="item in filteredItems"
+          :key="item.id"
+          class="wrong-card card"
+          :class="{ 'wrong-card--selected': selectedIds.includes(item.questionId) }"
+          @click="toggleSelect(item.questionId)"
+        >
           <div class="wrong-card__body">
             <div class="wrong-card__meta">
               <span class="chip chip--danger">待复习</span>
@@ -168,8 +170,8 @@ onMounted(async () => {
               {{ item.question?.stem?.slice(0, 60) || '(题目已删除)' }}
             </div>
             <div class="wrong-card__actions">
-              <van-button size="small" type="primary" plain round @click="review(item)">复习</van-button>
-              <van-button size="small" type="success" plain round @click="markMastered(item.id)">已掌握</van-button>
+              <van-button size="small" type="primary" plain round @click.stop="review(item)">复习</van-button>
+              <van-button size="small" type="success" plain round @click.stop="markMastered(item.id)">已掌握</van-button>
             </div>
           </div>
         </div>
@@ -261,10 +263,13 @@ onMounted(async () => {
   gap: var(--sp-3);
 }
 .wrong-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-5);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.wrong-card:hover {
+  border-color: var(--border-strong);
 }
 .wrong-card__body {
   min-width: 0;
