@@ -83,7 +83,7 @@ function onFileRead(file: any) {
   const f: File = file.file || file
   const ext = getFileExt(f.name)
   if (!ext) {
-    showFailToast('支持 .docx / .doc / .md / .pdf 格式')
+    showFailToast('支持 .docx / .md / .pdf 格式')
     return
   }
   if (ext === 'pdf' && !settingsStore.ocr.token) {
@@ -299,7 +299,7 @@ onMounted(async () => {
               <van-icon name="description" size="32" />
             </div>
             <div class="upload-zone__title">选择文档</div>
-            <div class="upload-zone__desc">支持 .docx / .doc / .md / .pdf，自动解析题型与答案</div>
+            <div class="upload-zone__desc">支持 .docx / .md / .pdf，自动解析题型与答案</div>
           </div>
         </van-uploader>
       </div>
