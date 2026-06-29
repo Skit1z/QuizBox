@@ -27,13 +27,15 @@ const RE_CHAPTER_BREAK = /^[\s　]*(?:《[^》]*》.*\d|《[^》]+》\s*$|习题
 const RE_QUESTION_NUM = /^[\s　]*[(\[（【]?(\d{1,4})[)\]）】]?[.、．)\s]/m
 
 // 选项行开头：A. / A、/ A) / (A) / A．/ A（空格）
-const RE_OPTION_HEAD = /^[\s　]*[(\[（]?([A-Ha-h])[)\]）]?[.、．)]\s*/
+// 兼容行首 bullet 符号（已在 expandInlineOptions 阶段 stripBullet 去除，这里用 * 兜底）
+const RE_OPTION_HEAD = /^[\s　•◦▪▪·●○■□*\-‑–—]*[(\[（]?([A-Ha-h])[)\]）]?[.、．)]\s*/
 
-// 同一行内的后续选项标记：用于拆分 "A xxx B.xxx C.xxx"
-const RE_INLINE_OPT_SPLIT = /\s+(?=[A-H][.、．)\s])/
+// 同一行内的后续选项标记：用于拆分 "A.xxx B.xxx" 或 "A.xxxB.xxxC.xxx"
+// 在中文/字母 + 字母选项标点 边界处拆分
+const RE_INLINE_OPT_SPLIT = /(?<=[\s。．])(?=[A-Ha-h][.、．)])|(?<=[A-Za-z\u4e00-\u9fff])(?=[A-Ha-h][.、．)])/
 
-// 答案标记
-const RE_ANSWER = /^[\s　]*(?:【?答案】?|答案|Answer|answer|正确答案)\s*[:：]\s*/i
+// 答案标记（冒号可选，兼容「正确答案C」「答案：C」）
+const RE_ANSWER = /^[\s　•◦▪▪·●○■□*\-‑–—]*(?:【?答案】?|答案|Answer|answer|正确答案|答)\s*[:：]?\s*/i
 // 解析标记
 const RE_ANALYSIS = /^[\s　]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
 
@@ -99,19 +101,43 @@ export function parseWithRulesHybrid(text: string): HybridResult {
 
 // ===== 预处理：拆分同一行内的多个选项 =====
 
+/** 去除行首的 bullet/列表符号（• ◦ ▪ · 等） */
+function stripBullet(line: string): string {
+  return line.replace(/^[\s　]*[•◦▪▪·●○■□*\-‑–—]+\s*/, '')
+}
+
 function expandInlineOptions(lines: string[]): string[] {
   const result: string[] = []
   for (const line of lines) {
-    const trimmed = line.trim()
+    // 先去除 bullet 符号
+    const cleaned = stripBullet(line)
+    let trimmed = cleaned.trim()
+
+    // 若该行同时含多个选项 + 末尾答案（如 "A.xxxB.xxxC.xxxD.xxx正确答案B"），
+    // 先把末尾答案剥离到独立行，再拆选项
+    const ansTailMatch = trimmed.match(/(正确答案|答案|答)\s*[:：]?\s*[A-Ha-h]{1,4}\s*$/)
+    let answerLine = ''
+    if (ansTailMatch && RE_OPTION_HEAD.test(trimmed)) {
+      answerLine = trimmed.slice(ansTailMatch.index!)
+      trimmed = trimmed.slice(0, ansTailMatch.index!).trim()
+    }
+
     // 如果行首匹配选项头且行内还有其他选项标记 → 拆分
     if (RE_OPTION_HEAD.test(trimmed)) {
       const parts = trimmed.split(RE_INLINE_OPT_SPLIT)
       if (parts.length >= 2) {
         result.push(...parts.map((p) => p.trim()).filter(Boolean))
+        if (answerLine) result.push(answerLine)
         continue
       }
     }
-    result.push(line)
+    // 即使没有多个选项，也用去掉 bullet 的版本
+    if (answerLine) {
+      result.push(trimmed)
+      result.push(answerLine)
+    } else {
+      result.push(cleaned)
+    }
   }
   return result
 }
