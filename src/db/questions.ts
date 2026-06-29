@@ -1,7 +1,7 @@
 import { db, uid, isDeleted } from '@/db'
 import { sha256 } from '@/utils/hash'
 import { autoSync } from '@/services/sync'
-import type { Question, Difficulty, QuestionType } from '@/types'
+import type { Question, QuestionType } from '@/types'
 
 export interface QuestionInput {
   subjectId: string
@@ -12,7 +12,6 @@ export interface QuestionInput {
   answer: string | string[]
   analysis?: string
   attachments?: string[]
-  difficulty?: Difficulty
   tags?: string[]
   sourceHash?: string
 }
@@ -39,7 +38,6 @@ export const questionsRepo = {
     subjectId: string
     chapterId?: string
     types?: QuestionType[]
-    difficulty?: Difficulty
   }): Promise<Question[]> {
     // 选最窄的索引
     let candidates: Question[]
@@ -50,16 +48,12 @@ export const questionsRepo = {
         .toArray()
       candidates = candidates.filter((q) => !isDeleted(q.deletedAt))
     } else {
-      candidates = await db.questions
-        .where('subjectId')
-        .equals(opts.subjectId)
-        .toArray()
+      candidates = await db.questions.where('subjectId').equals(opts.subjectId).toArray()
       candidates = candidates.filter((q) => !isDeleted(q.deletedAt))
     }
 
     if (opts.chapterId) candidates = candidates.filter((q) => q.chapterId === opts.chapterId)
     if (opts.types?.length) candidates = candidates.filter((q) => opts.types!.includes(q.type))
-    if (opts.difficulty) candidates = candidates.filter((q) => q.difficulty === opts.difficulty)
     return candidates
   },
 
@@ -77,7 +71,8 @@ export const questionsRepo = {
 
   async create(input: QuestionInput): Promise<Question> {
     const now = Date.now()
-    const sourceHash = input.sourceHash || await sha256(input.stem + '|' + JSON.stringify(input.answer ?? ''))
+    const sourceHash =
+      input.sourceHash || (await sha256(input.stem + '|' + JSON.stringify(input.answer ?? '')))
     const q: Question = {
       id: uid('q_'),
       subjectId: input.subjectId,
@@ -88,7 +83,6 @@ export const questionsRepo = {
       answer: input.answer,
       analysis: input.analysis,
       attachments: input.attachments,
-      difficulty: input.difficulty || 'medium',
       tags: input.tags,
       sourceHash,
       updatedAt: now,
@@ -103,23 +97,25 @@ export const questionsRepo = {
   async createBulk(inputs: QuestionInput[]): Promise<Question[]> {
     if (inputs.length === 0) return []
     const now = Date.now()
-    const rows: Question[] = await Promise.all(inputs.map(async (input) => ({
-      id: uid('q_'),
-      subjectId: input.subjectId,
-      chapterId: input.chapterId ?? null,
-      type: input.type,
-      stem: input.stem,
-      options: input.options,
-      answer: input.answer,
-      analysis: input.analysis,
-      attachments: input.attachments,
-      difficulty: input.difficulty || 'medium',
-      tags: input.tags,
-      sourceHash: input.sourceHash || await sha256(input.stem + '|' + JSON.stringify(input.answer ?? '')),
-      updatedAt: now,
-      deletedAt: 0,
-      revision: 1,
-    })))
+    const rows: Question[] = await Promise.all(
+      inputs.map(async (input) => ({
+        id: uid('q_'),
+        subjectId: input.subjectId,
+        chapterId: input.chapterId ?? null,
+        type: input.type,
+        stem: input.stem,
+        options: input.options,
+        answer: input.answer,
+        analysis: input.analysis,
+        attachments: input.attachments,
+        tags: input.tags,
+        sourceHash:
+          input.sourceHash || (await sha256(input.stem + '|' + JSON.stringify(input.answer ?? ''))),
+        updatedAt: now,
+        deletedAt: 0,
+        revision: 1,
+      })),
+    )
     await db.questions.bulkPut(rows)
     autoSync()
     return rows
@@ -145,20 +141,14 @@ export const questionsRepo = {
 
   /** 去重检测：同 sourceHash 视为重复 */
   async findDuplicate(subjectId: string, hash: string): Promise<Question | undefined> {
-    const arr = await db.questions
-      .where('sourceHash')
-      .equals(hash)
-      .toArray()
+    const arr = await db.questions.where('sourceHash').equals(hash).toArray()
     return arr.find((q) => q.subjectId === subjectId && !isDeleted(q.deletedAt))
   },
 
   async findDuplicateHashes(subjectId: string, hashes: string[]): Promise<Set<string>> {
     const uniqueHashes = [...new Set(hashes.filter(Boolean))]
     if (uniqueHashes.length === 0) return new Set()
-    const rows = await db.questions
-      .where('sourceHash')
-      .anyOf(uniqueHashes)
-      .toArray()
+    const rows = await db.questions.where('sourceHash').anyOf(uniqueHashes).toArray()
     return new Set(
       rows
         .filter((q) => q.subjectId === subjectId && q.sourceHash && !isDeleted(q.deletedAt))
@@ -182,7 +172,10 @@ export const questionsRepo = {
   /** 全库未删除题目总数（单次索引 count，避免 N+1） */
   async countAll(): Promise<number> {
     try {
-      return await db.questions.where('deletedAt').equals(0 as any).count()
+      return await db.questions
+        .where('deletedAt')
+        .equals(0 as any)
+        .count()
     } catch {
       const all = await db.questions.toArray()
       return all.filter((q) => !isDeleted(q.deletedAt)).length

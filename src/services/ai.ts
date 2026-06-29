@@ -11,7 +11,7 @@ export interface ChatMessage {
  */
 export async function chat(
   messages: ChatMessage[],
-  opts: { jsonMode?: boolean; temperature?: number } = {},
+  opts: { jsonMode?: boolean; temperature?: number; maxTokens?: number } = {},
 ): Promise<string> {
   const settings = useSettingsStore()
   if (!settings.loaded) await settings.load()
@@ -27,6 +27,9 @@ export async function chat(
   }
   if (opts.jsonMode) {
     body.response_format = { type: 'json_object' }
+  }
+  if (opts.maxTokens) {
+    body.max_tokens = opts.maxTokens
   }
 
   const res = await fetch(url, {
@@ -52,7 +55,7 @@ export async function chat(
 /** 请求 AI 返回 JSON 对象 */
 export async function chatJson<T = any>(
   messages: ChatMessage[],
-  opts: { temperature?: number } = {},
+  opts: { temperature?: number; maxTokens?: number } = {},
 ): Promise<T> {
   const raw = await chat(messages, { jsonMode: true, ...opts })
   try {
@@ -66,7 +69,7 @@ export async function chatJson<T = any>(
         },
         { role: 'user', content: raw },
       ],
-      { jsonMode: true, temperature: 0 },
+      { jsonMode: true, temperature: 0, maxTokens: opts.maxTokens },
     )
     return parseJsonPayload<T>(fixed)
   }

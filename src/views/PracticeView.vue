@@ -9,13 +9,7 @@ import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
-import {
-  DIFFICULTY_LABELS,
-  QUESTION_TYPE_LABELS,
-  type Difficulty,
-  type Question,
-  type QuestionType,
-} from '@/types'
+import { QUESTION_TYPE_LABELS, type Question, type QuestionType } from '@/types'
 
 defineOptions({ name: 'PracticeView' })
 
@@ -28,12 +22,10 @@ const questions = ref<Question[]>([])
 
 const subjectId = ref((route.query.subjectId as string) || '')
 const types = ref<QuestionType[]>([])
-const difficulty = ref<Difficulty | ''>('')
 const random = ref(true)
 const onlyWrong = ref(false)
 
 const allTypes: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
-const allDiffs: Difficulty[] = ['easy', 'medium', 'hard']
 
 const subjectOptions = computed<SelectOption[]>(() =>
   subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
@@ -61,16 +53,12 @@ async function start() {
   } else if (onlyWrong.value) {
     const wrongs = await wrongBookRepo.listAll()
     const wrongQids = wrongs.map((w) => w.questionId)
-    qs = (await questionsRepo.findByIds(wrongQids)).filter(
-      (q) => q.subjectId === subjectId.value,
-    )
+    qs = (await questionsRepo.findByIds(wrongQids)).filter((q) => q.subjectId === subjectId.value)
     if (types.value.length) qs = qs.filter((q) => types.value.includes(q.type))
-    if (difficulty.value) qs = qs.filter((q) => q.difficulty === difficulty.value)
   } else {
     qs = await questionsRepo.filter({
       subjectId: subjectId.value,
       types: types.value.length ? types.value : undefined,
-      difficulty: difficulty.value || undefined,
     })
   }
 
@@ -121,7 +109,9 @@ onMounted(async () => {
       <div class="card">
         <!-- 题型多选 -->
         <div class="field">
-          <label class="field__label">题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label>
+          <label class="field__label"
+            >题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label
+          >
           <div class="multi-chips">
             <button
               v-for="t in allTypes"
@@ -129,26 +119,9 @@ onMounted(async () => {
               :class="['mchip', types.includes(t) && 'mchip--active']"
               @click="!presetQuestionIds.length && toggleType(t)"
               :disabled="!!presetQuestionIds.length"
-            >{{ QUESTION_TYPE_LABELS[t] }}</button>
-          </div>
-        </div>
-
-        <!-- 难度单选 -->
-        <div class="field">
-          <label class="field__label">难度</label>
-          <div class="multi-chips">
-            <button
-              v-for="d in allDiffs"
-              :key="d"
-              :class="['mchip', difficulty === d && 'mchip--active']"
-              @click="difficulty = difficulty === d ? '' : d"
-              :disabled="!!presetQuestionIds.length"
-            >{{ DIFFICULTY_LABELS[d] }}</button>
-            <button
-              :class="['mchip', !difficulty && 'mchip--active']"
-              @click="difficulty = ''"
-              :disabled="!!presetQuestionIds.length"
-            >不限</button>
+            >
+              {{ QUESTION_TYPE_LABELS[t] }}
+            </button>
           </div>
         </div>
       </div>

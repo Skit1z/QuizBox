@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -8,7 +8,7 @@ import { questionsRepo, type QuestionInput } from '@/db/questions'
 import { sha256 } from '@/utils/hash'
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS, EXT_LABELS } from '@/services/file-parser'
 import { saveImages, type ParsedImage } from '@/services/docx-parser'
-import { repairWithAI, type ParsedQuestion } from '@/services/importer'
+import { repairWithAI, generateAnswer, type ParsedQuestion } from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
@@ -57,13 +57,58 @@ const typeOptions = computed<SelectOption[]>(() =>
 /** 把编辑态答案字符串与数组互转 */
 function editAnswer(p: ParsedQuestion, val: string) {
   if (p.type === 'multiple' || p.type === 'fill') {
-    p.answer = val.split(/[、,，;;\n]/).map((s) => s.trim()).filter(Boolean)
+    p.answer = val
+      .split(/[、,，;;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
   } else {
     p.answer = val
   }
 }
 function answerInputVal(p: ParsedQuestion): string {
   return Array.isArray(p.answer) ? p.answer.join('、') : p.answer
+}
+function isChoiceQuestion(p: ParsedQuestion): boolean {
+  return p.type === 'single' || p.type === 'multiple'
+}
+function isAnswerOptionSelected(p: ParsedQuestion, key: string): boolean {
+  return Array.isArray(p.answer)
+    ? p.answer.includes(key)
+    : p.answer
+        .split('')
+        .map((s) => s.trim())
+        .includes(key)
+}
+function toggleAnswerOption(p: ParsedQuestion, key: string) {
+  if (p.type === 'single') {
+    p.answer = key
+    return
+  }
+  const selected = new Set(
+    Array.isArray(p.answer)
+      ? p.answer.map(String)
+      : String(p.answer || '')
+          .split('')
+          .filter(Boolean),
+  )
+  if (selected.has(key)) selected.delete(key)
+  else selected.add(key)
+  p.answer = Array.from(selected).sort()
+}
+function pruneChoiceAnswer(p: ParsedQuestion) {
+  if (!isChoiceQuestion(p)) return
+  const allowed = new Set((p.options ?? []).map((_, i) => String.fromCharCode(65 + i)))
+  const current = Array.isArray(p.answer)
+    ? p.answer.map(String)
+    : String(p.answer || '')
+        .split('')
+        .filter(Boolean)
+  const valid = current.filter((key) => allowed.has(key))
+  p.answer = p.type === 'single' ? valid[0] || '' : valid.sort()
+}
+function confirmEdit(p: ParsedQuestion) {
+  pruneChoiceAnswer(p)
+  editingIdx.value = null
 }
 
 function editOption(p: ParsedQuestion, i: number, val: string) {
@@ -76,9 +121,27 @@ function addOption(p: ParsedQuestion) {
 }
 function removeOption(p: ParsedQuestion, i: number) {
   p.options?.splice(i, 1)
+  pruneChoiceAnswer(p)
 }
 
-const fileExt = computed(() => fileRef.value ? getFileExt(fileRef.value.name) : null)
+const fileExt = computed(() => (fileRef.value ? getFileExt(fileRef.value.name) : null))
+
+function prioritizeReviewQuestions(
+  questions: ParsedQuestion[],
+  aiCandidates = new WeakSet<ParsedQuestion>(),
+): ParsedQuestion[] {
+  return questions
+    .map((q, i) => ({
+      q,
+      i,
+      priority: aiCandidates.has(q) || (q.confidence ?? 1) < 0.6,
+    }))
+    .sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority ? -1 : 1
+      return a.i - b.i
+    })
+    .map((item) => item.q)
+}
 
 function onFileRead(file: any) {
   const f: File = file.file || file
@@ -115,9 +178,8 @@ async function doParse() {
       onPdfProgress: (p) => {
         if (p.state === 'pending') pdfProgress.value = 'OCR 排队中…'
         else if (p.state === 'running') {
-          const pg = p.extractedPages && p.totalPages
-            ? ` (${p.extractedPages}/${p.totalPages} 页)`
-            : ''
+          const pg =
+            p.extractedPages && p.totalPages ? ` (${p.extractedPages}/${p.totalPages} 页)` : ''
           pdfProgress.value = `OCR 识别中${pg}`
         } else if (p.state === 'done') pdfProgress.value = 'OCR 完成，正在解析…'
       },
@@ -134,11 +196,20 @@ async function doParse() {
     // 有低完整度块 + 有 AI 配置 → AI 判定这些块（是题目则结构化，不是则丢弃）
     if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey) {
       parsed.value = qs
+      const aiCandidates = new WeakSet<ParsedQuestion>()
+      hybrid.lowConfidenceIndices.forEach((qIdx) => {
+        const q = parsed.value[qIdx]
+        if (q) aiCandidates.add(q)
+      })
       step.value = 3
       repairing.value = true
       repairCount.value = hybrid.lowConfidenceBlocks.length
       try {
-        const fixes = await repairWithAI(hybrid.lowConfidenceBlocks, (done, total) => {
+        const repairItems = hybrid.lowConfidenceBlocks.map((block, i) => ({
+          block,
+          candidate: hybrid.questions[hybrid.lowConfidenceIndices[i]],
+        }))
+        const fixes = await repairWithAI(repairItems, (done, total) => {
           pdfProgress.value = `AI 判定中（${done}/${total} 批）`
         })
         // AI 判定结果覆盖：修复的题替换，未返回的（判为非题目）标记待删
@@ -147,6 +218,7 @@ async function doParse() {
           const qIdx = hybrid.lowConfidenceIndices[blockIdx]
           if (qIdx !== undefined && qIdx < parsed.value.length) {
             parsed.value[qIdx] = fixed
+            aiCandidates.add(fixed)
           }
         }
         // 低置信度块中 AI 未返回的 → 判为非题目，删除占位
@@ -161,12 +233,15 @@ async function doParse() {
       } finally {
         repairing.value = false
         // 所有索引操作已完成，此时安全过滤空题干，杜绝空白卡片
-        parsed.value = parsed.value.filter(isRenderableQuestion)
+        parsed.value = prioritizeReviewQuestions(
+          parsed.value.filter(isRenderableQuestion),
+          aiCandidates,
+        )
       }
       return
     }
 
-    const cleaned = qs.filter(isRenderableQuestion)
+    const cleaned = prioritizeReviewQuestions(qs.filter(isRenderableQuestion))
     if (cleaned.length === 0) {
       parseError.value = settingsStore.ai.apiKey
         ? '未能识别出题目，请检查文档格式'
@@ -197,6 +272,31 @@ function isRenderableQuestion(q: ParsedQuestion): boolean {
   return !!q?.stem?.trim() && !!QUESTION_TYPE_LABELS[q.type]
 }
 
+function answerText(p: ParsedQuestion): string {
+  return Array.isArray(p.answer) ? p.answer.join('、') : p.answer || ''
+}
+
+/** 按需 AI 生成/校对单题答案 + 解析 */
+const aiGen = reactive<Record<number, boolean>>({})
+async function genAnswer(p: ParsedQuestion, i: number) {
+  if (aiGen[i]) return
+  aiGen[i] = true
+  try {
+    const { answer, analysis } = await generateAnswer({
+      type: p.type,
+      stem: p.stem,
+      options: p.options,
+    })
+    p.answer = answer
+    if (analysis) p.analysis = analysis
+    if (typeof p.confidence === 'number') p.confidence = Math.max(p.confidence, 0.7)
+  } catch (e: any) {
+    showFailToast(e?.message || 'AI 生成失败')
+  } finally {
+    aiGen[i] = false
+  }
+}
+
 function removeParsed(i: number) {
   parsed.value.splice(i, 1)
 }
@@ -211,10 +311,27 @@ async function saveAll() {
   try {
     await doSave()
   } catch (e: any) {
-    showFailToast(e?.message || '导入失败，请重试')
+    console.error('[import] save failed', e)
+    showFailToast(getErrorMessage(e, '导入失败，请重试'))
   } finally {
     saving.value = false
   }
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (typeof error === 'string' && error.trim()) return error
+  if (error && typeof error === 'object') {
+    const value = (error as { message?: unknown; name?: unknown }).message
+    if (typeof value === 'string' && value.trim()) return value
+    const name = (error as { name?: unknown }).name
+    if (typeof name === 'string' && name.trim()) return `${fallback}：${name}`
+  }
+  return fallback
+}
+
+function plainAnswer(answer: ParsedQuestion['answer']): string | string[] {
+  return Array.isArray(answer) ? answer.map(String).filter(Boolean) : String(answer || '')
 }
 
 async function doSave() {
@@ -230,30 +347,31 @@ async function doSave() {
   const seenInFile = new Set<string>()
 
   for (const p of parsed.value) {
+    pruneChoiceAnswer(p)
     const stem = p.stem?.trim()
     if (!stem) {
       skipped++
       continue
     }
 
-    const hash = await sha256(stem + '|' + JSON.stringify(p.answer ?? ''))
+    const answer = plainAnswer(p.answer)
+    const options = p.options?.map((option) => String(option).trim()).filter(Boolean)
+    const hash = await sha256(stem + '|' + JSON.stringify(answer))
     if (seenInFile.has(hash)) {
       skipped++
       continue
     }
     seenInFile.add(hash)
 
-    const attachments = (p.imagePlaceholders || [])
-      .map(toHash)
-      .filter((h): h is string => !!h)
+    const attachments = (p.imagePlaceholders || []).map(toHash).filter((h): h is string => !!h)
 
     const input: QuestionInput = {
       subjectId,
       type: p.type,
       stem,
-      options: p.options,
-      answer: p.answer ?? '',
-      analysis: p.analysis,
+      options,
+      answer,
+      analysis: p.analysis ? String(p.analysis) : undefined,
       attachments,
       sourceHash: hash,
     }
@@ -273,6 +391,10 @@ async function doSave() {
   if (inputs.length > 0) {
     const created = await questionsRepo.createBulk(inputs)
     imported = created.length
+  }
+
+  if (imported === 0) {
+    throw new Error(skipped > 0 ? '没有新题可导入，可能已全部存在或为空' : '没有可导入的题目')
   }
 
   showSuccessToast(`已导入 ${imported} 题${skipped ? `，跳过 ${skipped} 题` : ''}`)
@@ -307,13 +429,22 @@ onMounted(async () => {
     <div class="stepper">
       <template v-for="(s, i) in steps" :key="s.n">
         <div
-          :class="['stepper__node', step >= s.n && 'stepper__node--active', step === s.n && 'stepper__node--current']"
+          :class="[
+            'stepper__node',
+            step >= s.n && 'stepper__node--active',
+            step === s.n && 'stepper__node--current',
+          ]"
         >
           <van-icon v-if="step > s.n" name="success" size="14" />
           <span v-else>{{ s.n }}</span>
         </div>
-        <span :class="['stepper__label', step >= s.n && 'stepper__label--active']">{{ s.label }}</span>
-        <div v-if="i < steps.length - 1" :class="['stepper__line', step > s.n && 'stepper__line--done']"></div>
+        <span :class="['stepper__label', step >= s.n && 'stepper__label--active']">{{
+          s.label
+        }}</span>
+        <div
+          v-if="i < steps.length - 1"
+          :class="['stepper__line', step > s.n && 'stepper__line--done']"
+        ></div>
       </template>
     </div>
 
@@ -322,7 +453,11 @@ onMounted(async () => {
       <div class="card">
         <div class="field">
           <label class="field__label">导入到科目</label>
-          <ThemedSelect v-model="selectedSubjectId" :options="subjectOptions" placeholder="选择科目" />
+          <ThemedSelect
+            v-model="selectedSubjectId"
+            :options="subjectOptions"
+            placeholder="选择科目"
+          />
           <p v-if="!selectedSubjectId" class="field__hint">还未选择科目，可在「题库」页新建</p>
         </div>
       </div>
@@ -362,7 +497,11 @@ onMounted(async () => {
           <div>
             <div class="parse-info__title">智能解析</div>
             <div class="parse-info__desc">
-              优先本地规则匹配题号、选项、答案{{ settingsStore.ai.apiKey ? '，低置信度题目自动 AI 修复' : '。配置 AI 后可自动修复低置信度题目，提升准确率' }}
+              优先本地规则匹配题号、选项、答案{{
+                settingsStore.ai.apiKey
+                  ? '，低置信度题目自动 AI 修复'
+                  : '。配置 AI 后可自动修复低置信度题目，提升准确率'
+              }}
             </div>
           </div>
         </div>
@@ -370,7 +509,14 @@ onMounted(async () => {
 
       <!-- 解析按钮 -->
       <div class="btn-center">
-        <van-button type="primary" round block :loading="parsing" :loading-text="pdfProgress || '解析中…'" @click="doParse">
+        <van-button
+          type="primary"
+          round
+          block
+          :loading="parsing"
+          :loading-text="pdfProgress || '解析中…'"
+          @click="doParse"
+        >
           开始解析
         </van-button>
         <transition name="page-fade">
@@ -408,8 +554,8 @@ onMounted(async () => {
         <van-swipe-cell
           v-for="(p, i) in parsed"
           :key="i"
-          class="preview-item"
-          :class="{ 'preview-item--low': (p.confidence ?? 1) < 0.6 }"
+          class="swipe-card"
+          :class="{ 'swipe-card--low': (p.confidence ?? 1) < 0.6 }"
         >
           <div class="q-item">
             <div class="q-item__head">
@@ -435,7 +581,23 @@ onMounted(async () => {
               </div>
               <div class="q-item__answer">
                 <van-icon name="success" size="13" />
-                <span>{{ Array.isArray(p.answer) ? p.answer.join('、') : p.answer }}</span>
+                <span v-if="answerText(p)">{{ answerText(p) }}</span>
+                <span v-else class="q-item__answer-empty">缺答案</span>
+                <button
+                  v-if="settingsStore.ai.apiKey"
+                  class="ai-gen-btn"
+                  :disabled="aiGen[i]"
+                  @click="genAnswer(p, i)"
+                >
+                  <van-loading v-if="aiGen[i]" size="12" />
+                  <template v-else
+                    ><van-icon name="bulb-o" size="12" /> AI
+                    {{ answerText(p) ? '校对' : '补答案' }}</template
+                  >
+                </button>
+              </div>
+              <div v-if="p.analysis" class="q-item__analysis">
+                <span class="q-item__analysis-label">解析</span>{{ p.analysis }}
               </div>
             </template>
 
@@ -453,31 +615,71 @@ onMounted(async () => {
                 <template v-if="p.type === 'single' || p.type === 'multiple'">
                   <div class="edit-row edit-row--opt" v-for="(opt, oi) in p.options" :key="oi">
                     <span class="edit-row__optkey">{{ String.fromCharCode(65 + oi) }}</span>
-                    <input class="edit-row__input" :value="opt" @input="(e) => editOption(p, oi, (e.target as HTMLInputElement).value)" />
-                    <van-icon name="cross" size="14" color="var(--danger)" @click="removeOption(p, oi)" />
+                    <input
+                      class="edit-row__input"
+                      :value="opt"
+                      @input="(e) => editOption(p, oi, (e.target as HTMLInputElement).value)"
+                    />
+                    <van-icon
+                      name="cross"
+                      size="14"
+                      color="var(--danger)"
+                      @click="removeOption(p, oi)"
+                    />
                   </div>
                   <button class="add-opt-btn" @click="addOption(p)">
                     <van-icon name="plus" size="13" /> 添加选项
                   </button>
                 </template>
-                <div class="edit-row">
+                <div v-if="isChoiceQuestion(p)" class="edit-row">
+                  <label class="edit-row__label">选项</label>
+                  <div class="answer-choice-group">
+                    <button
+                      v-for="(_, oi) in p.options"
+                      :key="oi"
+                      type="button"
+                      :class="[
+                        'answer-choice',
+                        isAnswerOptionSelected(p, String.fromCharCode(65 + oi)) &&
+                          'answer-choice--selected',
+                      ]"
+                      @click="toggleAnswerOption(p, String.fromCharCode(65 + oi))"
+                    >
+                      {{ String.fromCharCode(65 + oi) }}
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="edit-row">
                   <label class="edit-row__label">答案</label>
                   <input
                     class="edit-row__input"
                     :value="answerInputVal(p)"
                     @input="(e) => editAnswer(p, (e.target as HTMLInputElement).value)"
-                    :placeholder="p.type === 'multiple' || p.type === 'fill' ? '多个答案用、分隔' : ''"
+                    :placeholder="
+                      p.type === 'multiple' || p.type === 'fill' ? '多个答案用、分隔' : ''
+                    "
                   />
                 </div>
                 <div class="edit-row">
                   <label class="edit-row__label">解析</label>
                   <textarea v-model="p.analysis" class="edit-row__textarea" rows="2"></textarea>
                 </div>
+                <div class="edit-actions">
+                  <button type="button" class="edit-confirm-btn" @click="confirmEdit(p)">
+                    确定
+                  </button>
+                </div>
               </div>
             </template>
           </div>
           <template #right>
-            <van-button square type="danger" text="移除" style="height: 100%" @click="removeParsed(i)" />
+            <van-button
+              square
+              type="danger"
+              text="移除"
+              style="height: 100%"
+              @click="removeParsed(i)"
+            />
           </template>
         </van-swipe-cell>
       </div>
@@ -485,7 +687,9 @@ onMounted(async () => {
       <!-- 底部操作 -->
       <div class="bottom-actions">
         <van-button round :disabled="saving" @click="step = 2">返回重试</van-button>
-        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll">导入 {{ parsed.length }} 题</van-button>
+        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll"
+          >导入 {{ parsed.length }} 题</van-button
+        >
       </div>
     </div>
   </div>
@@ -780,21 +984,7 @@ onMounted(async () => {
 .preview-list {
   margin-top: var(--sp-4);
 }
-.preview-item {
-  background: var(--surface);
-  border-radius: var(--r-lg);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  margin-bottom: var(--sp-3);
-  overflow: hidden;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.preview-item:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-.preview-item--low {
+.swipe-card--low {
   border-left: 4px solid var(--danger);
 }
 .q-item {
@@ -858,6 +1048,41 @@ onMounted(async () => {
   border-top: 1px dashed var(--border-strong);
   font-size: 13px;
   color: var(--success);
+}
+.q-item__answer-empty {
+  color: var(--danger);
+}
+.ai-gen-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  cursor: pointer;
+}
+.ai-gen-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.q-item__analysis {
+  margin-top: var(--sp-2);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.q-item__analysis-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
 }
 
 /* ===== 编辑表单 ===== */
@@ -925,6 +1150,42 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--text-2);
   flex-shrink: 0;
+}
+.answer-choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.answer-choice {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.answer-choice--selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.edit-confirm-btn {
+  min-width: 88px;
+  height: 36px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .add-opt-btn {
   align-self: flex-start;

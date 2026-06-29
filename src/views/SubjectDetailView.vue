@@ -67,7 +67,7 @@ onMounted(load)
 
     <!-- 题量大时用虚拟滚动；少量时直接渲染 -->
     <div v-else-if="questions.length <= 30">
-      <van-swipe-cell v-for="(q, i) in questions" :key="q.id">
+      <van-swipe-cell v-for="(q, i) in questions" :key="q.id" class="swipe-card">
         <QuestionCard :question="q" :index="i" :show-answer="true" :highlight="focusId === q.id" />
         <template #right>
           <van-button square type="danger" text="删除" style="height: 100%" @click="removeQuestion(q.id)" />
@@ -84,7 +84,7 @@ onMounted(load)
     >
       <template #default="{ item, index, active }">
         <DynamicScrollerItem :item="item" :active="active" :data-index="index">
-          <van-swipe-cell>
+          <van-swipe-cell class="swipe-card">
             <QuestionCard :question="item" :index="index" :show-answer="true" :highlight="focusId === item.id" />
             <template #right>
               <van-button square type="danger" text="删除" style="height: 100%" @click="removeQuestion(item.id)" />

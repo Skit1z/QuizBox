@@ -185,13 +185,24 @@ export function parseWithRulesHybrid(text: string): HybridResult {
   const lowConfidenceIndices: number[] = []
 
   groupedEntries.forEach((entry, idx) => {
-    if ((entry.q.confidence ?? 0) < CONFIDENCE_THRESHOLD) {
-      lowConfidenceBlocks.push(entry.blockText)
-      lowConfidenceIndices.push(idx)
-    }
+    if ((entry.q.confidence ?? 0) >= CONFIDENCE_THRESHOLD) return
+    // 选项齐全但答案缺失：AI 也无法凭空生成答案，送 AI 纯属浪费 token。
+    // 这类题保留低置信标记（UI 标「把握低」），交由用户手动补/按需 AI 生成答案。
+    if (isCleanChoiceMissingAnswer(entry.q)) return
+    lowConfidenceBlocks.push(entry.blockText)
+    lowConfidenceIndices.push(idx)
   })
 
   return { questions, lowConfidenceBlocks, lowConfidenceIndices }
+}
+
+/** 选项齐全(≥2)但答案为空的选择题——结构完整，只缺答案 */
+function isCleanChoiceMissingAnswer(q: ParsedQuestion): boolean {
+  return (
+    (q.type === 'single' || q.type === 'multiple') &&
+    (q.options?.length ?? 0) >= 2 &&
+    !hasAnswer(q.answer)
+  )
 }
 
 // ===== 预处理：拆分同一行内的多个选项 =====

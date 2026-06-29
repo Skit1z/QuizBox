@@ -13,18 +13,18 @@
 
 ## 二、技术栈
 
-| 层 | 选型 |
-|----|------|
-| 框架 | Vue 3 + TypeScript + Vite |
-| UI | Vant 4（移动优先）+ 响应式 CSS（桌面双栏） |
-| 路由/状态 | Vue Router + Pinia |
-| 本地库 | Dexie.js (IndexedDB) |
-| 同步 | webdav (npm 包) |
-| Word 解析 | mammoth.js |
-| AI | fetch 直调 OpenAI 兼容协议（用户自填 Base URL + Key） |
-| 公式 | KaTeX |
-| 列表性能 | vue-virtual-scroller |
-| PC 打包 | Tauri 2 |
+| 层        | 选型                                                  |
+| --------- | ----------------------------------------------------- |
+| 框架      | Vue 3 + TypeScript + Vite                             |
+| UI        | Vant 4（移动优先）+ 响应式 CSS（桌面双栏）            |
+| 路由/状态 | Vue Router + Pinia                                    |
+| 本地库    | Dexie.js (IndexedDB)                                  |
+| 同步      | webdav (npm 包)                                       |
+| Word 解析 | mammoth.js                                            |
+| AI        | fetch 直调 OpenAI 兼容协议（用户自填 Base URL + Key） |
+| 公式      | KaTeX                                                 |
+| 列表性能  | vue-virtual-scroller                                  |
+| PC 打包   | Tauri 2                                               |
 
 ## 三、架构
 
@@ -45,8 +45,8 @@
 
 - **subjects** 科目：id, name, order, updatedAt, deletedAt
 - **chapters** 章节：id, subjectId, parentId, name, order
-- **questions** 题库主表：id, subjectId, chapterId, type(单选/多选/判断/填空/简答/论述), stem(富文本JSON+LaTeX), options[], answer, analysis, attachments[](图片哈希), difficulty, tags[], sourceHash(去重), updatedAt, deletedAt, revision
-  - 复合索引：(subjectId, chapterId, type, difficulty)
+- **questions** 题库主表：id, subjectId, chapterId, type(单选/多选/判断/填空/简答/论述), stem(富文本JSON+LaTeX), options[], answer, analysis, attachments[](图片哈希), tags[], sourceHash(去重), updatedAt, deletedAt, revision
+  - 复合索引：(subjectId, chapterId, type)
 - **attempts** 做题记录：id, questionId, mode(考试/自测), userAnswer, isCorrect(客观), aiScore/aiFeedback(主观AI), selfRating(主观自评), createdAt
 - **wrongBook** 错题本：id, questionId, reason, status(待复习/已掌握), reviewCount, lastReviewAt, nextReviewAt(SM-2), updatedAt, deletedAt
 - **examSessions** 考试场次：id, config(题量/时长/科目/模式), questionIds[], startTime, endTime, answers{}, score, status
@@ -56,7 +56,7 @@
 ## 五、功能模块
 
 1. **题库导入（AI 解析 Word）**：上传 .docx → mammoth.js 提取文本+图片 → 选题型模板（首次配置后保存）→ AI（JSON Mode）结构化为题目数组 → 预览/纠错/确认 → 写入 IndexedDB + 图片存 attachments → 自动同步。解析失败单题标红手改。
-2. **自测模式**：按科目/章节/难度筛选；即时反馈；顺序/随机练习；错题自动入错题本，SM-2 间隔重复安排复习。
+2. **自测模式**：按科目/章节/题型筛选；即时反馈；顺序/随机练习；错题自动入错题本，SM-2 间隔重复安排复习。
 3. **考试模式（传统+子模式）**：传统=设定题量/时长/范围→做完交卷出分；子模式=错题重做、随机抽查、乱序练习、薄弱点加权抽题。
 4. **错题本**：自动收录+手动加入；标注原因；SM-2 复习提醒；主观题可重做对比参考答案。
 5. **主观题评分**：客观题自动判分（填空支持精确/包含/正则）；主观题每题可选"自评打分"或"AI 评分"（AI 返回 0-100 分+评语+得分点）。

@@ -23,14 +23,6 @@ export function isObjective(type: QuestionType): boolean {
   return type === 'single' || type === 'multiple' || type === 'judge' || type === 'fill'
 }
 
-/** 难度 */
-export type Difficulty = 'easy' | 'medium' | 'hard'
-export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  easy: '简单',
-  medium: '中等',
-  hard: '困难',
-}
-
 /** 同步用的软删除/时间戳基类 */
 export interface SyncRecord {
   updatedAt: number
@@ -71,7 +63,6 @@ export interface Question extends SyncRecord {
   analysis?: string
   /** 附件图片哈希列表 */
   attachments?: string[]
-  difficulty: Difficulty
   tags?: string[]
   /** 内容哈希，用于去重 */
   sourceHash?: string
@@ -125,7 +116,6 @@ export interface ExamConfig {
   subjectId: string
   chapterIds?: string[]
   questionTypes?: QuestionType[]
-  difficulty?: Difficulty
   count: number
   durationMin?: number
   subMode: ExamSubMode

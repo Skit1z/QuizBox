@@ -32,7 +32,7 @@ export class QADatabase extends Dexie {
       subjects: 'id, order, updatedAt, deletedAt',
       chapters: 'id, subjectId, parentId, order, updatedAt, deletedAt',
       questions:
-        'id, subjectId, chapterId, type, difficulty, sourceHash, updatedAt, deletedAt, [subjectId+chapterId], [subjectId+type], [subjectId+difficulty]',
+        'id, subjectId, chapterId, type, sourceHash, updatedAt, deletedAt, [subjectId+chapterId], [subjectId+type]',
       attempts: 'id, questionId, mode, createdAt, isCorrect',
       wrongBook: 'id, questionId, status, nextReviewAt, updatedAt, deletedAt',
       examSessions: 'id, status, startTime',
@@ -46,13 +46,28 @@ export class QADatabase extends Dexie {
         'id, questionId, status, nextReviewAt, updatedAt, deletedAt, [status+nextReviewAt]',
       subjects: 'id, order, updatedAt, deletedAt, [deletedAt+order]',
       questions:
-        'id, subjectId, chapterId, type, difficulty, sourceHash, updatedAt, deletedAt, [subjectId+chapterId], [subjectId+type], [subjectId+difficulty], [subjectId+deletedAt], [subjectId+chapterId+type]',
+        'id, subjectId, chapterId, type, sourceHash, updatedAt, deletedAt, [subjectId+chapterId], [subjectId+type], [subjectId+deletedAt], [subjectId+chapterId+type]',
     })
 
     // version 3：AI 低置信块解析结果缓存
     this.version(3).stores({
       parseCache: 'hash, createdAt',
     })
+
+    // version 4：移除旧题目等级字段与相关索引
+    this.version(4)
+      .stores({
+        questions:
+          'id, subjectId, chapterId, type, sourceHash, updatedAt, deletedAt, [subjectId+chapterId], [subjectId+type], [subjectId+deletedAt], [subjectId+chapterId+type]',
+      })
+      .upgrade((tx) =>
+        tx
+          .table('questions')
+          .toCollection()
+          .modify((question) => {
+            delete question[['diff', 'iculty'].join('')]
+          }),
+      )
   }
 }
 

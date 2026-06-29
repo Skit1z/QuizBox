@@ -2,11 +2,7 @@
 import { computed } from 'vue'
 import RichText from './RichText.vue'
 import AttachmentImage from './AttachmentImage.vue'
-import {
-  QUESTION_TYPE_LABELS,
-  DIFFICULTY_LABELS,
-  type Question,
-} from '@/types'
+import { QUESTION_TYPE_LABELS, type Question } from '@/types'
 
 const props = defineProps<{
   question: Question
@@ -15,14 +11,11 @@ const props = defineProps<{
   showAnswer?: boolean
   /** 是否高亮（如从搜索结果定位） */
   highlight?: boolean
+  /** 是否隐藏静态选项 */
+  hideOptions?: boolean
 }>()
 
 const typeLabel = computed(() => QUESTION_TYPE_LABELS[props.question.type])
-const diffLabel = computed(() => DIFFICULTY_LABELS[props.question.difficulty])
-const diffColor = computed(() => {
-  const map = { easy: 'var(--success)', medium: 'var(--warning)', hard: 'var(--danger)' } as const
-  return map[props.question.difficulty] || 'var(--text-3)'
-})
 
 const answerText = computed(() => {
   const a = props.question.answer
@@ -35,14 +28,13 @@ const answerText = computed(() => {
   <div class="q-card" :class="{ 'q-card--highlight': highlight }">
     <div class="q-card__meta">
       <van-tag plain>{{ typeLabel }}</van-tag>
-      <van-tag plain :color="diffColor">{{ diffLabel }}</van-tag>
       <span v-if="index !== undefined" class="q-card__index">第 {{ index + 1 }} 题</span>
     </div>
 
     <RichText :text="question.stem" class="q-card__stem" />
 
     <!-- 选项 -->
-    <div v-if="question.options && question.options.length" class="q-card__options">
+    <div v-if="!hideOptions && question.options && question.options.length" class="q-card__options">
       <div v-for="(opt, i) in question.options" :key="i" class="q-card__option">
         <span class="q-card__option-key">{{ String.fromCharCode(65 + i) }}.</span>
         <RichText :text="opt" />
@@ -51,11 +43,7 @@ const answerText = computed(() => {
 
     <!-- 附件图片 -->
     <template v-if="question.attachments && question.attachments.length">
-      <AttachmentImage
-        v-for="h in question.attachments"
-        :key="h"
-        :hash="h"
-      />
+      <AttachmentImage v-for="h in question.attachments" :key="h" :hash="h" />
     </template>
 
     <!-- 答案与解析 -->

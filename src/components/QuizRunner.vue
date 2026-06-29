@@ -295,6 +295,26 @@ onBeforeUnmount(() => {
   }
 })
 
+const isSelected = (letter: string) => {
+  const ans = answers.value[current.value.id]
+  if (ans == null) return false
+  if (Array.isArray(ans)) {
+    return ans.includes(letter)
+  }
+  return ans === letter
+}
+
+const isCorrectOption = (letter: string) => {
+  const std = current.value.answer
+  if (std == null) return false
+  const stdArr = Array.isArray(std) ? std : [std]
+  return stdArr.map((s) => s.trim().toUpperCase()).includes(letter.toUpperCase())
+}
+
+const isWrongOption = (letter: string) => {
+  return isSelected(letter) && !isCorrectOption(letter)
+}
+
 // 注：各 setter 已显式调用 persistAnswers()，无需 watch(answers, deep) 重复触发
 </script>
 
@@ -302,7 +322,7 @@ onBeforeUnmount(() => {
   <div v-if="total === 0" class="placeholder">没有符合条件的题目</div>
 
   <div v-else>
-    <van-progress :percentage="progress" :show-pivot="true" />
+    <van-progress :percentage="progress" color="var(--brand)" track-color="var(--border)" :show-pivot="true" />
 
     <div class="quiz-header">
       <span>{{ idx + 1 }} / {{ total }}</span>
@@ -312,69 +332,88 @@ onBeforeUnmount(() => {
       </van-tag>
     </div>
 
-    <QuestionCard :question="current" :show-answer="!classic && submitted[current.id]" />
+    <QuestionCard :question="current" :show-answer="!classic && submitted[current.id]" hide-options />
 
     <!-- 答题区 -->
     <div class="answer-area">
       <!-- 单选 -->
       <template v-if="current.type === 'single'">
-        <van-radio-group
-          :model-value="(answers[current.id] as string)"
-          :disabled="!classic && submitted[current.id]"
-        >
-          <van-cell-group inset>
-            <van-cell
-              v-for="(opt, i) in current.options"
-              :key="i"
-              clickable
-              @click="!submitted[current.id] && setUserAnswerSingle(String.fromCharCode(65 + i))"
-            >
-              <template #title>
-                <van-radio :name="String.fromCharCode(65 + i)">{{ String.fromCharCode(65 + i) }}. {{ opt }}</van-radio>
-              </template>
-            </van-cell>
-          </van-cell-group>
-        </van-radio-group>
+        <div class="options-list">
+          <div
+            v-for="(opt, i) in current.options"
+            :key="i"
+            class="option-item"
+            :class="{
+              'option-item--selected': isSelected(String.fromCharCode(65 + i)),
+              'option-item--disabled': !classic && submitted[current.id],
+              'option-item--correct': !classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
+              'option-item--wrong': !classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
+            }"
+            @click="(!classic && submitted[current.id]) ? null : setUserAnswerSingle(String.fromCharCode(65 + i))"
+          >
+            <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
+            <div class="option-text"><RichText :text="opt" /></div>
+          </div>
+        </div>
       </template>
 
       <!-- 多选 -->
       <template v-else-if="current.type === 'multiple'">
-        <van-checkbox-group
-          :model-value="(answers[current.id] as string[])"
-          :disabled="!classic && submitted[current.id]"
-        >
-          <van-cell-group inset>
-            <van-cell
-              v-for="(opt, i) in current.options"
-              :key="i"
-              clickable
-              @click="!submitted[current.id] && toggleMulti(String.fromCharCode(65 + i))"
-            >
-              <template #title>
-                <van-checkbox :name="String.fromCharCode(65 + i)" shape="square">
-                  {{ String.fromCharCode(65 + i) }}. {{ opt }}
-                </van-checkbox>
-              </template>
-            </van-cell>
-          </van-cell-group>
-        </van-checkbox-group>
+        <div class="options-list">
+          <div
+            v-for="(opt, i) in current.options"
+            :key="i"
+            class="option-item"
+            :class="{
+              'option-item--selected': isSelected(String.fromCharCode(65 + i)),
+              'option-item--disabled': !classic && submitted[current.id],
+              'option-item--correct': !classic && submitted[current.id] && isCorrectOption(String.fromCharCode(65 + i)),
+              'option-item--wrong': !classic && submitted[current.id] && isWrongOption(String.fromCharCode(65 + i))
+            }"
+            @click="(!classic && submitted[current.id]) ? null : toggleMulti(String.fromCharCode(65 + i))"
+          >
+            <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
+            <div class="option-text"><RichText :text="opt" /></div>
+          </div>
+        </div>
       </template>
 
       <!-- 判断 -->
       <template v-else-if="current.type === 'judge'">
-        <van-radio-group
-          :model-value="(answers[current.id] as string)"
-          :disabled="!classic && submitted[current.id]"
-        >
-          <van-cell-group inset>
-            <van-cell clickable @click="!submitted[current.id] && setUserAnswerSingle('T')">
-              <template #title><van-radio name="T">正确</van-radio></template>
-            </van-cell>
-            <van-cell clickable @click="!submitted[current.id] && setUserAnswerSingle('F')">
-              <template #title><van-radio name="F">错误</van-radio></template>
-            </van-cell>
-          </van-cell-group>
-        </van-radio-group>
+        <div class="options-list">
+          <div
+            class="option-item"
+            :class="{
+              'option-item--selected': isSelected('T'),
+              'option-item--disabled': !classic && submitted[current.id],
+              'option-item--correct': !classic && submitted[current.id] && isCorrectOption('T'),
+              'option-item--wrong': !classic && submitted[current.id] && isWrongOption('T')
+            }"
+            @click="(!classic && submitted[current.id]) ? null : setUserAnswerSingle('T')"
+          >
+            <div class="option-badge">
+              <van-icon name="success" v-if="isSelected('T')" />
+              <span v-else>T</span>
+            </div>
+            <div class="option-text">正确</div>
+          </div>
+          <div
+            class="option-item"
+            :class="{
+              'option-item--selected': isSelected('F'),
+              'option-item--disabled': !classic && submitted[current.id],
+              'option-item--correct': !classic && submitted[current.id] && isCorrectOption('F'),
+              'option-item--wrong': !classic && submitted[current.id] && isWrongOption('F')
+            }"
+            @click="(!classic && submitted[current.id]) ? null : setUserAnswerSingle('F')"
+          >
+            <div class="option-badge">
+              <van-icon name="cross" v-if="isSelected('F')" />
+              <span v-else>F</span>
+            </div>
+            <div class="option-text">错误</div>
+          </div>
+        </div>
       </template>
 
       <!-- 填空 -->
@@ -405,7 +444,7 @@ onBeforeUnmount(() => {
           />
         </van-cell-group>
 
-        <div v-if="!classic" class="subjective-grade">
+        <div v-if="!classic" class="subjective-grade card">
           <van-button size="small" plain type="primary" :loading="aiLoading[current.id]" @click="callAi">
             AI 评分
           </van-button>
@@ -414,31 +453,49 @@ onBeforeUnmount(() => {
             <van-stepper :min="0" :max="100" :step="10" @change="(v:any) => submitSelf(Number(v))" />
           </div>
         </div>
-        <div v-if="aiResult[current.id]" class="ai-feedback">
+        <div v-if="aiResult[current.id]" class="ai-feedback card">
           <van-tag type="primary">AI {{ aiResult[current.id].score }} 分</van-tag>
           <RichText :text="aiResult[current.id].feedback" />
         </div>
       </template>
 
       <div v-if="!classic && !submitted[current.id] && current.type !== 'single' && current.type !== 'judge'" style="padding: 12px">
-        <van-button block type="primary" @click="submit">提交答案</van-button>
+        <van-button block type="primary" round @click="submit">提交答案</van-button>
       </div>
       <div v-if="!classic && submitted[current.id]" class="feedback-tag">
-        <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'" size="large">
+        <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'" size="large" round>
           {{ gradeMap[current.id] ? '回答正确' : '回答错误' }}
         </van-tag>
       </div>
     </div>
 
     <!-- 导航 -->
-    <van-grid :column-num="3" style="margin-top: 16px">
-      <van-grid-item><van-button plain :disabled="idx === 0" @click="prev">上一题</van-button></van-grid-item>
-      <van-grid-item>
-        <van-button v-if="idx < total - 1" type="primary" @click="next">下一题</van-button>
-        <van-button v-else type="success" @click="finishPractice()">{{ classic ? '交卷' : '完成' }}</van-button>
-      </van-grid-item>
-      <van-grid-item><van-button plain @click="router.back()">退出</van-button></van-grid-item>
-    </van-grid>
+    <div class="quiz-actions">
+      <van-button round plain :disabled="idx === 0" @click="prev" class="quiz-action-btn">
+        <van-icon name="arrow-left" /> 上一题
+      </van-button>
+      <van-button
+        v-if="idx < total - 1"
+        type="primary"
+        round
+        @click="next"
+        class="quiz-action-btn quiz-action-btn--primary"
+      >
+        下一题 <van-icon name="arrow" />
+      </van-button>
+      <van-button
+        v-else
+        type="success"
+        round
+        @click="finishPractice()"
+        class="quiz-action-btn quiz-action-btn--success"
+      >
+        {{ classic ? '交卷' : '完成' }} <van-icon name="passed" />
+      </van-button>
+      <van-button round plain @click="router.back()" class="quiz-action-btn quiz-action-btn--exit">
+        <van-icon name="close" /> 退出
+      </van-button>
+    </div>
   </div>
 </template>
 
@@ -455,11 +512,92 @@ onBeforeUnmount(() => {
 .answer-area {
   margin-top: var(--sp-2);
 }
+.options-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1);
+}
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.option-item:hover:not(.option-item--disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.option-item--selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.option-item--correct {
+  border-color: var(--success) !important;
+  background: rgba(0, 180, 42, 0.06) !important;
+}
+.option-item--wrong {
+  border-color: var(--danger) !important;
+  background: rgba(245, 63, 63, 0.06) !important;
+}
+.option-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-2);
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+.option-item--selected .option-badge {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #ffffff;
+}
+.option-item--correct .option-badge {
+  background: var(--success);
+  border-color: var(--success);
+  color: #ffffff;
+}
+.option-item--wrong .option-badge {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+.option-text {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.5;
+  flex: 1;
+}
+.option-item--selected .option-text {
+  color: var(--text);
+  font-weight: 500;
+}
+.option-item--correct .option-text {
+  color: var(--success);
+}
+.option-item--wrong .option-text {
+  color: var(--danger);
+}
+
 .subjective-grade {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: var(--sp-3) var(--sp-4);
+  margin-top: var(--sp-3);
 }
 .self-rate {
   display: flex;
@@ -470,9 +608,31 @@ onBeforeUnmount(() => {
 }
 .ai-feedback {
   padding: var(--sp-3) var(--sp-4);
+  margin-top: var(--sp-3);
 }
 .feedback-tag {
   text-align: center;
   padding: var(--sp-3);
+}
+
+.quiz-actions {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding: var(--sp-3) var(--sp-1);
+}
+.quiz-action-btn {
+  flex: 1;
+  height: 42px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.quiz-action-btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.quiz-action-btn--success {
+  background: var(--success);
+  border-color: var(--success);
 }
 </style>

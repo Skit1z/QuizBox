@@ -74,9 +74,9 @@ onMounted(refresh)
     </div>
 
     <div v-else class="subject-list">
-      <van-swipe-cell v-for="s in subjectsStore.list" :key="s.id">
+      <van-swipe-cell v-for="s in subjectsStore.list" :key="s.id" class="swipe-card">
         <div
-          class="subject-card card card--clickable"
+          class="subject-card card--clickable"
           @click="router.push({ name: 'subject-detail', params: { subjectId: s.id } })"
         >
           <div class="subject-card__icon" :style="{ background: s.color || 'var(--brand)' }">

@@ -298,3 +298,28 @@ body {
   --van-nav-bar-height: 52px;
   --van-tag-border-radius: var(--r-sm);
 }
+
+/* ===== 滑动卡片容器（解决阴影被 van-swipe-cell 裁剪问题） ===== */
+.swipe-card {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--sp-3);
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.swipe-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.swipe-card :deep(.card),
+.swipe-card :deep(.q-card) {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  margin-bottom: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
