@@ -6,7 +6,7 @@
 
 **Word 题库导入 → 移动端刷题 → 错题自动间隔复习**
 
-本地存储 · 无需后端 · WebDAV 多端同步
+本地优先 · WebDAV / Vercel 云端跨设备同步
 
 ![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)
 ![Tauri](https://img.shields.io/badge/Tauri-2-FFC131.svg)
@@ -20,10 +20,10 @@
 
 QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有好用的刷题工具」的问题。
 
-1. 上传 `.docx` 文件，AI 自动解析为结构化题目
+1. 上传 `.docx` 文件，规则解析为主、AI 兜底，自动结构化为题目
 2. 支持自测和限时考试两种刷题模式
 3. 错题自动收录，基于 SM-2 间隔重复算法安排复习
-4. 通过 WebDAV（如坚果云）实现多设备数据同步，无需自建服务器
+4. 多设备同步：WebDAV（如坚果云），或部署到 Vercel 后一键开启**云端题库同步**——电脑导入、手机接着做
 
 ---
 
@@ -66,7 +66,9 @@ QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有
 
 **主观题评分** — 客观题由系统自动判分；简答与论述题支持 AI 评分（0-100 分 + 评语）及自评打分。
 
-**数据安全** — 全部数据存储于浏览器 IndexedDB，无后端服务器。多设备同步通过 WebDAV 实现（坚果云免费额度即可满足）。API Key 与密码经 AES-GCM 加密后存储。
+**数据安全** — 全部数据存储于浏览器 IndexedDB，本地优先。API Key 与密码经 AES-GCM 加密后存储。
+
+**跨设备同步** — 两种方式任选：① WebDAV（坚果云 / Nextcloud 等，免费额度即可）；② 部署到 Vercel 后开启**云端题库同步**——题库快照存入 Vercel Blob，电脑导入后手机打开同一网址自动拉取、接着做题。后者与网页同源，零 CORS、自动 HTTPS（详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)）。
 
 **界面设计** — 三套主题色可选（蓝灰 / 墨绿 / 橙），支持暗黑模式与跟随系统，移动端与桌面端自适应布局。
 
@@ -81,7 +83,7 @@ QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有
 | UI | Vant 4（移动优先，按需引入） |
 | 状态管理 | Pinia |
 | 本地存储 | Dexie.js（IndexedDB） |
-| 同步 | WebDAV（坚果云 / Nextcloud 等） |
+| 同步 | WebDAV（坚果云 / Nextcloud），或 Vercel Serverless + Blob 云端题库同步 |
 | Word 解析 | mammoth.js |
 | 公式渲染 | KaTeX |
 | 桌面打包 | Tauri 2 |
@@ -112,17 +114,21 @@ npm run tauri build  # 桌面端（需要 Rust 环境）
 
 ## 部署
 
-### Web 端（Vercel / Cloudflare Pages）
+### Web 端（推荐 Vercel）
 
-纯静态站点，可部署至任意静态托管服务。
+通过 GitHub 仓库关联 Vercel 自动部署（构建命令 `npm run build`，输出目录 `dist`），或：
 
 ```bash
 npm i -g vercel && vercel --prod
 ```
 
-也可通过 GitHub 仓库关联 Vercel 自动部署（构建命令 `npm run build`，输出目录 `dist`）。
+部署到 Vercel 还能一键开启**云端题库同步**（电脑导入、手机接着做），完整步骤见
+**[docs/vercel-deploy.md](docs/vercel-deploy.md)**（含 Blob 存储与共享密钥配置）。
 
-部署完成后，移动端浏览器访问并「添加到主屏幕」即可作为 PWA 使用。首次打开将引导配置 WebDAV。
+也可部署到任意静态托管（Cloudflare Pages 等），但 `/api/bank` 云同步函数仅在
+支持 Serverless 的平台（Vercel / Netlify）生效；纯静态托管只能用 WebDAV 同步。
+
+部署完成后，移动端浏览器访问并「添加到主屏幕」即可作为 PWA 使用。
 
 ### 桌面端（Tauri）
 
@@ -142,6 +148,8 @@ npm run tauri build
 
 **WebDAV 同步** — 填写服务器地址、账号与密码。坚果云用户请使用「应用密码」而非登录密码。
 
+**云端题库同步** — 部署到 Vercel 后可用。设置中启用、接口地址留空（同源）、填共享密钥即可跨设备共享题库。配置详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)。
+
 **外观** — 支持亮色 / 暗色 / 跟随系统三种主题模式，以及三套主题色切换。
 
 ---
@@ -159,16 +167,18 @@ src/
 ├── themes/        主题色 token
 ├── types/         类型定义
 └── styles/        全局样式
+api/               Vercel Serverless 函数（bank 云端题库 / webdav 代理）
 src-tauri/         Tauri 桌面端配置
+docs/              部署教程与设计文档
 ```
 
 ---
 
 ## 隐私
 
-- 所有数据存储于本地，无后端服务器参与
+- 数据本地优先，存储于浏览器 IndexedDB
 - AI 调用直连用户配置的供应商，不经过第三方中转
-- WebDAV 同步连接用户自有网盘
+- 跨设备同步连接用户自有网盘（WebDAV）或自己部署的 Vercel 实例（云端题库同步），数据不经第三方
 - API Key 与密码经 AES-GCM 加密存储于本地
 
 ---
