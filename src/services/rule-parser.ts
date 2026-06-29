@@ -56,11 +56,41 @@ const RE_JUNK_LINE = /^[\s　]*[=\-_─━═~·•●■□▪▫◆◇]{3,}[\s
 // 常见中文标点（用于可读性判断）
 const RE_CN_PUNCT = /[。，、；：！？""''（）《》【】\-—…·]/g
 
+export interface HybridResult {
+  questions: ParsedQuestion[]
+  /** 低置信度题目对应的原始文本块，用于送 AI 二次解析 */
+  lowConfidenceBlocks: string[]
+  /** 低置信度题目在 questions 中的索引 */
+  lowConfidenceIndices: number[]
+}
+
+const CONFIDENCE_THRESHOLD = 0.6
+
 export function parseWithRules(text: string): ParsedQuestion[] {
+  return parseWithRulesHybrid(text).questions
+}
+
+export function parseWithRulesHybrid(text: string): HybridResult {
   const lines = text.split(/\r?\n/)
   const expanded = expandInlineOptions(lines)
   const blocks = splitIntoBlocks(expanded)
-  return blocks.map(parseBlock).filter((q): q is ParsedQuestion => q !== null)
+
+  const questions: ParsedQuestion[] = []
+  const lowConfidenceBlocks: string[] = []
+  const lowConfidenceIndices: number[] = []
+
+  for (const block of blocks) {
+    const q = parseBlock(block)
+    if (!q) continue
+    const idx = questions.length
+    questions.push(q)
+    if ((q.confidence ?? 1) < CONFIDENCE_THRESHOLD) {
+      lowConfidenceBlocks.push(block.lines.join('\n').trim())
+      lowConfidenceIndices.push(idx)
+    }
+  }
+
+  return { questions, lowConfidenceBlocks, lowConfidenceIndices }
 }
 
 // ===== 预处理：拆分同一行内的多个选项 =====

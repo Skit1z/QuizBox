@@ -8,8 +8,8 @@ import { questionsRepo, type QuestionInput } from '@/db/questions'
 import { sha256 } from '@/utils/hash'
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS, EXT_LABELS } from '@/services/file-parser'
 import { saveImages, type ParsedImage } from '@/services/docx-parser'
-import { parseQuestionsWithAI, type ParsedQuestion } from '@/services/importer'
-import { parseWithRules } from '@/services/rule-parser'
+import { parseQuestionsWithAI, repairWithAI, type ParsedQuestion } from '@/services/importer'
+import { parseWithRulesHybrid } from '@/services/rule-parser'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 import { QUESTION_TYPE_LABELS, type QuestionType } from '@/types'
@@ -33,6 +33,8 @@ const hint = ref('')
 const pdfProgress = ref('')
 const parseMode = ref<'rule' | 'ai'>('rule')
 const editingIdx = ref<number | null>(null)
+const repairing = ref(false)
+const repairCount = ref(0)
 
 const types: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
 
@@ -126,7 +128,30 @@ async function doParse() {
 
     let qs: ParsedQuestion[]
     if (parseMode.value === 'rule') {
-      qs = parseWithRules(result.text)
+      const hybrid = parseWithRulesHybrid(result.text)
+      qs = hybrid.questions
+
+      // 有低置信度题目 + 有 AI 配置 → 自动 AI 修复
+      if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey) {
+        parsed.value = qs
+        step.value = 3
+        repairing.value = true
+        repairCount.value = hybrid.lowConfidenceBlocks.length
+        try {
+          const fixes = await repairWithAI(hybrid.lowConfidenceBlocks)
+          for (const [blockIdx, fixed] of fixes) {
+            const qIdx = hybrid.lowConfidenceIndices[blockIdx]
+            if (qIdx !== undefined && qIdx < parsed.value.length) {
+              parsed.value[qIdx] = fixed
+            }
+          }
+        } catch {
+          // AI 修复失败不影响已有结果
+        } finally {
+          repairing.value = false
+        }
+        return
+      }
     } else {
       qs = await parseQuestionsWithAI(result.text, hint.value || undefined)
     }
@@ -305,7 +330,7 @@ onMounted(async () => {
             </button>
           </div>
           <p class="field__desc" v-if="parseMode === 'rule'">
-            使用规则匹配题号、选项、答案标记，适合格式规范的题库文档
+            使用规则匹配题号、选项、答案标记{{ settingsStore.ai.apiKey ? '，低置信度题目自动 AI 修复' : '，配置 AI 后可自动修复低置信度题目' }}
           </p>
           <p class="field__desc" v-else>
             调用 AI 智能识别题目结构，适合格式不规范或混排的文档（消耗 Token）
@@ -355,7 +380,11 @@ onMounted(async () => {
             <span class="preview-bar__num">{{ images.length }}</span> 图
           </template>
         </div>
-        <div v-if="lowConfidenceCount > 0" class="preview-bar__warn">
+        <div v-if="repairing" class="preview-bar__repair">
+          <van-loading size="13" />
+          AI 修复 {{ repairCount }} 题中…
+        </div>
+        <div v-else-if="lowConfidenceCount > 0" class="preview-bar__warn">
           <van-icon name="warning-o" size="13" />
           {{ lowConfidenceCount }} 题把握低
         </div>
@@ -363,8 +392,13 @@ onMounted(async () => {
 
       <!-- 题目列表 -->
       <div class="preview-list">
-        <van-swipe-cell v-for="(p, i) in parsed" :key="i">
-          <div class="q-item card" :class="{ 'q-item--low': (p.confidence ?? 1) < 0.6 }">
+        <van-swipe-cell
+          v-for="(p, i) in parsed"
+          :key="i"
+          class="preview-item"
+          :class="{ 'preview-item--low': (p.confidence ?? 1) < 0.6 }"
+        >
+          <div class="q-item">
             <div class="q-item__head">
               <span class="chip">{{ QUESTION_TYPE_LABELS[p.type] }}</span>
               <span v-if="(p.confidence ?? 1) < 0.6" class="chip chip--danger">把握低</span>
@@ -743,13 +777,38 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--danger);
 }
+.preview-bar__repair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--brand);
+  font-weight: 500;
+}
 
 /* ===== 题目卡片 ===== */
+.preview-list {
+  margin-top: var(--sp-4);
+}
+.preview-item {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--sp-3);
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.preview-item:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.preview-item--low {
+  border-left: 4px solid var(--danger);
+}
 .q-item {
   padding: var(--sp-4) var(--sp-4);
-}
-.q-item--low {
-  border-left: 3px solid var(--danger);
 }
 .q-item__head {
   display: flex;
