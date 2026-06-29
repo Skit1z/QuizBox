@@ -123,20 +123,30 @@ export async function parseQuestionsWithAI(
     .filter((q): q is ParsedQuestion => !!q)
 }
 
-// ===== AI 修复：rule-parser 低置信度题目的二次解析 =====
+// ===== AI 判定：对规则解析不确定的块做结构化判定 =====
 
-const REPAIR_SYSTEM = `你是题库修复助手。用户给你若干段原始题目文本，规则解析器无法确定其结构。
-请逐段解析，去除乱码/无效内容。如果某段不是有效题目则跳过。
+const JUDGE_SYSTEM = `你是题库解析助手。用户给你若干段从 Word 文档提取的原始文本块，规则解析器无法确定其中一些的结构。
+请逐块判定：该块是否是一道有效题目？如果是，解析其结构；如果不是（如标题、说明、目录），跳过。
+
+解析要求：
+1. 识别题型：single(单选) multiple(多选) judge(判断) fill(填空) short(简答) essay(论述)
+2. 单选/多选 answer 用字母（如 "A" 或 ["A","C"]）；判断用 "T"/"F"；填空用字符串数组
+3. 去除乱码、题号前缀、bullet 符号、页眉页脚
+4. 选项要完整提取（每个选项单独一项）
+
 输出 JSON：{"questions":[{"blockId":"block_0","type","stem","options","answer","analysis","confidence"}]}
-blockId 必须原样使用输入中标注的 blockId，不要重新编号。type 值：single/multiple/judge/fill/short/essay。
-单选/多选 answer 用字母；判断用"T"/"F"；填空用字符串数组。`
+- blockId 必须原样使用输入中标注的，不要重新编号
+- 不是题目的块不要输出（自然跳过）
+- confidence 表示你对此块解析的把握 (0-1)`
 
 /**
- * 对 rule-parser 识别为低置信度的文本块做 AI 二次修复。
- * 分批发送，返回 块索引 → 修复后题目 的映射。
+ * 对规则解析不确定的文本块做 AI 判定与结构化。
+ * 分批发送，返回 块索引 → 解析后题目 的映射。
+ * 未出现在返回映射中的块 = AI 判定为非题目。
  */
 export async function repairWithAI(
   blocks: string[],
+  onProgress?: (done: number, total: number) => void,
 ): Promise<Map<number, ParsedQuestion>> {
   const repaired = new Map<number, ParsedQuestion>()
   if (blocks.length === 0) return repaired
@@ -159,13 +169,14 @@ export async function repairWithAI(
   if (batch) batches.push({ indices: batchIndices, text: batch })
 
   // 串行发送（避免限流）
+  let done = 0
   for (const b of batches) {
     try {
       const res = await chatJson<{
         questions: Array<ParsedQuestion & { blockId?: string; blockIndex?: number }>
       }>(
         [
-          { role: 'system', content: REPAIR_SYSTEM },
+          { role: 'system', content: JUDGE_SYSTEM },
           { role: 'user', content: b.text },
         ],
         { temperature: 0.1 },
@@ -187,8 +198,10 @@ export async function repairWithAI(
         }
       }
     } catch (e) {
-      console.warn('[importer] repair batch failed', e)
+      console.warn('[importer] judge batch failed', e)
     }
+    done++
+    onProgress?.(done, batches.length)
   }
 
   return repaired

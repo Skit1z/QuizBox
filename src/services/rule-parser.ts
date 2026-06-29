@@ -64,13 +64,48 @@ const RE_CN_PUNCT = /[。，、；：！？""''（）《》【】\-—…·]/g
 
 export interface HybridResult {
   questions: ParsedQuestion[]
-  /** 低置信度题目对应的原始文本块，用于送 AI 二次解析 */
+  /** 需送 AI 判定的原始文本块（低结构完整度，规则不确定） */
   lowConfidenceBlocks: string[]
-  /** 低置信度题目在 questions 中的索引 */
+  /** 需送 AI 判定的块在 questions 中的索引 */
   lowConfidenceIndices: number[]
 }
 
-const CONFIDENCE_THRESHOLD = 0.6
+/**
+ * 评估一个块的结构完整度：规则能否可靠解析？
+ * - high: 有清晰题号+选项+答案，规则完全hold住
+ * - medium: 部分缺失（如判断题无答案、选择题选项不全）
+ * - low: 无题号或无法识别结构 → 必须送 AI
+ */
+function assessCompleteness(
+  block: RawBlock,
+  q: ParsedQuestion | null,
+): 'high' | 'medium' | 'low' {
+  const text = block.lines.join('\n').trim()
+
+  // parseBlock 直接返回 null → 不可解析，但块本身可能有内容 → 送 AI 判定
+  if (!q) {
+    // 纯垃圾块（分隔线、空标题）不送 AI
+    if (isJunkBlock(text)) return 'high' // 标记 high 表示不需要处理
+    return 'low'
+  }
+
+  // 选择题：需要题号 + 选项(≥2) + 答案
+  if (q.type === 'single' || q.type === 'multiple') {
+    if (q.options && q.options.length >= 2 && q.answer) return 'high'
+    if (q.stem.length > 10) return 'medium'
+    return 'low'
+  }
+
+  // 判断题：需要题干 + 答案
+  if (q.type === 'judge') {
+    if (q.answer && q.stem.length > 10) return 'high'
+    return 'medium'
+  }
+
+  // 填空/简答/论述：需要题干
+  if (q.stem.length > 15) return q.answer ? 'high' : 'medium'
+  return 'low'
+}
 
 export function parseWithRules(text: string): ParsedQuestion[] {
   return parseWithRulesHybrid(text).questions
@@ -87,10 +122,27 @@ export function parseWithRulesHybrid(text: string): HybridResult {
 
   for (const block of blocks) {
     const q = parseBlock(block)
-    if (!q) continue
+    const completeness = assessCompleteness(block, q)
+
+    // high 且 q 为 null（纯垃圾块）→ 跳过
+    if (completeness === 'high' && !q) continue
+
+    // q 为 null 但有内容 → 作为占位题存入，待 AI 判定
     const idx = questions.length
-    questions.push(q)
-    if ((q.confidence ?? 1) < CONFIDENCE_THRESHOLD) {
+    if (q) {
+      questions.push(q)
+    } else {
+      // 占位：原始文本作为题干，其余空
+      questions.push({
+        type: 'short',
+        stem: block.lines.join('\n').trim().slice(0, 200),
+        answer: '',
+        confidence: 0.1,
+      })
+    }
+
+    // medium 和 low 都送 AI 判定（不只 low）
+    if (completeness !== 'high') {
       lowConfidenceBlocks.push(block.lines.join('\n').trim())
       lowConfidenceIndices.push(idx)
     }
@@ -173,16 +225,13 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
     }
 
     // 检测章节分隔行（习题N / 书名号标题 / 汉字数字标题）
-    // 这些行会打断当前块，避免跨章节题目合并污染
     if (buf.length > 0 && RE_CHAPTER_BREAK.test(line) && !RE_QUESTION_NUM.test(line)) {
-      // 判断是否带题型信息（如「三、判断题」）
       const typeInLine = line.match(/(单选|多选|判断|填空|简答|论述|选择|不定项选择)/)
       if (typeInLine) {
         flush()
         currentSectionType = SECTION_TYPE_MAP[typeInLine[1]]
         continue
       }
-      // 纯章节标题（如「习题三」「《...》习题2」）→ 打断但不重置类型
       flush()
       continue
     }

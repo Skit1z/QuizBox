@@ -124,26 +124,37 @@ async function doParse() {
     images.length = 0
     images.push(...result.images)
 
-    // 统一管线：规则解析为主（零 AI 消耗），仅对低置信度题目用 AI 修复
+    // 统一管线：规则解析为主（零 AI 消耗），仅对低完整度块用 AI 判定
     const hybrid = parseWithRulesHybrid(result.text)
     let qs: ParsedQuestion[] = hybrid.questions
 
-    // 有低置信度题目 + 有 AI 配置 → 仅修复这些题（节省 token）
+    // 有低完整度块 + 有 AI 配置 → AI 判定这些块（是题目则结构化，不是则丢弃）
     if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey) {
       parsed.value = qs
       step.value = 3
       repairing.value = true
       repairCount.value = hybrid.lowConfidenceBlocks.length
       try {
-        const fixes = await repairWithAI(hybrid.lowConfidenceBlocks)
+        const fixes = await repairWithAI(hybrid.lowConfidenceBlocks, (done, total) => {
+          pdfProgress.value = `AI 判定中（${done}/${total} 批）`
+        })
+        // AI 判定结果覆盖：修复的题替换，未返回的（判为非题目）标记待删
+        const toDelete = new Set<number>()
         for (const [blockIdx, fixed] of fixes) {
           const qIdx = hybrid.lowConfidenceIndices[blockIdx]
           if (qIdx !== undefined && qIdx < parsed.value.length) {
             parsed.value[qIdx] = fixed
           }
         }
+        // 低置信度块中 AI 未返回的 → 判为非题目，删除占位
+        hybrid.lowConfidenceIndices.forEach((qIdx, blockIdx) => {
+          if (!fixes.has(blockIdx)) toDelete.add(qIdx)
+        })
+        if (toDelete.size > 0) {
+          parsed.value = parsed.value.filter((_, i) => !toDelete.has(i))
+        }
       } catch {
-        // AI 修复失败不影响已有结果
+        // AI 判定失败不影响已有结果
       } finally {
         repairing.value = false
       }
@@ -152,8 +163,8 @@ async function doParse() {
 
     if (qs.length === 0) {
       parseError.value = settingsStore.ai.apiKey
-        ? '未能识别出题目，请检查文档格式或在下方添加解析提示后重试'
-        : '未能识别出题目，配置 AI 接口可自动修复低置信度题目'
+        ? '未能识别出题目，请检查文档格式'
+        : '未能识别出题目，配置 AI 接口可自动解析不确定的内容'
     } else {
       parsed.value = qs
       step.value = 3
