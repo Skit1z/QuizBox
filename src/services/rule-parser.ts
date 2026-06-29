@@ -19,6 +19,10 @@ const SECTION_TYPE_MAP: Record<string, QuestionType> = {
   论述: 'essay',
 }
 
+// 章节分隔行（习题N / 书名号标题 等），会打断题目块避免跨章节合并
+// 匹配：《供应链管理基础》习题1、习题三、供应链管理基础习题4 等
+const RE_CHAPTER_BREAK = /^[\s　]*(?:《[^》]*》.*\d|《[^》]+》\s*$|习题[一二三四五六七八九十\d]+|^[^A-Za-z\d]{0,12}习题)/m
+
 // 题号：1. / 1、/ 1) / (1) / 1．
 const RE_QUESTION_NUM = /^[\s　]*[(\[（【]?(\d{1,4})[)\]）】]?[.、．)\s]/m
 
@@ -133,12 +137,27 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
   }
 
   for (const line of lines) {
-    // 检测区段标题
+    // 检测区段标题（一、单选题 等，带题型信息）
     const secMatch = line.match(RE_SECTION_HEADER)
     if (secMatch) {
       flush()
       const key = secMatch[1]
       currentSectionType = SECTION_TYPE_MAP[key]
+      continue
+    }
+
+    // 检测章节分隔行（习题N / 书名号标题 / 汉字数字标题）
+    // 这些行会打断当前块，避免跨章节题目合并污染
+    if (buf.length > 0 && RE_CHAPTER_BREAK.test(line) && !RE_QUESTION_NUM.test(line)) {
+      // 判断是否带题型信息（如「三、判断题」）
+      const typeInLine = line.match(/(单选|多选|判断|填空|简答|论述|选择|不定项选择)/)
+      if (typeInLine) {
+        flush()
+        currentSectionType = SECTION_TYPE_MAP[typeInLine[1]]
+        continue
+      }
+      // 纯章节标题（如「习题三」「《...》习题2」）→ 打断但不重置类型
+      flush()
       continue
     }
 
