@@ -1,6 +1,5 @@
 import { db, uid, isDeleted } from '@/db'
 import { sm2Next, qualityFromResult } from '@/utils/sm2'
-import { autoSync } from '@/services/sync'
 import type { WrongItem, WrongStatus } from '@/types'
 
 export const wrongBookRepo = {
@@ -30,7 +29,6 @@ export const wrongBookRepo = {
           revision: (existing.revision || 0) + 1,
         }
         await db.wrongBook.update(existing.id, updated)
-        autoSync()
         return { ...existing, ...updated } as WrongItem
       }
       const item: WrongItem = {
@@ -48,7 +46,6 @@ export const wrongBookRepo = {
         revision: 1,
       }
       await db.wrongBook.put(item)
-      autoSync()
       return item
     }
 
@@ -67,7 +64,6 @@ export const wrongBookRepo = {
         revision: (existing.revision || 0) + 1,
       }
       await db.wrongBook.update(existing.id, patch)
-      autoSync()
       return { ...existing, ...patch } as WrongItem
     }
     return undefined
@@ -120,7 +116,6 @@ export const wrongBookRepo = {
       updatedAt: Date.now(),
       revision: (existing?.revision || 0) + 1,
     })
-    autoSync()
   },
 
   /** 批量更新状态（单次事务，避免 N 次写入） */
@@ -132,7 +127,6 @@ export const wrongBookRepo = {
       key: id,
       changes: { status, updatedAt: now, revision: revisionMap.get(id) || 1 },
     })))
-    autoSync()
   },
 
   /** 把所有待复习错题标记为已掌握（单次 modify） */
@@ -143,6 +137,5 @@ export const wrongBookRepo = {
       row.updatedAt = now
       row.revision = (row.revision || 0) + 1
     })
-    autoSync()
   },
 }

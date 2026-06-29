@@ -68,7 +68,7 @@ QuizBox 是一个离线优先的刷题应用，解决「有 Word 题库但没有
 
 **数据安全** — 全部数据存储于浏览器 IndexedDB，本地优先。API Key 与密码经 AES-GCM 加密后存储。
 
-**跨设备同步** — 两种方式任选：① WebDAV（坚果云 / Nextcloud 等，免费额度即可）；② 部署到 Vercel 后开启**云端题库同步**——题库快照存入 Vercel Blob，电脑导入后手机打开同一网址自动拉取、接着做题。后者与网页同源，零 CORS、自动 HTTPS（详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)）。
+**跨设备同步** — 两种方式任选：① WebDAV（坚果云 / Nextcloud 等，免费额度即可）；② 部署到 Vercel 后开启**云端题库同步**——题库快照存入 Vercel Blob，电脑导入后手机打开同一网址自动拉取、接着做题。错题本与我的自测按浏览器本地保存，不跨设备覆盖。后者与网页同源，零 CORS、自动 HTTPS（详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)）。
 
 **界面设计** — 三套主题色可选（蓝灰 / 墨绿 / 橙），支持暗黑模式与跟随系统，移动端与桌面端自适应布局。
 

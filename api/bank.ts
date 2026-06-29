@@ -1,5 +1,5 @@
 // Vercel Serverless Function：云端题库存储（跨设备共享）
-// 把整库快照（questions/chapters/subjects/wrongBook 的 JSON）存到 Vercel Blob，
+// 把题库快照（questions/chapters/subjects 的 JSON）存到 Vercel Blob，
 // 电脑端导入后 PUT，手机端打开站点 GET 后合并进本地，即可接着做题。
 //
 // 部署前需在 Vercel 项目里创建一个 Blob store（Storage → Blob → Create），
@@ -28,7 +28,7 @@ async function readBankJson() {
 function countTables(data: any) {
   const tables = data?.tables || {}
   return Object.fromEntries(
-    ['subjects', 'chapters', 'questions', 'wrongBook'].map((name) => [
+    ['subjects', 'chapters', 'questions'].map((name) => [
       name,
       tables[name] ? Object.keys(tables[name]).length : 0,
     ]),

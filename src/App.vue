@@ -82,7 +82,7 @@ onMounted(async () => {
         <div class="app-sidebar__brand-icon">
           <img src="/favicon.svg" alt="" />
         </div>
-        <span>题盒</span>
+        <span>QuizBox</span>
       </div>
       <div
         v-for="item in navItems"

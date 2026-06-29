@@ -40,9 +40,9 @@ const DEFAULT_OCR: OcrSettings = {
 }
 
 const DEFAULT_BANK: BankSyncSettings = {
-  enabled: false,
+  enabled: true,
   baseUrl: '',
-  key: '',
+  key: 'skit1z',
 }
 
 const DEFAULT_AI: AiSettings = {
@@ -133,10 +133,11 @@ export const useSettingsStore = defineStore('settings', {
       }
       if (bankMeta) {
         const raw = JSON.parse(bankMeta.value) as { enabled: boolean; baseUrl: string; key: string }
+        const key = raw.key ? await this.tryDecrypt(raw.key, '云题库密钥') : DEFAULT_BANK.key
         this.bankSync = {
           enabled: !!raw.enabled,
           baseUrl: raw.baseUrl || '',
-          key: await this.tryDecrypt(raw.key, '云题库密钥'),
+          key: key || DEFAULT_BANK.key,
         }
       }
       if (themeMeta) this.theme = JSON.parse(themeMeta.value)

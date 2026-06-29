@@ -9,7 +9,6 @@ const SYNC_TABLES = [
   'subjects',
   'chapters',
   'questions',
-  'wrongBook',
 ] as const
 type SyncTable = (typeof SYNC_TABLES)[number]
 

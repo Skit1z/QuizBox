@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onActivated, onBeforeUnmount, computed } from 'vue'
 defineOptions({ name: 'HomeView' })
 import { useRouter } from 'vue-router'
 import { useSubjectsStore } from '@/stores/subjects'
@@ -40,7 +40,22 @@ async function loadStats() {
   }
 }
 
-onMounted(loadStats)
+function refreshWhenVisible() {
+  if (document.visibilityState === 'visible') void loadStats()
+}
+
+onMounted(() => {
+  void loadStats()
+  window.addEventListener('focus', loadStats)
+  window.addEventListener('visibilitychange', refreshWhenVisible)
+  window.addEventListener('quizbox:data-changed', loadStats)
+})
+onActivated(loadStats)
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', loadStats)
+  window.removeEventListener('visibilitychange', refreshWhenVisible)
+  window.removeEventListener('quizbox:data-changed', loadStats)
+})
 </script>
 
 <template>
@@ -49,7 +64,7 @@ onMounted(loadStats)
     <div class="page-head">
       <img class="home-icon" src="/favicon.svg" alt="题盒图标" />
       <p class="page-sub">{{ greeting }}</p>
-      <h1 class="page-title">题盒</h1>
+      <h1 class="page-title">QuizBox</h1>
     </div>
 
     <!-- 数据概览 -->
