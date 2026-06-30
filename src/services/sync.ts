@@ -514,6 +514,8 @@ async function exportMetaShard(forceSyncToken?: string): Promise<MetaShard> {
   // 管理员密码哈希随 meta 分片同步到云端，实现跨设备共享
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
+  // 必须先加载，否则 getHash() 返回空串会把云端已有密码覆盖成空
+  await adminStore.load()
   const token = forceSyncToken || (await getForceSyncToken())
   if (forceSyncToken) {
     await db.syncMeta.put({ key: FORCE_SYNC_TOKEN_KEY, value: forceSyncToken })
@@ -620,6 +622,9 @@ async function detectLocalChanges(
   // 管理员密码哈希是否与云端不同（设/改密码后需推送）
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
+  // 必须先加载，否则未加载时 getHash() 返回空串，会误判 adminChanged
+  // 或在 exportMetaShard 里把云端密码覆盖成空
+  await adminStore.load()
   const adminChanged = adminStore.getHash() !== adminStore._remoteHash
 
   if (changedSubjects.length || changedChapters.length || adminChanged) {
