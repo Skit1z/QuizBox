@@ -69,12 +69,29 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         // AI/WebDAV 请求不走缓存
         navigateFallbackDenylist: [/^\/api\//],
+        // 新版本激活后立即清掉旧预缓存，避免旧资源残留
+        cleanupOutdatedCaches: true,
+        // 新 SW 跳过 waiting 直接接管 + 立即控制所有页面（配合 autoUpdate 自动刷新）
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // mammoth（.docx 解析）体积大，把它的几个重依赖拆成独立 vendor 块。
+        // 这些库仅被懒加载的 docx-parser 引用，拆分后各块仍按需加载、单块不再超 500KB。
+        manualChunks: {
+          'vendor-jszip': ['jszip'],
+          'vendor-xmldom': ['@xmldom/xmldom'],
+        },
+      },
     },
   },
   server: {
