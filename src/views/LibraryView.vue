@@ -173,7 +173,7 @@ onMounted(async () => {
               "
               @select="(action) => onSelectAction(action, s)"
             >
-              <button class="card-menu-btn" @click.stop>
+              <button type="button" class="card-menu-btn">
                 <van-icon name="ellipsis" size="18" />
               </button>
             </ActionPopover>

@@ -388,7 +388,7 @@ onMounted(async () => {
                   })
                 "
               >
-                <button class="q-action-btn" @click.stop>
+                <button type="button" class="q-action-btn">
                   <van-icon name="ellipsis" size="16" />
                 </button>
               </ActionPopover>
@@ -454,7 +454,7 @@ onMounted(async () => {
                       })
                     "
                   >
-                    <button class="q-action-btn" @click.stop>
+                    <button type="button" class="q-action-btn">
                       <van-icon name="ellipsis" size="16" />
                     </button>
                   </ActionPopover>

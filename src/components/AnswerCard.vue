@@ -79,7 +79,7 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .answer-card {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
 }
 .answer-card__head {
   display: flex;
@@ -97,16 +97,18 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 }
 .answer-card__grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, 30px);
+  justify-content: space-between;
+  gap: 8px 6px;
 }
 .ac-cell {
-  aspect-ratio: 1;
+  width: 30px;
+  height: 30px;
   border: 1.5px solid var(--border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -141,18 +143,18 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .answer-card__legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-3);
-  font-size: 11px;
+  gap: 6px var(--sp-2);
+  font-size: 10px;
   color: var(--text-3);
 }
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 .legend-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 3px;
   border: 1.5px solid var(--border);
   background: var(--surface);

@@ -53,11 +53,13 @@ const showPopover = computed({
 })
 
 function onReferenceClick(e: Event) {
+  e.stopPropagation()
   if (props.disabled) {
     // 拦截点击事件以防止默认的 Popover 呼出，交由父组件鉴权
-    e.stopPropagation()
     emit('click-disabled')
+    return
   }
+  showPopover.value = !showPopover.value
 }
 
 function onSelect(action: PopoverAction) {
@@ -89,6 +91,7 @@ function onSelect(action: PopoverAction) {
   -->
   <van-popover
     v-model:show="showPopover"
+    trigger="manual"
     :actions="actions"
     :placement="placement"
     @select="onSelect"
