@@ -33,6 +33,15 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '1.7.30',
+    date: '2026-06-30',
+    logs: [
+      '调整答题卡图例结构，确保当前、已答、正确、错误、未答标记始终显示在题号网格最前面',
+      '移除更新历史弹窗顶部的统计说明文字，让界面更简洁',
+      '更新项目协作规范，要求每次版本更新同步维护应用内更新历史',
+    ],
+  },
+  {
     version: '1.7.23',
     date: '2026-06-30',
     logs: [
@@ -1021,9 +1030,6 @@ onMounted(async () => {
           </button>
         </div>
         <div class="history-popup__body">
-          <p class="history-popup__note">
-            依据 Git 提交记录整理，已累计迭代 {{ updateHistory.length }} 个版本。
-          </p>
           <div class="history-timeline">
             <div v-for="h in updateHistory" :key="h.version" class="history-timeline__item">
               <div class="history-timeline__node"></div>

@@ -41,6 +41,19 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
       <span class="answer-card__meta">已答 {{ answeredCount }} / {{ total }}</span>
     </div>
 
+    <!-- 图例 -->
+    <div class="answer-card__legend">
+      <span class="legend-item"><i class="legend-dot legend-dot--current"></i>当前</span>
+      <span class="legend-item"><i class="legend-dot legend-dot--answered"></i>已答</span>
+      <span v-if="showCorrectness" class="legend-item"
+        ><i class="legend-dot legend-dot--correct"></i>正确</span
+      >
+      <span v-if="showCorrectness" class="legend-item"
+        ><i class="legend-dot legend-dot--wrong"></i>错误</span
+      >
+      <span class="legend-item"><i class="legend-dot legend-dot--unanswered"></i>未答</span>
+    </div>
+
     <div class="answer-card__grid">
       <button
         v-for="cell in cells"
@@ -60,19 +73,6 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
       >
         {{ cell.num }}
       </button>
-    </div>
-
-    <!-- 图例 -->
-    <div class="answer-card__legend">
-      <span class="legend-item"><i class="legend-dot legend-dot--current"></i>当前</span>
-      <span class="legend-item"><i class="legend-dot legend-dot--answered"></i>已答</span>
-      <span v-if="showCorrectness" class="legend-item"
-        ><i class="legend-dot legend-dot--correct"></i>正确</span
-      >
-      <span v-if="showCorrectness" class="legend-item"
-        ><i class="legend-dot legend-dot--wrong"></i>错误</span
-      >
-      <span class="legend-item"><i class="legend-dot legend-dot--unanswered"></i>未答</span>
     </div>
   </div>
 </template>
@@ -147,11 +147,10 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .answer-card__legend {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px var(--sp-3);
   font-size: 12px;
   color: var(--text-3);
-  margin-top: var(--sp-2);
   max-width: 280px;
   margin-left: auto;
   margin-right: auto;
@@ -198,13 +197,10 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
     gap: 10px;
   }
   .answer-card__legend {
-    order: -1;
     width: 100%;
     max-width: none;
-    justify-content: flex-start;
     gap: 8px var(--sp-4);
     font-size: 13px;
-    margin-top: 0;
     margin-bottom: var(--sp-1);
   }
   .ac-cell {
