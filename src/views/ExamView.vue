@@ -147,6 +147,14 @@ onMounted(async () => {
     .filter((q): q is Question => !!q)
   subjectId.value = inProgress.config.subjectId
   durationMin.value = inProgress.config.durationMin || durationMin.value
+  // 续考：从 session.config 恢复题型配额，避免传给 QuizRunner 的
+  // selectedTypes 被重建为默认值（原考试的题型应原样保留）
+  const restoredTypes = inProgress.config.questionTypes ?? []
+  if (restoredTypes.length > 0) {
+    const quotas: Partial<Record<QuestionType, number>> = {}
+    for (const t of restoredTypes) quotas[t] = 1
+    typeQuotas.value = quotas
+  }
   restoredSession.value = inProgress
   started.value = true
 })

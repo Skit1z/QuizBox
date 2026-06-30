@@ -105,7 +105,14 @@ export function sanitizeParsed(q: ParsedQuestion): ParsedQuestion | null {
     q.options
       ?.map((option) => stripOptionLetter((option ?? '').toString().trim()))
       .filter(Boolean) ?? []
-  const rawAnswer = Array.isArray(q.answer) ? q.answer.join('') : (q.answer ?? '').toString()
+  // 填空题 AI 返回的是字符串数组（每空一项）。若直接 join('') 无分隔符拼接，
+  // normalizeAnswer 的 fill 分支按分隔符 split 会把多空塌缩成一个空。
+  // 这里用 '\n' 拼接（fill 分支会按 \n 还原），其余题型保持原样。
+  const rawAnswer = Array.isArray(q.answer)
+    ? q.type === 'fill'
+      ? q.answer.map((a) => String(a).trim()).filter(Boolean).join('\n')
+      : q.answer.join('')
+    : (q.answer ?? '').toString()
   const shouldPreserveSubjective =
     (q.type === 'short' || q.type === 'essay') &&
     options.length === 0 &&
@@ -403,7 +410,12 @@ export async function generateAnswer(q: {
     ],
     { temperature: 0, maxTokens: 400 },
   )
-  const rawAnswer = Array.isArray(res.answer) ? res.answer.join('') : String(res.answer ?? '')
+  // 填空题多空数组同 sanitizeParsed：用 '\n' 拼接以保留各空边界
+  const rawAnswer = Array.isArray(res.answer)
+    ? q.type === 'fill'
+      ? res.answer.map((a) => String(a).trim()).filter(Boolean).join('\n')
+      : res.answer.join('')
+    : String(res.answer ?? '')
   const answer = normalizeAnswer(q.type, rawAnswer, q.options ?? [])
   return { answer, analysis: (res.analysis ?? '').trim() }
 }
