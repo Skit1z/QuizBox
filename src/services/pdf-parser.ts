@@ -4,7 +4,7 @@
  */
 
 import { sha256 } from '@/utils/hash'
-import type { ParsedImage } from './docx-parser'
+import type { ParsedImage } from './docx-images'
 
 const JOB_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
 const MODEL = 'PaddleOCR-VL-1.6'

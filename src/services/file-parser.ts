@@ -8,9 +8,8 @@
  *     请在 Word/WPS 中另存为 .docx 后导入。
  */
 
-import { parseDocx, type ParsedImage } from './docx-parser'
-import { parseMd } from './md-parser'
-import { parsePdf, type PdfParseProgress } from './pdf-parser'
+import type { ParsedImage } from './docx-images'
+import type { PdfParseProgress } from './pdf-parser'
 
 export type SupportedExt = 'docx' | 'md' | 'pdf'
 
@@ -31,8 +30,7 @@ export interface FileParseResult {
 export function getFileExt(filename: string): SupportedExt | null {
   const ext = filename.split('.').pop()?.toLowerCase()
   if (ext === 'docx' || ext === 'md' || ext === 'pdf') return ext
-  // 明确拦截 .doc，给出友好提示而非当未知格式
-  if (ext === 'doc') return null
+  // 即使是 .doc 也返回 null，但外层 isDocFile 会识别它以返回友好提示
   return null
 }
 
@@ -53,14 +51,20 @@ export async function parseFile(
   const ext = getFileExt(file.name)
 
   switch (ext) {
-    case 'docx':
+    case 'docx': {
+      const { parseDocx } = await import('./docx-parser')
       return parseDocx(file)
+    }
 
-    case 'md':
+    case 'md': {
+      const { parseMd } = await import('./md-parser')
       return parseMd(file)
+    }
 
-    case 'pdf':
+    case 'pdf': {
+      const { parsePdf } = await import('./pdf-parser')
       return parsePdf(file, opts?.ocrToken || '', opts?.onPdfProgress)
+    }
 
     default:
       throw new Error(

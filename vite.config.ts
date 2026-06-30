@@ -17,7 +17,13 @@ export default defineConfig({
   },
   plugins: [
     vue(),
-    nodePolyfills(),
+    nodePolyfills({
+      include: ['buffer', 'stream', 'path', 'util'],
+      globals: {
+        Buffer: true,
+        process: true,
+      },
+    }),
     Components({
       resolvers: [VantResolver()],
     }),
