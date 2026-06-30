@@ -8,6 +8,7 @@ import { wrongBookRepo } from '@/db/wrongbook'
 import { examSessionsRepo } from '@/db/examSessions'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
+import ExamResult from '@/components/ExamResult.vue'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 import { QUESTION_TYPE_LABELS, type ExamSession, type Question, type QuestionType } from '@/types'
@@ -19,6 +20,8 @@ const router = useRouter()
 const subjectsStore = useSubjectsStore()
 
 const started = ref(false)
+const finished = ref(false)
+const result = ref<any>(null)
 const questions = ref<Question[]>([])
 const restoredSession = ref<ExamSession | null>(null)
 
@@ -65,6 +68,13 @@ async function start() {
   let qs: Question[]
   restoredSession.value = null
 
+  // 清理旧的进行中自测场次：每次开始新练习前，把残留的 in_progress 练习
+  // 标记为放弃，避免「我的练习」列表累积废弃场次
+  const stale = await examSessionsRepo.listInProgressPractice()
+  if (stale.length) {
+    await Promise.all(stale.map((s) => examSessionsRepo.abandon(s.id)))
+  }
+
   if (presetQuestionIds.value.length) {
     qs = await questionsRepo.findByIds(presetQuestionIds.value)
   } else if (!subjectId.value) {
@@ -87,7 +97,14 @@ async function start() {
     showFailToast('没有符合条件的题目')
     return
   }
+  finished.value = false
   started.value = true
+}
+
+function onFinish(r: any) {
+  result.value = r
+  finished.value = true
+  started.value = false
 }
 
 onMounted(async () => {
@@ -126,19 +143,27 @@ watch(
 
 <template>
   <div :class="['page page--wide', started && 'page--running']">
-    <div v-if="!started" class="page-head page-head--row">
+    <div v-if="!started && !finished" class="page-head page-head--row">
       <div class="page-head__left" @click="router.back()">
         <van-icon name="arrow-left" size="20" />
         <h1 class="page-title page-title--sm">自测模式</h1>
       </div>
     </div>
 
+    <ExamResult
+      v-if="finished && result"
+      :result="result"
+      :questions="questions"
+      @restart="finished = false"
+      @back="router.push({ name: 'home' })"
+    />
+
     <QuizRunner
-      v-if="started"
+      v-else-if="started"
       mode="practice"
       :questions="questions"
       :initial-session="restoredSession || undefined"
-      @finish="started = false"
+      @finish="onFinish"
     />
 
     <div v-else class="setup-body">

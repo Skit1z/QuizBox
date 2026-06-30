@@ -673,6 +673,7 @@ async function detectLocalChanges(
     if (!subjectId) continue
     const questions = await exportSubjectQuestions(subjectId)
     const shards = splitIntoShards(subjectId, questions)
+    const newShardCount = shards.length
     for (const shard of shards) {
       const hash = await sha256(JSON.stringify(shard))
       const remoteShard = remoteManifest?.shards.find(
@@ -682,13 +683,19 @@ async function detectLocalChanges(
         result.shards.push({ subjectId, index: shard.index, content: shard, hash })
       }
     }
-    // 远端存在但本地已无该 subjectId 的题目 → 科目可能被删除，删除其全部分片
-    if (
-      Object.keys(questions).length === 0 &&
-      remoteManifest?.shards.some((s) => s.subjectId === subjectId)
-    ) {
+    // 分片泄漏修复：题量减少但未归零时，远端可能残留 index >= 新分片数的旧分片。
+    // 这些分片既不更新也不删除，造成存储泄漏 + 流量浪费。
+    // 这里把超出新分片数的远端分片加入 deletePaths，保持云端分片数与本地一致。
+    if (remoteManifest && newShardCount === 0) {
+      // 远端存在但本地已无该 subjectId 的题目 → 科目可能被删除，删除其全部分片
       for (const s of remoteManifest.shards) {
         if (s.subjectId === subjectId) result.deletePaths.push(s.path)
+      }
+    } else if (remoteManifest) {
+      for (const s of remoteManifest.shards) {
+        if (s.subjectId === subjectId && s.index >= newShardCount) {
+          result.deletePaths.push(s.path)
+        }
       }
     }
   }
