@@ -132,7 +132,7 @@ export const questionsRepo = {
       ? await sha256(
           (patch.stem ?? existing.stem) + '|' + JSON.stringify(patch.answer ?? existing.answer),
         )
-      : patch.sourceHash ?? existing.sourceHash
+      : (patch.sourceHash ?? existing.sourceHash)
     await db.questions.update(id, {
       ...patch,
       sourceHash,

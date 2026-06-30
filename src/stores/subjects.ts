@@ -51,10 +51,7 @@ export const useSubjectsStore = defineStore('subjects', {
       await db.transaction('rw', db.subjects, db.questions, db.chapters, async () => {
         const tombstonePatch = { deletedAt: now, updatedAt: now }
         await db.subjects.update(id, tombstonePatch)
-        const liveQuestions = await db.questions
-          .where('subjectId')
-          .equals(id)
-          .toArray()
+        const liveQuestions = await db.questions.where('subjectId').equals(id).toArray()
         const deadQs = liveQuestions
           .filter((q) => !isDeleted(q.deletedAt))
           .map((q) => ({ ...q, ...tombstonePatch, revision: (q.revision || 0) + 1 }))

@@ -110,7 +110,10 @@ export function sanitizeParsed(q: ParsedQuestion): ParsedQuestion | null {
   // 这里用 '\n' 拼接（fill 分支会按 \n 还原），其余题型保持原样。
   const rawAnswer = Array.isArray(q.answer)
     ? q.type === 'fill'
-      ? q.answer.map((a) => String(a).trim()).filter(Boolean).join('\n')
+      ? q.answer
+          .map((a) => String(a).trim())
+          .filter(Boolean)
+          .join('\n')
       : q.answer.join('')
     : (q.answer ?? '').toString()
   const shouldPreserveSubjective =
@@ -413,7 +416,10 @@ export async function generateAnswer(q: {
   // 填空题多空数组同 sanitizeParsed：用 '\n' 拼接以保留各空边界
   const rawAnswer = Array.isArray(res.answer)
     ? q.type === 'fill'
-      ? res.answer.map((a) => String(a).trim()).filter(Boolean).join('\n')
+      ? res.answer
+          .map((a) => String(a).trim())
+          .filter(Boolean)
+          .join('\n')
       : res.answer.join('')
     : String(res.answer ?? '')
   const answer = normalizeAnswer(q.type, rawAnswer, q.options ?? [])
