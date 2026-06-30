@@ -6,6 +6,7 @@ import { useSubjectsStore } from '@/stores/subjects'
 import { questionsRepo } from '@/db/questions'
 import { wrongBookRepo } from '@/db/wrongbook'
 import { examSessionsRepo } from '@/db/examSessions'
+import { attemptsRepo } from '@/db/attempts'
 import { shuffle } from '@/utils/shuffle'
 import QuizRunner from '@/components/QuizRunner.vue'
 import ExamResult from '@/components/ExamResult.vue'
@@ -28,7 +29,10 @@ const loadingSession = ref(!!route.query.sessionId)
 
 const subjectId = ref((route.query.subjectId as string) || '')
 const subjectQuestions = ref<Question[]>([])
-const types = ref<QuestionType[]>([])
+const typeQuotas = ref<Partial<Record<QuestionType, number>>>({})
+const attemptedQuestionIds = ref<Set<string>>(new Set())
+const wrongQuestionIds = ref<Set<string>>(new Set())
+const practiceScope = ref<'all' | 'unseen' | 'done'>('all')
 const random = ref(true)
 const onlyWrong = ref(false)
 
@@ -38,17 +42,41 @@ const subjectOptions = computed<SelectOption[]>(() =>
   subjectsStore.list.map((s) => ({ value: s.id, label: s.name })),
 )
 
-const availableTypes = computed(() => {
-  const currentTypes = new Set(subjectQuestions.value.map((q) => q.type))
-  return allTypes.filter((t) => currentTypes.has(t))
+const scopedQuestions = computed(() =>
+  subjectQuestions.value.filter((q) => {
+    if (onlyWrong.value && !wrongQuestionIds.value.has(q.id)) return false
+    const attempted = attemptedQuestionIds.value.has(q.id)
+    if (practiceScope.value === 'done') return attempted
+    if (practiceScope.value === 'unseen') return !attempted
+    return true
+  }),
+)
+
+const scopeCounts = computed(() => {
+  let done = 0
+  let unseen = 0
+  for (const q of subjectQuestions.value) {
+    if (onlyWrong.value && !wrongQuestionIds.value.has(q.id)) continue
+    if (attemptedQuestionIds.value.has(q.id)) done++
+    else unseen++
+  }
+  return { total: done + unseen, done, unseen }
 })
 
-const typeCounts = computed(() => {
-  const counts: Record<string, number> = {}
-  for (const q of subjectQuestions.value) {
-    counts[q.type] = (counts[q.type] || 0) + 1
-  }
-  return counts
+const typeStats = computed(() => {
+  return allTypes
+    .map((type) => {
+      const all = subjectQuestions.value.filter((q) => {
+        if (q.type !== type) return false
+        return !onlyWrong.value || wrongQuestionIds.value.has(q.id)
+      })
+      const done = all.filter((q) => attemptedQuestionIds.value.has(q.id)).length
+      const unseen = all.length - done
+      const available =
+        practiceScope.value === 'done' ? done : practiceScope.value === 'unseen' ? unseen : all.length
+      return { type, label: QUESTION_TYPE_LABELS[type], total: all.length, done, unseen, available }
+    })
+    .filter((item) => item.total > 0)
 })
 
 // 来自错题本的指定题目
@@ -57,20 +85,53 @@ const presetQuestionIds = ref<string[]>(
 )
 
 function toggleType(t: QuestionType) {
-  const i = types.value.indexOf(t)
-  if (i >= 0) types.value.splice(i, 1)
-  else types.value.push(t)
+  const current = Number(typeQuotas.value[t] || 0)
+  const available = typeStats.value.find((item) => item.type === t)?.available || 0
+  typeQuotas.value = { ...typeQuotas.value, [t]: current > 0 ? 0 : available }
+}
+
+function setTypeQuota(type: QuestionType, value: number) {
+  const available = typeStats.value.find((item) => item.type === type)?.available || 0
+  const next = Math.max(0, Math.min(available, Math.floor(Number(value)) || 0))
+  typeQuotas.value = { ...typeQuotas.value, [type]: next }
+}
+
+function adjustTypeQuota(type: QuestionType, delta: number) {
+  setTypeQuota(type, Number(typeQuotas.value[type] || 0) + delta)
+}
+
+function resetTypeQuotasToAvailable() {
+  const quotas: Partial<Record<QuestionType, number>> = {}
+  for (const item of typeStats.value) {
+    quotas[item.type] = item.available
+  }
+  typeQuotas.value = quotas
+}
+
+const selectedCount = computed(() =>
+  typeStats.value.reduce((sum, item) => sum + Number(typeQuotas.value[item.type] || 0), 0),
+)
+
+function applyScope(scope: 'all' | 'unseen' | 'done') {
+  practiceScope.value = scope
+  resetTypeQuotasToAvailable()
 }
 
 async function loadSubjectQuestions(id: string) {
   if (!id || presetQuestionIds.value.length) {
     subjectQuestions.value = []
-    types.value = []
+    typeQuotas.value = {}
+    attemptedQuestionIds.value = new Set()
+    wrongQuestionIds.value = new Set()
     return
   }
   subjectQuestions.value = await questionsRepo.filter({ subjectId: id })
-  const allowed = new Set(subjectQuestions.value.map((q) => q.type))
-  types.value = types.value.filter((t) => allowed.has(t))
+  attemptedQuestionIds.value = await attemptsRepo.getAttemptedQuestionIds(
+    subjectQuestions.value.map((q) => q.id),
+  )
+  const wrongs = await wrongBookRepo.listAll()
+  wrongQuestionIds.value = new Set(wrongs.map((w) => w.questionId))
+  resetTypeQuotasToAvailable()
 }
 
 async function start() {
@@ -89,16 +150,15 @@ async function start() {
   } else if (!subjectId.value) {
     showFailToast('请选择科目')
     return
-  } else if (onlyWrong.value) {
-    const wrongs = await wrongBookRepo.listAll()
-    const wrongQids = wrongs.map((w) => w.questionId)
-    qs = (await questionsRepo.findByIds(wrongQids)).filter((q) => q.subjectId === subjectId.value)
-    if (types.value.length) qs = qs.filter((q) => types.value.includes(q.type))
   } else {
-    qs = await questionsRepo.filter({
-      subjectId: subjectId.value,
-      types: types.value.length ? types.value : undefined,
-    })
+    const picked: Question[] = []
+    for (const item of typeStats.value) {
+      const quota = Number(typeQuotas.value[item.type] || 0)
+      if (quota <= 0) continue
+      const pool = scopedQuestions.value.filter((q) => q.type === item.type)
+      picked.push(...(random.value ? shuffle(pool) : pool).slice(0, quota))
+    }
+    qs = picked
   }
 
   questions.value = random.value ? shuffle(qs) : qs
@@ -154,6 +214,10 @@ watch(
   },
   { immediate: true },
 )
+
+watch(onlyWrong, () => {
+  resetTypeQuotasToAvailable()
+})
 </script>
 
 <template>
@@ -207,27 +271,95 @@ watch(
         <div class="field">
           <div class="field__header">
             <label class="field__label"
-              >题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label
+              >题型与题量{{ selectedCount ? `（${selectedCount} 道）` : '' }}</label
             >
-            <span class="field__hint">不选默认练习全部题型</span>
+            <span class="field__hint">按当前筛选结果抽题</span>
           </div>
           <div v-if="!subjectId" class="empty-hint">先选择科目后配置题型。</div>
-          <div v-else-if="availableTypes.length === 0" class="empty-hint">
+          <div v-else-if="typeStats.length === 0" class="empty-hint">
             当前科目还没有可练习的题目。
           </div>
-          <div v-else class="type-grid">
-            <div
-              v-for="t in availableTypes"
-              :key="t"
-              :class="['type-card', types.includes(t) && 'type-card--active']"
-              @click="toggleType(t)"
-            >
-              <div class="type-card__checkbox">
-                <van-icon v-if="types.includes(t)" name="success" />
+          <div v-else class="practice-picker">
+            <div class="scope-tabs">
+              <button
+                type="button"
+                :class="['scope-tab', practiceScope === 'all' && 'scope-tab--active']"
+                @click="applyScope('all')"
+              >
+                全部 <span>{{ scopeCounts.total }}</span>
+              </button>
+              <button
+                type="button"
+                :class="['scope-tab', practiceScope === 'unseen' && 'scope-tab--active']"
+                @click="applyScope('unseen')"
+              >
+                未做 <span>{{ scopeCounts.unseen }}</span>
+              </button>
+              <button
+                type="button"
+                :class="['scope-tab', practiceScope === 'done' && 'scope-tab--active']"
+                @click="applyScope('done')"
+              >
+                做过 <span>{{ scopeCounts.done }}</span>
+              </button>
+            </div>
+
+            <div class="type-quota-list">
+              <div
+                v-for="item in typeStats"
+                :key="item.type"
+                :class="['type-quota', Number(typeQuotas[item.type] || 0) > 0 && 'type-quota--active']"
+                @click.self="toggleType(item.type)"
+              >
+                <button
+                  type="button"
+                  class="type-quota__toggle"
+                  :aria-label="`${item.label}${Number(typeQuotas[item.type] || 0) > 0 ? '已选择' : '未选择'}`"
+                  @click="toggleType(item.type)"
+                >
+                  <van-icon v-if="Number(typeQuotas[item.type] || 0) > 0" name="success" />
+                </button>
+                <div class="type-quota__info">
+                  <span class="type-quota__label">{{ item.label }}</span>
+                  <span class="type-quota__count">
+                    可选 {{ item.available }} · 已做 {{ item.done }} · 未做 {{ item.unseen }}
+                  </span>
+                </div>
+                <div class="num-input">
+                  <button
+                    type="button"
+                    class="num-input__btn"
+                    :disabled="Number(typeQuotas[item.type] || 0) <= 0"
+                    @click="adjustTypeQuota(item.type, -1)"
+                  >
+                    −
+                  </button>
+                  <input
+                    :value="Number(typeQuotas[item.type] || 0)"
+                    type="number"
+                    inputmode="numeric"
+                    class="num-input__field"
+                    :min="0"
+                    :max="item.available"
+                    @input="
+                      setTypeQuota(item.type, Number(($event.target as HTMLInputElement).value))
+                    "
+                    @blur="
+                      setTypeQuota(item.type, Number(($event.target as HTMLInputElement).value))
+                    "
+                  />
+                  <button
+                    type="button"
+                    class="num-input__btn"
+                    :disabled="Number(typeQuotas[item.type] || 0) >= item.available"
+                    @click="adjustTypeQuota(item.type, 1)"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <div class="type-card__info">
-                <span class="type-card__label">{{ QUESTION_TYPE_LABELS[t] }}</span>
-                <span class="type-card__count">{{ typeCounts[t] || 0 }} 道题</span>
+              <div class="type-summary">
+                本次自测 {{ selectedCount }} 道题
               </div>
             </div>
           </div>
@@ -281,6 +413,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  max-width: 560px;
+  margin: 0 auto;
 }
 
 .loading-session {
@@ -311,87 +445,170 @@ watch(
   font-size: 11px;
   color: var(--text-3);
 }
-.type-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--sp-2);
-}
-@media (max-width: 480px) {
-  .type-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-.type-card {
-  position: relative;
+.practice-picker {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp-3) var(--sp-2);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
+  gap: var(--sp-3);
+}
+.scope-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 3px;
+  border: 1px solid var(--border);
   border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.scope-tab {
+  min-width: 0;
+  min-height: 34px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.scope-tab span {
+  color: var(--text-3);
+  margin-left: 2px;
+}
+.scope-tab--active {
+  background: var(--surface);
+  color: var(--brand);
+  font-weight: 600;
   box-shadow: var(--shadow-sm);
-  user-select: none;
 }
-.type-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--brand);
+.scope-tab--active span {
+  color: var(--brand);
 }
-.type-card:active {
-  transform: scale(0.97);
+.type-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
 }
-.type-card--active {
+.type-quota {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.type-quota--active {
   background: var(--brand-soft);
   border-color: var(--brand);
   box-shadow: 0 4px 12px rgba(var(--brand-rgb), 0.08);
 }
-.type-card__checkbox {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 14px;
-  height: 14px;
+.type-quota__toggle {
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-full);
+  background: var(--surface);
+  color: transparent;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
-  font-size: 9px;
-  color: transparent;
+  font-size: 12px;
   transition: all 0.15s;
 }
-.type-card--active .type-card__checkbox {
+.type-quota--active .type-quota__toggle {
   border-color: var(--brand);
   background: var(--brand);
   color: #ffffff;
 }
-.type-card__info {
+.type-quota__info {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  min-width: 0;
+  gap: 3px;
 }
-.type-card__label {
+.type-quota__label {
   font-size: 14px;
   font-weight: 500;
   color: var(--text);
-  transition: color 0.15s;
 }
-.type-card--active .type-card__label {
-  color: var(--brand);
-  font-weight: 600;
-}
-.type-card__count {
-  font-size: 11px;
+.type-quota__count {
+  font-size: 12px;
   color: var(--text-3);
-  transition: color 0.15s;
 }
-.type-card--active .type-card__count {
-  color: rgba(var(--brand-rgb), 0.8);
+.type-summary {
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: right;
+}
+.num-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface);
+  width: fit-content;
+}
+.num-input__btn {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+.num-input__btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--brand);
+}
+.num-input__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.num-input__field {
+  width: 52px;
+  height: 34px;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: transparent;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  -moz-appearance: textfield;
+}
+.num-input__field::-webkit-outer-spin-button,
+.num-input__field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+@media (max-width: 576px) {
+  .setup-body {
+    max-width: none;
+  }
+  .type-quota {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+  .num-input {
+    grid-column: 2;
+  }
+  .type-summary {
+    text-align: left;
+  }
 }
 
 .empty-hint {

@@ -31,6 +31,12 @@ export const attemptsRepo = {
     return all.sort((a, b) => b.createdAt - a.createdAt)
   },
 
+  async getAttemptedQuestionIds(questionIds: string[]): Promise<Set<string>> {
+    if (questionIds.length === 0) return new Set()
+    const rows = await db.attempts.where('questionId').anyOf(questionIds).toArray()
+    return new Set(rows.map((row) => row.questionId))
+  },
+
   async getObjectiveStats(
     questionIds: string[],
   ): Promise<Map<string, { total: number; wrong: number }>> {
