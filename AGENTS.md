@@ -105,12 +105,11 @@ src-tauri/            Tauri 桌面端配置
 
 ## 6. 提交规范
 
-- **分支**：
+- **分支**（仅保留两条长期分支）：
   - `main`（稳定，只通过 PR 合并）
-  - `dev`（开发主线 A）
-  - `dev-next`（开发主线 B，与 `dev` 平行）
-  - `feat-xxx`（功能）/ `fix-xxx`（修复）
-- **禁止删除的分支**：`main`、`dev`、`dev-next` 为受保护分支，**任何情况下都不得删除**（不执行 `git push origin --delete` / `git branch -D` 针对这三个分支，PR 合并时也禁止 `--delete-branch`）。
+  - `dev`（唯一开发主线，始终保持 ahead-of 或与 `main` 同步）
+  - `feat-xxx`（功能）/ `fix-xxx`（修复）：临时分支，合并后即可删除
+- **禁止删除的分支**：`main`、`dev` 为受保护分支，**任何情况下都不得删除**（不执行 `git push origin --delete` / `git branch -D` 针对这两个分支，PR 合并时也禁止 `--delete-branch`）。
 - **Commit message**：中文，`<type>: <描述>`，type ∈ {feat, fix, chore, refactor, docs, style}。
   - 例：`feat: 题库卡片增加编辑菜单`
   - 例：`fix: 修复下拉菜单滑动秒关`
