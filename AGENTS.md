@@ -12,7 +12,7 @@
   不为已有代码补测试。验收靠 `npm run type-check` + `npm run build` + `npm run lint`，不靠测试。
 - 不要手工维护 `components.d.ts`；它由 `unplugin-vue-components` 自动生成。若新增实际使用的自动注册组件导致该文件同步更新，可随代码一起提交。
 - 不要直接修改 `dist/` 产物。
-- 不要在 `main` 分支直接开发；功能开发走 `dev` 分支或 feature 分支。
+- 不要在 `main` 分支直接开发；日常功能开发与修复默认直接在 `dev` 分支进行，不要新开 feature/fix 分支。
 
 ---
 
@@ -107,8 +107,8 @@ src-tauri/            Tauri 桌面端配置
 
 - **分支**（仅保留两条长期分支）：
   - `main`（稳定，只通过 PR 合并）
-  - `dev`（唯一开发主线，始终保持 ahead-of 或与 `main` 同步）
-  - `feat-xxx`（功能）/ `fix-xxx`（修复）：临时分支，合并后即可删除
+  - `dev`（唯一开发主线，始终保持 ahead-of 或与 `main` 同步；所有日常开发与修复直接在此分支进行）
+  - 除非用户明确要求，否则不要新建 `feat-*` / `fix-*` / `codex/*` 等临时开发分支
 - **禁止删除的分支**：`main`、`dev` 为受保护分支，**任何情况下都不得删除**（不执行 `git push origin --delete` / `git branch -D` 针对这两个分支，PR 合并时也禁止 `--delete-branch`）。
 - **Commit message**：中文，`<type>: <描述>`，type ∈ {feat, fix, chore, refactor, docs, style}。
   - 例：`feat: 题库卡片增加编辑菜单`
