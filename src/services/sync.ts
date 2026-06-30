@@ -584,6 +584,38 @@ async function mergeMetaToLocal(meta: MetaShard): Promise<number> {
       pulled += toPut.length
     }
   }
+  // 云端权威：清理「别处已删、tombstone 已被清理」的孤儿题库。
+  // 本地存活、但云端 meta 完全不存在的 subject：
+  //   - updatedAt ≤ lastBankSyncAt → 曾经成功上过云、之后本机未改动 → 判定为远端已删 → 本地软删 + 级联
+  //   - updatedAt > lastBankSyncAt → 本机新建/刚改尚未推送 → 保留，等下一轮推送
+  // 软删而非硬删：下一轮推送会把这些 tombstone 重新带上云，传播给其它漏掉删除的旧设备。
+  const cloudSubjectIds = new Set(Object.keys(meta.subjects || {}))
+  const lastSync = await getLastBankSyncAt()
+  const localSubjects = await db.subjects.toArray()
+  const orphanIds = localSubjects
+    .filter(
+      (s) =>
+        !isDeleted(s.deletedAt) && !cloudSubjectIds.has(s.id) && (s.updatedAt || 0) <= lastSync,
+    )
+    .map((s) => s.id)
+  if (orphanIds.length) {
+    const now = Date.now()
+    const tombstone = <T extends SyncRecord>(rows: T[]): T[] =>
+      rows
+        .filter((r) => !isDeleted(r.deletedAt))
+        .map((r) => ({ ...r, deletedAt: now, updatedAt: now }))
+    const subjectRows = (await db.subjects.bulkGet(orphanIds)).filter(
+      (s): s is NonNullable<typeof s> => !!s,
+    )
+    await db.subjects.bulkPut(tombstone(subjectRows))
+    const chapterRows = await db.chapters.where('subjectId').anyOf(orphanIds).toArray()
+    const deadChapters = tombstone(chapterRows)
+    if (deadChapters.length) await db.chapters.bulkPut(deadChapters)
+    const questionRows = await db.questions.where('subjectId').anyOf(orphanIds).toArray()
+    const deadQuestions = tombstone(questionRows)
+    if (deadQuestions.length) await db.questions.bulkPut(deadQuestions)
+  }
+
   // 同步管理员密码哈希：以云端为权威源，跨设备共享同一密码
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
