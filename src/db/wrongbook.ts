@@ -15,13 +15,18 @@ export const wrongBookRepo = {
 
     if (!opts.isCorrect) {
       if (existing && !isDeleted(existing.deletedAt)) {
+        // 答错也走 sm2Next（quality=2）以惩罚 easiness（EF 下调），
+        // 但强制立刻重测：interval=1 天、status=pending、nextReviewAt=now。
+        const q = qualityFromResult(false)
+        const next = sm2Next(existing, q)
         const updated: Partial<WrongItem> = {
           status: 'pending',
           reason: opts.reason || existing.reason,
           lastReviewAt: now,
           nextReviewAt: now,
-          interval: 0,
-          reviewCount: 0,
+          easiness: next.easiness,
+          interval: next.interval,
+          reviewCount: next.reviewCount,
           updatedAt: now,
           revision: (existing.revision || 0) + 1,
         }
@@ -120,26 +125,32 @@ export const wrongBookRepo = {
     })
   },
 
-  /** 批量更新状态（单次事务，避免 N 次写入） */
+  /** 批量更新状态（单次事务，避免 N 次写入）；跳过 tombstone 避免污染同步 */
   async setStatusBulk(ids: string[], status: WrongStatus): Promise<void> {
     const now = Date.now()
     const rows = await db.wrongBook.where('id').anyOf(ids).toArray()
-    const revisionMap = new Map(rows.map((row) => [row.id, (row.revision || 0) + 1]))
+    const aliveIds = rows.filter((r) => !isDeleted(r.deletedAt)).map((r) => r.id)
+    if (aliveIds.length === 0) return
+    const revisionMap = new Map(
+      rows.filter((r) => aliveIds.includes(r.id)).map((row) => [row.id, (row.revision || 0) + 1]),
+    )
     await db.wrongBook.bulkUpdate(
-      ids.map((id) => ({
+      aliveIds.map((id) => ({
         key: id,
         changes: { status, updatedAt: now, revision: revisionMap.get(id) || 1 },
       })),
     )
   },
 
-  /** 把所有待复习错题标记为已掌握（单次 modify） */
+  /** 把所有待复习错题标记为已掌握（单次 modify）；跳过 tombstone 避免污染同步 */
   async markAllMastered(): Promise<void> {
     const now = Date.now()
     await db.wrongBook
       .where('status')
       .equals('pending')
       .modify((row) => {
+        // 已软删记录不动，避免改 tombstone 并 bump revision
+        if (isDeleted(row.deletedAt)) return
         row.status = 'mastered'
         row.updatedAt = now
         row.revision = (row.revision || 0) + 1

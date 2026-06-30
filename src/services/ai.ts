@@ -11,7 +11,13 @@ export interface ChatMessage {
  */
 export async function chat(
   messages: ChatMessage[],
-  opts: { jsonMode?: boolean; temperature?: number; maxTokens?: number } = {},
+  opts: {
+    jsonMode?: boolean
+    temperature?: number
+    maxTokens?: number
+    /** 请求超时（毫秒），默认 90s。批量导入等场景可适当调大 */
+    timeoutMs?: number
+  } = {},
 ): Promise<string> {
   const settings = useSettingsStore()
   if (!settings.loaded) await settings.load()
@@ -32,14 +38,32 @@ export async function chat(
     body.max_tokens = opts.maxTokens
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  })
+  // 加超时：避免某个请求卡住导致批量导入整体挂起（默认 90s）
+  const timeoutMs = opts.timeoutMs ?? 90000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      const err = new Error(`AI 请求超时（${timeoutMs / 1000}s）`)
+      // ES2022+ Error.options 在旧 lib 下不可见，运行时挂载保留链路
+      ;(err as any).cause = e
+      throw err
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
 
   if (!res.ok) {
     const txt = await res.text().catch(() => '')
@@ -55,7 +79,7 @@ export async function chat(
 /** 请求 AI 返回 JSON 对象 */
 export async function chatJson<T = any>(
   messages: ChatMessage[],
-  opts: { temperature?: number; maxTokens?: number } = {},
+  opts: { temperature?: number; maxTokens?: number; timeoutMs?: number } = {},
 ): Promise<T> {
   const raw = await chat(messages, { jsonMode: true, ...opts })
   try {

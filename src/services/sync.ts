@@ -514,6 +514,8 @@ async function exportMetaShard(forceSyncToken?: string): Promise<MetaShard> {
   // 管理员密码哈希随 meta 分片同步到云端，实现跨设备共享
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
+  // 必须先加载，否则 getHash() 返回空串会把云端已有密码覆盖成空
+  await adminStore.load()
   const token = forceSyncToken || (await getForceSyncToken())
   if (forceSyncToken) {
     await db.syncMeta.put({ key: FORCE_SYNC_TOKEN_KEY, value: forceSyncToken })
@@ -582,6 +584,38 @@ async function mergeMetaToLocal(meta: MetaShard): Promise<number> {
       pulled += toPut.length
     }
   }
+  // 云端权威：清理「别处已删、tombstone 已被清理」的孤儿题库。
+  // 本地存活、但云端 meta 完全不存在的 subject：
+  //   - updatedAt ≤ lastBankSyncAt → 曾经成功上过云、之后本机未改动 → 判定为远端已删 → 本地软删 + 级联
+  //   - updatedAt > lastBankSyncAt → 本机新建/刚改尚未推送 → 保留，等下一轮推送
+  // 软删而非硬删：下一轮推送会把这些 tombstone 重新带上云，传播给其它漏掉删除的旧设备。
+  const cloudSubjectIds = new Set(Object.keys(meta.subjects || {}))
+  const lastSync = await getLastBankSyncAt()
+  const localSubjects = await db.subjects.toArray()
+  const orphanIds = localSubjects
+    .filter(
+      (s) =>
+        !isDeleted(s.deletedAt) && !cloudSubjectIds.has(s.id) && (s.updatedAt || 0) <= lastSync,
+    )
+    .map((s) => s.id)
+  if (orphanIds.length) {
+    const now = Date.now()
+    const tombstone = <T extends SyncRecord>(rows: T[]): T[] =>
+      rows
+        .filter((r) => !isDeleted(r.deletedAt))
+        .map((r) => ({ ...r, deletedAt: now, updatedAt: now }))
+    const subjectRows = (await db.subjects.bulkGet(orphanIds)).filter(
+      (s): s is NonNullable<typeof s> => !!s,
+    )
+    await db.subjects.bulkPut(tombstone(subjectRows))
+    const chapterRows = await db.chapters.where('subjectId').anyOf(orphanIds).toArray()
+    const deadChapters = tombstone(chapterRows)
+    if (deadChapters.length) await db.chapters.bulkPut(deadChapters)
+    const questionRows = await db.questions.where('subjectId').anyOf(orphanIds).toArray()
+    const deadQuestions = tombstone(questionRows)
+    if (deadQuestions.length) await db.questions.bulkPut(deadQuestions)
+  }
+
   // 同步管理员密码哈希：以云端为权威源，跨设备共享同一密码
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
@@ -620,6 +654,9 @@ async function detectLocalChanges(
   // 管理员密码哈希是否与云端不同（设/改密码后需推送）
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
+  // 必须先加载，否则未加载时 getHash() 返回空串，会误判 adminChanged
+  // 或在 exportMetaShard 里把云端密码覆盖成空
+  await adminStore.load()
   const adminChanged = adminStore.getHash() !== adminStore._remoteHash
 
   if (changedSubjects.length || changedChapters.length || adminChanged) {
@@ -636,6 +673,7 @@ async function detectLocalChanges(
     if (!subjectId) continue
     const questions = await exportSubjectQuestions(subjectId)
     const shards = splitIntoShards(subjectId, questions)
+    const newShardCount = shards.length
     for (const shard of shards) {
       const hash = await sha256(JSON.stringify(shard))
       const remoteShard = remoteManifest?.shards.find(
@@ -645,13 +683,19 @@ async function detectLocalChanges(
         result.shards.push({ subjectId, index: shard.index, content: shard, hash })
       }
     }
-    // 远端存在但本地已无该 subjectId 的题目 → 科目可能被删除，删除其全部分片
-    if (
-      Object.keys(questions).length === 0 &&
-      remoteManifest?.shards.some((s) => s.subjectId === subjectId)
-    ) {
+    // 分片泄漏修复：题量减少但未归零时，远端可能残留 index >= 新分片数的旧分片。
+    // 这些分片既不更新也不删除，造成存储泄漏 + 流量浪费。
+    // 这里把超出新分片数的远端分片加入 deletePaths，保持云端分片数与本地一致。
+    if (remoteManifest && newShardCount === 0) {
+      // 远端存在但本地已无该 subjectId 的题目 → 科目可能被删除，删除其全部分片
       for (const s of remoteManifest.shards) {
         if (s.subjectId === subjectId) result.deletePaths.push(s.path)
+      }
+    } else if (remoteManifest) {
+      for (const s of remoteManifest.shards) {
+        if (s.subjectId === subjectId && s.index >= newShardCount) {
+          result.deletePaths.push(s.path)
+        }
       }
     }
   }

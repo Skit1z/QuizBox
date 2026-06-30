@@ -125,8 +125,17 @@ export const questionsRepo = {
     const existing = await db.questions.get(id)
     if (!existing) return
     const now = Date.now()
+    // 题干或答案变了 → 重算 sourceHash，否则改了内容后导入相同新题
+    // 会被误判重复/漏判重复
+    const contentChanged = patch.stem !== undefined || patch.answer !== undefined
+    const sourceHash = contentChanged
+      ? await sha256(
+          (patch.stem ?? existing.stem) + '|' + JSON.stringify(patch.answer ?? existing.answer),
+        )
+      : (patch.sourceHash ?? existing.sourceHash)
     await db.questions.update(id, {
       ...patch,
+      sourceHash,
       updatedAt: now,
       revision: (existing.revision || 0) + 1,
     })

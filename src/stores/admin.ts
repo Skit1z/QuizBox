@@ -57,13 +57,17 @@ export const useAdminStore = defineStore('admin', {
       return this._hash
     },
 
-    /** 设置/修改管理密码（同时写入本地缓存，下次同步会推送到云端） */
+    /** 设置/修改管理密码（同时写入本地缓存，并立即推送到云端） */
     async setPassword(password: string) {
       const hash = await sha256(password)
       await db.syncMeta.put({ key: META_KEY_ADMIN, value: hash })
       this._hash = hash
       this.hasPassword = true
       this.isAdmin = true // 设置密码后自动获得管理员身份
+      // 密码必须立即推上云端，否则其它设备「使用云端密码」拉不到
+      // （autoSync 有 120s 防抖，且设密码流程未调用 autoSync，不能依赖）
+      const { syncBank } = await import('@/services/sync')
+      void syncBank()
     },
 
     /** 验证密码，正确则激活管理员会话 */

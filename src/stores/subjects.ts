@@ -45,7 +45,23 @@ export const useSubjectsStore = defineStore('subjects', {
     },
     async remove(id: string) {
       const now = Date.now()
-      await db.subjects.update(id, { deletedAt: now, updatedAt: now })
+      // 级联软删：科目、其下题目、其下章节都要打 tombstone，
+      // 否则删了科目后题目仍存活——countAll 不降、继续上云分片、
+      // 孤儿清理也救不了（subject 在云端 meta 里是 tombstone 而非"缺失"）。
+      await db.transaction('rw', db.subjects, db.questions, db.chapters, async () => {
+        const tombstonePatch = { deletedAt: now, updatedAt: now }
+        await db.subjects.update(id, tombstonePatch)
+        const liveQuestions = await db.questions.where('subjectId').equals(id).toArray()
+        const deadQs = liveQuestions
+          .filter((q) => !isDeleted(q.deletedAt))
+          .map((q) => ({ ...q, ...tombstonePatch, revision: (q.revision || 0) + 1 }))
+        if (deadQs.length) await db.questions.bulkPut(deadQs)
+        const liveChapters = await db.chapters.where('subjectId').equals(id).toArray()
+        const deadChapters = liveChapters
+          .filter((c) => !isDeleted(c.deletedAt))
+          .map((c) => ({ ...c, ...tombstonePatch, revision: (c.revision || 0) + 1 }))
+        if (deadChapters.length) await db.chapters.bulkPut(deadChapters)
+      })
       autoSync()
       await this.reload()
     },
