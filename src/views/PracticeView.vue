@@ -125,8 +125,8 @@ watch(
 </script>
 
 <template>
-  <div class="page page--wide">
-    <div class="page-head page-head--row">
+  <div :class="['page page--wide', started && 'page--running']">
+    <div v-if="!started" class="page-head page-head--row">
       <div class="page-head__left" @click="router.back()">
         <van-icon name="arrow-left" size="20" />
         <h1 class="page-title page-title--sm">自测模式</h1>
@@ -219,6 +219,9 @@ watch(
 .page-title--sm {
   font-size: 18px;
   margin: 0;
+}
+.page--running {
+  padding: 0;
 }
 
 .setup-body {

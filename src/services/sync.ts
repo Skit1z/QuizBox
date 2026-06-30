@@ -323,6 +323,8 @@ function bankAuthHeaders(): Record<string, string> {
 }
 
 const MANIFEST_KEY = 'bank_manifest'
+const FORCE_SYNC_TOKEN_KEY = 'bank_force_sync_token'
+const FORCE_SYNC_ACK_KEY = 'bank_force_sync_ack'
 const SHARD_MAX_BYTES = 250 * 1024
 
 interface BankSnapshotMeta {
@@ -365,6 +367,16 @@ async function getLocalManifest(): Promise<BankManifest | null> {
 
 async function saveLocalManifest(manifest: BankManifest) {
   await db.syncMeta.put({ key: MANIFEST_KEY, value: JSON.stringify(manifest) })
+}
+
+async function getForceSyncToken(): Promise<string> {
+  const meta = await db.syncMeta.get(FORCE_SYNC_TOKEN_KEY)
+  return meta?.value || ''
+}
+
+async function getForceSyncAck(): Promise<string> {
+  const meta = await db.syncMeta.get(FORCE_SYNC_ACK_KEY)
+  return meta?.value || ''
 }
 
 async function getLastBankSyncAt(): Promise<number> {
@@ -412,6 +424,29 @@ async function putShards(body: {
   if (!res.ok) throw new Error(`推送失败：${await readErrorMessage(res)} (${res.status})`)
   const data = await res.json()
   return data.manifest as BankManifest
+}
+
+export async function requestBankForceSync(): Promise<BankManifest> {
+  const s = useSettingsStore()
+  if (!s.loaded) await s.load()
+  if (!s.bankSync.enabled) throw new Error('请先启用云端题库同步')
+  const remoteManifest = await fetchRemoteManifest()
+  const changes = await detectLocalChanges(remoteManifest)
+  changes.meta = await exportMetaShard(`force_${Date.now()}`)
+  const newManifest = await putShards({
+    version: 2,
+    baseManifestUpdatedAt: remoteManifest?.updatedAt || 0,
+    meta: changes.meta,
+    shards: changes.shards.map((c) => ({
+      path: shardPath(c.subjectId, c.index),
+      content: c.content,
+    })),
+    deletePaths: changes.deletePaths,
+  })
+  await saveLocalManifest(newManifest)
+  await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+  await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: await getForceSyncToken() })
+  return newManifest
 }
 
 // ----- 分片工具 -----
@@ -470,7 +505,7 @@ function isMetaChanged(local: BankManifest | null, remote: BankManifest): boolea
 
 // ----- 本地数据导出（按科目） -----
 
-async function exportMetaShard(): Promise<MetaShard> {
+async function exportMetaShard(forceSyncToken?: string): Promise<MetaShard> {
   const [subjects, chapters] = await Promise.all([db.subjects.toArray(), db.chapters.toArray()])
   const subjectMap: Record<string, any> = {}
   for (const s of subjects) subjectMap[s.id] = s
@@ -479,7 +514,16 @@ async function exportMetaShard(): Promise<MetaShard> {
   // 管理员密码哈希随 meta 分片同步到云端，实现跨设备共享
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
-  return { subjects: subjectMap, chapters: chapterMap, adminPwdHash: adminStore.getHash() }
+  const token = forceSyncToken || (await getForceSyncToken())
+  if (forceSyncToken) {
+    await db.syncMeta.put({ key: FORCE_SYNC_TOKEN_KEY, value: forceSyncToken })
+  }
+  return {
+    subjects: subjectMap,
+    chapters: chapterMap,
+    adminPwdHash: adminStore.getHash(),
+    forceSyncToken: token,
+  }
 }
 
 async function exportSubjectQuestions(subjectId: string): Promise<Record<string, any>> {
@@ -542,6 +586,9 @@ async function mergeMetaToLocal(meta: MetaShard): Promise<number> {
   const { useAdminStore } = await import('@/stores/admin')
   const adminStore = useAdminStore()
   adminStore.applyRemoteHash(meta.adminPwdHash)
+  if (meta.forceSyncToken) {
+    await db.syncMeta.put({ key: FORCE_SYNC_TOKEN_KEY, value: meta.forceSyncToken })
+  }
   return pulled
 }
 
@@ -648,7 +695,7 @@ export async function syncBank(): Promise<BankSyncResult> {
     try {
       // 1. 拉取远端 manifest
       let remoteManifest = await fetchRemoteManifest()
-      const localManifest = await getLocalManifest()
+      let localManifest = await getLocalManifest()
 
       let pulled = 0
       let shardsPulled = 0
@@ -690,6 +737,8 @@ export async function syncBank(): Promise<BankSyncResult> {
       }
 
       // 2. 拉取变化的分片
+      let forceSyncToken = ''
+      let shouldForcePull = false
       if (isMetaChanged(localManifest, remoteManifest)) {
         const metaRes = await fetch(
           `${bankEndpoint()}?shard=${encodeURIComponent(remoteManifest.meta.path)}`,
@@ -699,8 +748,13 @@ export async function syncBank(): Promise<BankSyncResult> {
         )
         if (metaRes.ok) {
           const meta = (await metaRes.json()) as MetaShard
+          forceSyncToken = meta.forceSyncToken || ''
+          shouldForcePull = !!forceSyncToken && forceSyncToken !== (await getForceSyncAck())
           pulled += await mergeMetaToLocal(meta)
         }
+      }
+      if (shouldForcePull) {
+        localManifest = null
       }
 
       const changedShards = diffManifestShards(localManifest, remoteManifest)
@@ -750,6 +804,9 @@ export async function syncBank(): Promise<BankSyncResult> {
       // 4. 保存最新 manifest
       await saveLocalManifest(remoteManifest)
       await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+      if (forceSyncToken) {
+        await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: forceSyncToken })
+      }
 
       return { pulled, pushed, ok: true, shardsPulled, shardsPushed }
     } catch (e: any) {

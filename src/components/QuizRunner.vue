@@ -83,7 +83,8 @@ const correctnessMap = computed(() => {
   }
   return m
 })
-function jumpTo(i: number) {
+async function jumpTo(i: number) {
+  await persistAnswersNow()
   idx.value = i
   showCardMobile.value = false
 }
@@ -152,19 +153,25 @@ async function initSession() {
   }
 }
 
-// 答案变化时持久化（防抖式：每次改变都存，考试题量不大）
-let persistTimer: ReturnType<typeof setTimeout> | null = null
+// 答案变化后立即排队持久化，避免退出页面时防抖写入丢失。
+let persistPromise: Promise<void> = Promise.resolve()
+function persistAnswersNow() {
+  const currentSession = session.value
+  if (!currentSession) return Promise.resolve()
+  const snapshot = { ...answers.value }
+  persistPromise = persistPromise
+    .catch(() => undefined)
+    .then(() => examSessionsRepo.updateAnswers(currentSession.id, snapshot))
+    .catch(() => undefined)
+  return persistPromise
+}
+
 function persistAnswers() {
-  if (!session.value) return
-  if (persistTimer) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    examSessionsRepo.updateAnswers(session.value!.id, { ...answers.value })
-  }, 800)
+  void persistAnswersNow()
 }
 
 function flushAnswers() {
-  if (!session.value) return
-  examSessionsRepo.updateAnswers(session.value.id, { ...answers.value })
+  return persistAnswersNow()
 }
 
 function restoreSubmittedState() {
@@ -227,11 +234,13 @@ function recordAttempt(qid: string, ans: string | string[], correct: boolean) {
   wrongBookRepo.recordAttempt({ questionId: qid, isCorrect: correct })
 }
 
-function next() {
+async function next() {
+  await persistAnswersNow()
   if (idx.value < total.value - 1) idx.value++
   else finishPractice()
 }
-function prev() {
+async function prev() {
+  await persistAnswersNow()
   if (idx.value > 0) idx.value--
 }
 
@@ -337,6 +346,7 @@ async function callAi() {
 
 function submitSelf(rating: number) {
   selfRating.value[current.value.id] = rating
+  persistAnswers()
   attemptsRepo.record({
     questionId: current.value.id,
     mode: props.mode,
@@ -361,16 +371,12 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopTimer()
   window.removeEventListener('resize', onResize)
-  if (persistTimer) {
-    clearTimeout(persistTimer)
-    persistTimer = null
-  }
   // classic 模式：若已超时但未交卷，自动完成并记录结果（避免 session 卡在 in_progress）
   if (props.classic && session.value && remainingSec.value <= 0) {
     finishPractice(true)
     return
   }
-  flushAnswers()
+  void flushAnswers()
 })
 
 const isSelected = (letter: string) => {
@@ -401,203 +407,209 @@ const isWrongOption = (letter: string) => {
 
   <div v-else :class="['quiz-shell', isDesktop && 'quiz-shell--desktop']">
     <div class="quiz-main">
-      <van-progress
-        :percentage="progress"
-        color="var(--brand)"
-        track-color="var(--border)"
-        :show-pivot="true"
-      />
+      <div class="quiz-topbar">
+        <van-progress
+          :percentage="progress"
+          color="var(--brand)"
+          track-color="var(--border)"
+          :show-pivot="true"
+        />
 
-      <div class="quiz-header">
-        <span>{{ idx + 1 }} / {{ total }}</span>
-        <van-tag plain>{{ QUESTION_TYPE_LABELS[current.type] }}</van-tag>
-        <van-tag
-          v-if="props.classic && remainingSec > 0"
-          :type="remainingSec < 60 ? 'danger' : 'primary'"
-        >
-          ⏱ {{ fmtTime(remainingSec) }}
-        </van-tag>
+        <div class="quiz-header">
+          <span>{{ idx + 1 }} / {{ total }}</span>
+          <van-tag plain>{{ QUESTION_TYPE_LABELS[current.type] }}</van-tag>
+          <van-tag
+            v-if="props.classic && remainingSec > 0"
+            :type="remainingSec < 60 ? 'danger' : 'primary'"
+          >
+            ⏱ {{ fmtTime(remainingSec) }}
+          </van-tag>
+        </div>
       </div>
 
-      <QuestionCard
-        :question="current"
-        :show-answer="!props.classic && submitted[current.id]"
-        hide-options
-        :user-answer="answers[current.id]"
-        :user-answer-correct="gradeMap[current.id]"
-      />
+      <div class="quiz-content">
+        <QuestionCard
+          :question="current"
+          :show-answer="!props.classic && submitted[current.id]"
+          hide-options
+          :user-answer="answers[current.id]"
+          :user-answer-correct="gradeMap[current.id]"
+        />
 
-      <!-- 答题区 -->
-      <div class="answer-area">
-        <!-- 单选 -->
-        <template v-if="current.type === 'single'">
-          <div class="options-list">
-            <div
-              v-for="(opt, i) in current.options"
-              :key="i"
-              class="option-item"
-              :class="{
-                'option-item--selected': isSelected(String.fromCharCode(65 + i)),
-                'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct':
-                  !props.classic &&
-                  submitted[current.id] &&
-                  isCorrectOption(String.fromCharCode(65 + i)),
-                'option-item--wrong':
-                  !props.classic &&
-                  submitted[current.id] &&
-                  isWrongOption(String.fromCharCode(65 + i)),
-              }"
-              @click="
-                !props.classic && submitted[current.id]
-                  ? null
-                  : setUserAnswerSingle(String.fromCharCode(65 + i))
-              "
-            >
-              <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
-              <div class="option-text"><RichText :text="opt" /></div>
-            </div>
-          </div>
-        </template>
-
-        <!-- 多选 -->
-        <template v-else-if="current.type === 'multiple'">
-          <div class="options-list">
-            <div
-              v-for="(opt, i) in current.options"
-              :key="i"
-              class="option-item"
-              :class="{
-                'option-item--selected': isSelected(String.fromCharCode(65 + i)),
-                'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct':
-                  !props.classic &&
-                  submitted[current.id] &&
-                  isCorrectOption(String.fromCharCode(65 + i)),
-                'option-item--wrong':
-                  !props.classic &&
-                  submitted[current.id] &&
-                  isWrongOption(String.fromCharCode(65 + i)),
-              }"
-              @click="
-                !props.classic && submitted[current.id]
-                  ? null
-                  : toggleMulti(String.fromCharCode(65 + i))
-              "
-            >
-              <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
-              <div class="option-text"><RichText :text="opt" /></div>
-            </div>
-          </div>
-        </template>
-
-        <!-- 判断 -->
-        <template v-else-if="current.type === 'judge'">
-          <div class="options-list">
-            <div
-              class="option-item"
-              :class="{
-                'option-item--selected': isSelected('T'),
-                'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct':
-                  !props.classic && submitted[current.id] && isCorrectOption('T'),
-                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('T'),
-              }"
-              @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('T')"
-            >
-              <div class="option-badge">
-                <van-icon name="success" />
+        <!-- 答题区 -->
+        <div class="answer-area">
+          <!-- 单选 -->
+          <template v-if="current.type === 'single'">
+            <div class="options-list">
+              <div
+                v-for="(opt, i) in current.options"
+                :key="i"
+                class="option-item"
+                :class="{
+                  'option-item--selected': isSelected(String.fromCharCode(65 + i)),
+                  'option-item--disabled': !props.classic && submitted[current.id],
+                  'option-item--correct':
+                    !props.classic &&
+                    submitted[current.id] &&
+                    isCorrectOption(String.fromCharCode(65 + i)),
+                  'option-item--wrong':
+                    !props.classic &&
+                    submitted[current.id] &&
+                    isWrongOption(String.fromCharCode(65 + i)),
+                }"
+                @click="
+                  !props.classic && submitted[current.id]
+                    ? null
+                    : setUserAnswerSingle(String.fromCharCode(65 + i))
+                "
+              >
+                <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
+                <div class="option-text"><RichText :text="opt" /></div>
               </div>
-              <div class="option-text">正确</div>
             </div>
-            <div
-              class="option-item"
-              :class="{
-                'option-item--selected': isSelected('F'),
-                'option-item--disabled': !props.classic && submitted[current.id],
-                'option-item--correct':
-                  !props.classic && submitted[current.id] && isCorrectOption('F'),
-                'option-item--wrong': !props.classic && submitted[current.id] && isWrongOption('F'),
-              }"
-              @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('F')"
-            >
-              <div class="option-badge">
-                <van-icon name="cross" />
+          </template>
+
+          <!-- 多选 -->
+          <template v-else-if="current.type === 'multiple'">
+            <div class="options-list">
+              <div
+                v-for="(opt, i) in current.options"
+                :key="i"
+                class="option-item"
+                :class="{
+                  'option-item--selected': isSelected(String.fromCharCode(65 + i)),
+                  'option-item--disabled': !props.classic && submitted[current.id],
+                  'option-item--correct':
+                    !props.classic &&
+                    submitted[current.id] &&
+                    isCorrectOption(String.fromCharCode(65 + i)),
+                  'option-item--wrong':
+                    !props.classic &&
+                    submitted[current.id] &&
+                    isWrongOption(String.fromCharCode(65 + i)),
+                }"
+                @click="
+                  !props.classic && submitted[current.id]
+                    ? null
+                    : toggleMulti(String.fromCharCode(65 + i))
+                "
+              >
+                <div class="option-badge">{{ String.fromCharCode(65 + i) }}</div>
+                <div class="option-text"><RichText :text="opt" /></div>
               </div>
-              <div class="option-text">错误</div>
             </div>
-          </div>
-        </template>
+          </template>
 
-        <!-- 填空 -->
-        <template v-else-if="current.type === 'fill'">
-          <van-cell-group inset>
-            <van-field
-              v-for="(_, i) in Array.isArray(current.answer) ? current.answer : [current.answer]"
-              :key="i"
-              :label="`空${i + 1}`"
-              placeholder="请输入"
-              :model-value="((answers[current.id] as string[]) || [])[i]"
-              @update:model-value="(v: string) => setFill(i, v)"
-              :disabled="!props.classic && submitted[current.id]"
-            />
-          </van-cell-group>
-        </template>
+          <!-- 判断 -->
+          <template v-else-if="current.type === 'judge'">
+            <div class="options-list">
+              <div
+                class="option-item"
+                :class="{
+                  'option-item--selected': isSelected('T'),
+                  'option-item--disabled': !props.classic && submitted[current.id],
+                  'option-item--correct':
+                    !props.classic && submitted[current.id] && isCorrectOption('T'),
+                  'option-item--wrong':
+                    !props.classic && submitted[current.id] && isWrongOption('T'),
+                }"
+                @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('T')"
+              >
+                <div class="option-badge">
+                  <van-icon name="success" />
+                </div>
+                <div class="option-text">正确</div>
+              </div>
+              <div
+                class="option-item"
+                :class="{
+                  'option-item--selected': isSelected('F'),
+                  'option-item--disabled': !props.classic && submitted[current.id],
+                  'option-item--correct':
+                    !props.classic && submitted[current.id] && isCorrectOption('F'),
+                  'option-item--wrong':
+                    !props.classic && submitted[current.id] && isWrongOption('F'),
+                }"
+                @click="!props.classic && submitted[current.id] ? null : setUserAnswerSingle('F')"
+              >
+                <div class="option-badge">
+                  <van-icon name="cross" />
+                </div>
+                <div class="option-text">错误</div>
+              </div>
+            </div>
+          </template>
 
-        <!-- 主观题 -->
-        <template v-else>
-          <van-cell-group inset>
-            <van-field
-              type="textarea"
-              placeholder="请输入你的答案"
-              rows="4"
-              autosize
-              :model-value="answers[current.id] as string"
-              @update:model-value="(v: string) => setSubjective(v)"
-            />
-          </van-cell-group>
-
-          <div v-if="!props.classic" class="subjective-grade card">
-            <van-button
-              size="small"
-              plain
-              type="primary"
-              :loading="aiLoading[current.id]"
-              @click="callAi"
-            >
-              AI 评分
-            </van-button>
-            <div class="self-rate">
-              <span>自评：</span>
-              <van-stepper
-                :min="0"
-                :max="100"
-                :step="10"
-                @change="(v: any) => submitSelf(Number(v))"
+          <!-- 填空 -->
+          <template v-else-if="current.type === 'fill'">
+            <van-cell-group inset>
+              <van-field
+                v-for="(_, i) in Array.isArray(current.answer) ? current.answer : [current.answer]"
+                :key="i"
+                :label="`空${i + 1}`"
+                placeholder="请输入"
+                :model-value="((answers[current.id] as string[]) || [])[i]"
+                @update:model-value="(v: string) => setFill(i, v)"
+                :disabled="!props.classic && submitted[current.id]"
               />
-            </div>
-          </div>
-          <div v-if="aiResult[current.id]" class="ai-feedback card">
-            <van-tag type="primary">AI {{ aiResult[current.id].score }} 分</van-tag>
-            <RichText :text="aiResult[current.id].feedback" />
-          </div>
-        </template>
+            </van-cell-group>
+          </template>
 
-        <div
-          v-if="
-            !props.classic &&
-            !submitted[current.id] &&
-            current.type !== 'single' &&
-            current.type !== 'judge'
-          "
-          style="padding: 12px"
-        >
-          <van-button block type="primary" round @click="submit">确认答案</van-button>
-        </div>
-        <div v-if="!props.classic && submitted[current.id]" class="feedback-tag">
-          <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'" size="large" round>
-            {{ gradeMap[current.id] ? '回答正确' : '回答错误' }}
-          </van-tag>
+          <!-- 主观题 -->
+          <template v-else>
+            <van-cell-group inset>
+              <van-field
+                type="textarea"
+                placeholder="请输入你的答案"
+                rows="4"
+                autosize
+                :model-value="answers[current.id] as string"
+                @update:model-value="(v: string) => setSubjective(v)"
+              />
+            </van-cell-group>
+
+            <div v-if="!props.classic" class="subjective-grade card">
+              <van-button
+                size="small"
+                plain
+                type="primary"
+                :loading="aiLoading[current.id]"
+                @click="callAi"
+              >
+                AI 评分
+              </van-button>
+              <div class="self-rate">
+                <span>自评：</span>
+                <van-stepper
+                  :min="0"
+                  :max="100"
+                  :step="10"
+                  @change="(v: any) => submitSelf(Number(v))"
+                />
+              </div>
+            </div>
+            <div v-if="aiResult[current.id]" class="ai-feedback card">
+              <van-tag type="primary">AI {{ aiResult[current.id].score }} 分</van-tag>
+              <RichText :text="aiResult[current.id].feedback" />
+            </div>
+          </template>
+
+          <div
+            v-if="
+              !props.classic &&
+              !submitted[current.id] &&
+              current.type !== 'single' &&
+              current.type !== 'judge'
+            "
+            style="padding: 12px"
+          >
+            <van-button block type="primary" round @click="submit">确认答案</van-button>
+          </div>
+          <div v-if="!props.classic && submitted[current.id]" class="feedback-tag">
+            <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'" size="large" round>
+              {{ gradeMap[current.id] ? '回答正确' : '回答错误' }}
+            </van-tag>
+          </div>
         </div>
       </div>
 
@@ -625,13 +637,24 @@ const isWrongOption = (letter: string) => {
           {{ props.classic ? '交卷' : '完成' }} <van-icon name="passed" />
         </van-button>
         <van-button
+          v-if="!isDesktop"
+          round
+          plain
+          aria-label="打开答题卡"
+          class="quiz-action-btn quiz-action-btn--card"
+          @click="showCardMobile = true"
+        >
+          <van-icon name="apps-o" />
+        </van-button>
+        <van-button
           v-if="props.mode !== 'practice'"
           round
           plain
           @click="router.back()"
           class="quiz-action-btn quiz-action-btn--exit"
         >
-          <van-icon name="close" /> 退出
+          <van-icon name="close" />
+          <span v-if="isDesktop">退出</span>
         </van-button>
       </div>
     </div>
@@ -651,11 +674,8 @@ const isWrongOption = (letter: string) => {
       </div>
     </aside>
 
-    <!-- 手机端：答题卡浮动按钮 + 弹层 -->
+    <!-- 手机端：答题卡弹层 -->
     <template v-if="!isDesktop">
-      <button class="card-fab" @click="showCardMobile = true">
-        <van-icon name="apps-o" size="20" />
-      </button>
       <van-action-sheet v-model:show="showCardMobile" title="答题卡" :round="true">
         <div class="card-sheet">
           <AnswerCard
@@ -675,49 +695,64 @@ const isWrongOption = (letter: string) => {
 <style scoped>
 .quiz-shell {
   position: relative;
+  height: calc(100vh - 40px);
+  min-height: 480px;
+  overflow: hidden;
+}
+@supports (height: 100dvh) {
+  .quiz-shell {
+    height: calc(100dvh - 40px);
+  }
 }
 .quiz-shell--desktop {
   display: flex;
   gap: var(--sp-6);
-  align-items: flex-start;
+  align-items: stretch;
 }
 .quiz-main {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   /* 题干行宽控制在阅读舒适范围，避免桌面端过宽 */
   max-width: 760px;
 }
 .quiz-aside {
-  width: 300px;
+  width: 260px;
   flex-shrink: 0;
   position: sticky;
-  top: var(--sp-4);
+  top: 0;
+  align-self: flex-start;
 }
 .quiz-aside__inner {
   background: var(--surface);
-  border-radius: var(--r-lg);
-  padding: var(--sp-4);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
   box-shadow: var(--shadow-sm);
-}
-.card-fab {
-  position: fixed;
-  right: var(--sp-4);
-  bottom: calc(var(--sp-5) + env(safe-area-inset-bottom, 0px));
-  width: 48px;
-  height: 48px;
-  border-radius: var(--r-full);
-  border: none;
-  background: var(--brand);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: var(--shadow-brand);
-  z-index: 50;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .card-sheet {
-  padding: var(--sp-4) var(--sp-5) calc(var(--sp-5) + env(safe-area-inset-bottom, 0px));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+}
+.quiz-topbar {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  padding: var(--sp-1) var(--sp-1) 0;
+  background: var(--bg);
+}
+.quiz-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-1) var(--sp-4);
 }
 .quiz-header {
   display: flex;
@@ -748,11 +783,16 @@ const isWrongOption = (letter: string) => {
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.option-item:hover:not(.option-item--disabled) {
+.option-item:hover:not(.option-item--disabled):not(.option-item--selected) {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
 .option-item--selected {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.option-item--selected:hover,
+.option-item--selected:active {
   border-color: var(--brand);
   background: var(--brand-soft);
 }
@@ -837,14 +877,18 @@ const isWrongOption = (letter: string) => {
 .quiz-actions {
   display: flex;
   gap: var(--sp-3);
-  margin-top: var(--sp-5);
+  flex-shrink: 0;
+  margin-top: 0;
   padding: var(--sp-3) var(--sp-1);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 .quiz-action-btn {
   flex: 1;
   height: 42px;
   font-size: 14px;
   font-weight: 500;
+  min-width: 0;
 }
 .quiz-action-btn--primary {
   background: var(--brand);
@@ -853,5 +897,40 @@ const isWrongOption = (letter: string) => {
 .quiz-action-btn--success {
   background: var(--success);
   border-color: var(--success);
+}
+.quiz-action-btn--card,
+.quiz-action-btn--exit {
+  flex: 0 0 44px;
+  padding: 0;
+}
+
+@media (max-width: 767px) {
+  .quiz-shell {
+    height: 100vh;
+    min-height: 0;
+  }
+  @supports (height: 100dvh) {
+    .quiz-shell {
+      height: 100dvh;
+    }
+  }
+  .quiz-topbar {
+    padding: var(--sp-3) var(--sp-4) 0;
+  }
+  .quiz-content {
+    padding: 0 var(--sp-4) var(--sp-4);
+  }
+  .quiz-actions {
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  }
+  .quiz-action-btn {
+    height: 44px;
+    font-size: 13px;
+  }
+  .quiz-action-btn--card,
+  .quiz-action-btn--exit {
+    flex-basis: 44px;
+  }
 }
 </style>

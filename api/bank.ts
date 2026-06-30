@@ -83,6 +83,8 @@ interface BankManifest {
 interface MetaShard {
   subjects: Record<string, any>
   chapters: Record<string, any>
+  adminPwdHash?: string
+  forceSyncToken?: string
 }
 
 interface QuestionShard {

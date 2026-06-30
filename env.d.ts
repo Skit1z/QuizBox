@@ -9,6 +9,14 @@ declare module '*.vue' {
   export default component
 }
 
+declare module 'virtual:pwa-register' {
+  export function registerSW(options?: {
+    immediate?: boolean
+    onNeedRefresh?: () => void
+    onOfflineReady?: () => void
+  }): (reloadPage?: boolean) => Promise<void>
+}
+
 declare module 'vue-virtual-scroller' {
   import type { DefineComponent } from 'vue'
   export const DynamicScroller: DefineComponent<any, any, any>

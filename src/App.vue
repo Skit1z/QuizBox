@@ -31,6 +31,10 @@ const navItems = [
 
 const activeName = computed(() => route.name as string)
 const showTabbar = computed(() => !!route.meta.tabbar)
+const mobileMainClass = computed(() => [
+  'app-main-mobile',
+  activeName.value === 'home' && 'app-main-mobile--home',
+])
 
 function go(name: string) {
   router.push({ name })
@@ -95,7 +99,7 @@ onMounted(async () => {
     </aside>
 
     <!-- 主内容区 -->
-    <main :class="isDesktop ? 'app-content' : 'app-main-mobile'">
+    <main :class="isDesktop ? 'app-content' : mobileMainClass">
       <router-view v-slot="{ Component }">
         <transition name="page-fade" mode="out-in">
           <keep-alive :include="cachedViews">
@@ -122,5 +126,9 @@ onMounted(async () => {
 <style scoped>
 .app-main-mobile {
   min-height: calc(100vh - 50px);
+  overscroll-behavior-y: none;
+}
+.app-main-mobile--home {
+  overscroll-behavior-y: contain;
 }
 </style>

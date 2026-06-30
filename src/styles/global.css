@@ -258,6 +258,7 @@ body {
     background 0.2s,
     color 0.2s;
   color-scheme: light;
+  overscroll-behavior-y: none;
 }
 
 ::selection {
@@ -266,6 +267,7 @@ body {
 }
 #app {
   min-height: 100vh;
+  overscroll-behavior-y: none;
 }
 
 /* ===== 布局壳 ===== */
