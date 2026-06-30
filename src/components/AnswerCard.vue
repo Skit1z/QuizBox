@@ -193,9 +193,18 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 @media (max-width: 767px) {
   .answer-card__grid {
     grid-template-columns: repeat(5, 1fr);
-    max-width: 400px;
-    margin: 0 auto;
-    gap: 12px;
+    width: 100%;
+    max-width: none;
+    gap: 10px;
+  }
+  .answer-card__legend {
+    order: -1;
+    width: 100%;
+    max-width: none;
+    gap: 8px var(--sp-4);
+    font-size: 13px;
+    margin-top: 0;
+    margin-bottom: var(--sp-1);
   }
   .ac-cell {
     width: 100%;
@@ -203,11 +212,6 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
     aspect-ratio: 1;
     font-size: 16px;
     border-radius: var(--r-md);
-  }
-  .answer-card__legend {
-    max-width: 400px;
-    gap: 8px var(--sp-4);
-    font-size: 13px;
   }
   .legend-dot {
     width: 12px;

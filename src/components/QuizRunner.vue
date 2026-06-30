@@ -824,7 +824,8 @@ const isWrongOption = (letter: string) => {
   max-height: min(70vh, 520px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--sp-3) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  padding: var(--sp-2);
+  padding-bottom: calc(var(--sp-2) + env(safe-area-inset-bottom, 0px));
 }
 .quiz-topbar {
   position: relative;
