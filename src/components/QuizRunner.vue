@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 import QuestionCard from './QuestionCard.vue'
@@ -40,6 +40,11 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const idx = ref(0)
+watch(idx, (newIdx) => {
+  if (session.value) {
+    localStorage.setItem(`quizbox_last_idx_${session.value.id}`, String(newIdx))
+  }
+})
 const current = computed(() => props.questions[idx.value])
 const total = computed(() => props.questions.length)
 
@@ -73,6 +78,7 @@ const answeredMap = computed(() => {
   }
   return m
 })
+const answeredCount = computed(() => Object.values(answeredMap.value).filter(Boolean).length)
 /** 各题对错（仅非 classic 即时反馈模式有值） */
 const correctnessMap = computed(() => {
   const m: Record<number, boolean> = {}
@@ -82,6 +88,30 @@ const correctnessMap = computed(() => {
     if (gradeMap.value[q.id] !== undefined) m[i] = gradeMap.value[q.id]
   }
   return m
+})
+const formatAnswerValue = (value: string | string[], type: string): string => {
+  if (type !== 'judge') {
+    return Array.isArray(value) ? value.join('、') : value
+  }
+  const display = (item: string) => {
+    const normalized = item.trim().toUpperCase()
+    if (normalized === 'T') return '正确'
+    if (normalized === 'F') return '错误'
+    return item
+  }
+  return Array.isArray(value) ? value.map(display).join('、') : display(value)
+}
+
+const answerText = computed(() => {
+  const a = current.value?.answer
+  if (!a) return ''
+  return formatAnswerValue(a, current.value.type)
+})
+
+const formattedUserAnswer = computed(() => {
+  const u = answers.value[current.value.id]
+  if (u == null) return ''
+  return formatAnswerValue(u, current.value.type)
 })
 async function jumpTo(i: number) {
   await persistAnswersNow()
@@ -127,6 +157,21 @@ async function initSession() {
     session.value = props.initialSession
     answers.value = { ...props.initialSession.answers }
     startedAt.value = props.initialSession.startTime
+
+    // 优先恢复上次退出的题号，其次是首个未答题号
+    const savedIdx = localStorage.getItem(`quizbox_last_idx_${props.initialSession.id}`)
+    if (savedIdx !== null) {
+      idx.value = Number(savedIdx)
+    } else {
+      const firstUnanswered = props.questions.findIndex((q) => {
+        const ans = answers.value[q.id]
+        return ans == null || ans === '' || (Array.isArray(ans) && ans.length === 0)
+      })
+      if (firstUnanswered >= 0) {
+        idx.value = firstUnanswered
+      }
+    }
+
     if (!props.classic) restoreSubmittedState()
     if (props.classic && durationMinVal.value) {
       const elapsedSec = Math.floor((Date.now() - props.initialSession.startTime) / 1000)
@@ -299,6 +344,7 @@ async function finishPractice(_auto = false) {
       answers: { ...answers.value },
       score,
     })
+    localStorage.removeItem(`quizbox_last_idx_${finalSession.id}`)
     session.value = null
   }
 
@@ -436,7 +482,7 @@ const isWrongOption = (letter: string) => {
       <div class="quiz-content">
         <QuestionCard
           :question="current"
-          :show-answer="!props.classic && submitted[current.id]"
+          :show-answer="false"
           hide-options
           :user-answer="answers[current.id]"
           :user-answer-correct="gradeMap[current.id]"
@@ -617,6 +663,32 @@ const isWrongOption = (letter: string) => {
             </van-tag>
           </div>
         </div>
+
+        <!-- 答案与解析 (放置在选项下方，防止抖动) -->
+        <div v-if="!props.classic && submitted[current.id]" class="quiz-feedback-card card">
+          <div
+            v-if="
+              answers[current.id] != null &&
+              answers[current.id] !== '' &&
+              (!Array.isArray(answers[current.id]) || (answers[current.id] as string[]).length > 0)
+            "
+            class="feedback-row"
+            style="margin-bottom: var(--sp-2)"
+          >
+            <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'">您的答案</van-tag>
+            <span class="feedback-text" :class="{ 'feedback-text--wrong': !gradeMap[current.id] }">
+              {{ formattedUserAnswer }}
+            </span>
+          </div>
+          <div class="feedback-row">
+            <van-tag type="success">参考答案</van-tag>
+            <span class="feedback-text feedback-text--correct">{{ answerText }}</span>
+          </div>
+          <div v-if="current.analysis" class="feedback-analysis">
+            <div class="feedback-analysis-title">解析</div>
+            <RichText :text="current.analysis" />
+          </div>
+        </div>
       </div>
 
       <!-- 导航 -->
@@ -672,7 +744,13 @@ const isWrongOption = (letter: string) => {
 
     <!-- 手机端：答题卡弹层 -->
     <template v-if="!isDesktop">
-      <van-action-sheet v-model:show="showCardMobile" title="答题卡" :round="true">
+      <van-action-sheet v-model:show="showCardMobile" :round="true">
+        <template #title>
+          <div class="mobile-sheet-head">
+            <span class="mobile-sheet-title">答题卡</span>
+            <span class="mobile-sheet-meta">已答 {{ answeredCount }} / {{ total }}</span>
+          </div>
+        </template>
         <div class="card-sheet">
           <AnswerCard
             :total="total"
@@ -680,6 +758,7 @@ const isWrongOption = (letter: string) => {
             :answered="answeredMap"
             :correctness="correctnessMap"
             :show-correctness="!props.classic"
+            hide-header
             @jump="jumpTo"
           />
         </div>
@@ -893,6 +972,32 @@ const isWrongOption = (letter: string) => {
   padding: var(--sp-3);
 }
 
+.quiz-feedback-card {
+  margin-top: var(--sp-3);
+}
+.feedback-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.feedback-text {
+  font-weight: 600;
+  color: var(--success);
+}
+.feedback-text--wrong {
+  color: var(--danger) !important;
+}
+.feedback-analysis {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px dashed var(--border-strong);
+}
+.feedback-analysis-title {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
 .quiz-actions {
   display: flex;
   gap: var(--sp-3);
@@ -922,6 +1027,23 @@ const isWrongOption = (letter: string) => {
   padding: 0;
 }
 
+.mobile-sheet-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+.mobile-sheet-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mobile-sheet-meta {
+  font-size: 13px;
+  color: var(--text-3);
+  font-weight: normal;
+}
+
 @media (max-width: 767px) {
   .quiz-shell {
     height: 100vh;
@@ -936,11 +1058,19 @@ const isWrongOption = (letter: string) => {
     padding: max(var(--sp-4), env(safe-area-inset-top, 0px)) var(--sp-4) 0;
   }
   .quiz-content {
-    padding: 0 var(--sp-4) var(--sp-4);
+    padding: 0 var(--sp-4) calc(var(--sp-4) + 68px + env(safe-area-inset-bottom, 0px));
   }
   .quiz-actions {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-width: 760px;
+    margin: 0 auto;
+    z-index: 10;
     gap: var(--sp-2);
     padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
   }
   .quiz-action-btn {
     height: 44px;
