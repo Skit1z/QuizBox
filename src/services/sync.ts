@@ -810,8 +810,15 @@ export async function syncBank(): Promise<BankSyncResult> {
 
       // 3. 检测本地变更并推送（仅当本地确有自上次同步后的变更时才扫描，省 DB 开销）
       const lastSync = await getLastBankSyncAt()
+      // 管理员密码变化也算「本地变更」——否则「只改密码、没动题目」时这段扫描被跳过，
+      // 密码哈希永远推不上云（setPassword 触发的 syncBank 也会在此被短路）。
+      const { useAdminStore } = await import('@/stores/admin')
+      const adminStore = useAdminStore()
+      await adminStore.load()
+      const adminChanged = adminStore.getHash() !== adminStore._remoteHash
       const hasLocalChanges =
         lastSync === 0 ||
+        adminChanged ||
         (await Promise.all([
           db.subjects.where('updatedAt').above(lastSync).count(),
           db.chapters.where('updatedAt').above(lastSync).count(),
