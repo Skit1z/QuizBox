@@ -14,6 +14,8 @@ const props = defineProps<{
   correctness?: Record<number, boolean>
   /** 是否展示对错色（练习/即时反馈模式） */
   showCorrectness?: boolean
+  /** 是否隐藏表头 */
+  hideHeader?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -34,7 +36,7 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 
 <template>
   <div class="answer-card">
-    <div class="answer-card__head">
+    <div v-if="!hideHeader" class="answer-card__head">
       <span class="answer-card__title">答题卡</span>
       <span class="answer-card__meta">已答 {{ answeredCount }} / {{ total }}</span>
     </div>
@@ -186,5 +188,31 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .legend-dot--unanswered {
   border-color: var(--border);
   background: var(--surface);
+}
+
+@media (max-width: 767px) {
+  .answer-card__grid {
+    grid-template-columns: repeat(5, 1fr);
+    max-width: 400px;
+    margin: 0 auto;
+    gap: 12px;
+  }
+  .ac-cell {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    font-size: 16px;
+    border-radius: var(--r-md);
+  }
+  .answer-card__legend {
+    max-width: 400px;
+    gap: 8px var(--sp-4);
+    font-size: 13px;
+  }
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+  }
 }
 </style>

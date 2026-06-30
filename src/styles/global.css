@@ -275,7 +275,6 @@ body {
   max-width: var(--content-max);
   margin: 0 auto;
   min-height: 100vh;
-  padding-bottom: 56px;
 }
 .app-shell--desktop {
   display: flex;
@@ -550,4 +549,28 @@ body {
 }
 .van-popover__arrow {
   color: var(--surface) !important;
+}
+
+/* ===== 隐藏所有界面的滚动条 (无论桌面端还是手机端) ===== */
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+/* ===== 手机端答题界面限制不能滑动/回弹 ===== */
+html:has(.quiz-shell),
+body:has(.quiz-shell),
+html:has(.quiz-shell) #app,
+body:has(.quiz-shell) #app {
+  overflow: hidden !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  position: fixed;
+  width: 100%;
+  overscroll-behavior-y: none !important;
 }

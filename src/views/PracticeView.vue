@@ -109,23 +109,28 @@ function onFinish(r: any) {
 
 onMounted(async () => {
   await subjectsStore.load()
+  let session: ExamSession | undefined
   const sessionId = route.query.sessionId as string | undefined
   if (sessionId) {
-    const session = await examSessionsRepo.get(sessionId)
-    if (session && session.status === 'in_progress' && session.config.subMode === 'practice') {
-      const rows = await questionsRepo.findByIds(session.questionIds)
-      const byId = new Map(rows.map((q) => [q.id, q]))
-      questions.value = session.questionIds
-        .map((id) => byId.get(id))
-        .filter((q): q is Question => !!q)
-      if (questions.value.length) {
-        restoredSession.value = session
-        subjectId.value = session.config.subjectId
-        started.value = true
-        return
-      }
-      await examSessionsRepo.abandon(session.id)
+    session = await examSessionsRepo.get(sessionId)
+  } else {
+    // 自动寻找最后一场进行中的自测进行恢复
+    session = await examSessionsRepo.findInProgressPractice()
+  }
+
+  if (session && session.status === 'in_progress' && session.config.subMode === 'practice') {
+    const rows = await questionsRepo.findByIds(session.questionIds)
+    const byId = new Map(rows.map((q) => [q.id, q]))
+    questions.value = session.questionIds
+      .map((id) => byId.get(id))
+      .filter((q): q is Question => !!q)
+    if (questions.value.length) {
+      restoredSession.value = session
+      subjectId.value = session.config.subjectId
+      started.value = true
+      return
     }
+    await examSessionsRepo.abandon(session.id)
   }
   if (!subjectId.value && subjectsStore.list.length === 1) {
     subjectId.value = subjectsStore.list[0].id
