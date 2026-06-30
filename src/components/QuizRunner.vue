@@ -408,12 +408,18 @@ const isWrongOption = (letter: string) => {
   <div v-else :class="['quiz-shell', isDesktop && 'quiz-shell--desktop']">
     <div class="quiz-main">
       <div class="quiz-topbar">
-        <van-progress
-          :percentage="progress"
-          color="var(--brand)"
-          track-color="var(--border)"
-          :show-pivot="true"
-        />
+        <div class="quiz-nav">
+          <button type="button" class="quiz-back" aria-label="返回" @click="router.back()">
+            <van-icon name="arrow-left" size="18" />
+          </button>
+          <van-progress
+            class="quiz-progress"
+            :percentage="progress"
+            color="var(--brand)"
+            track-color="var(--border)"
+            :show-pivot="true"
+          />
+        </div>
 
         <div class="quiz-header">
           <span>{{ idx + 1 }} / {{ total }}</span>
@@ -646,16 +652,6 @@ const isWrongOption = (letter: string) => {
         >
           <van-icon name="apps-o" />
         </van-button>
-        <van-button
-          v-if="props.mode !== 'practice'"
-          round
-          plain
-          @click="router.back()"
-          class="quiz-action-btn quiz-action-btn--exit"
-        >
-          <van-icon name="close" />
-          <span v-if="isDesktop">退出</span>
-        </van-button>
       </div>
     </div>
     <!-- /.quiz-main -->
@@ -744,8 +740,31 @@ const isWrongOption = (letter: string) => {
   position: relative;
   z-index: 2;
   flex-shrink: 0;
-  padding: var(--sp-1) var(--sp-1) 0;
+  padding: var(--sp-2) var(--sp-1) 0;
   background: var(--bg);
+}
+.quiz-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.quiz-back {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+.quiz-progress {
+  flex: 1;
+  min-width: 0;
 }
 .quiz-content {
   flex: 1;
@@ -898,8 +917,7 @@ const isWrongOption = (letter: string) => {
   background: var(--success);
   border-color: var(--success);
 }
-.quiz-action-btn--card,
-.quiz-action-btn--exit {
+.quiz-action-btn--card {
   flex: 0 0 44px;
   padding: 0;
 }
@@ -915,7 +933,7 @@ const isWrongOption = (letter: string) => {
     }
   }
   .quiz-topbar {
-    padding: var(--sp-3) var(--sp-4) 0;
+    padding: max(var(--sp-4), env(safe-area-inset-top, 0px)) var(--sp-4) 0;
   }
   .quiz-content {
     padding: 0 var(--sp-4) var(--sp-4);
@@ -928,8 +946,7 @@ const isWrongOption = (letter: string) => {
     height: 44px;
     font-size: 13px;
   }
-  .quiz-action-btn--card,
-  .quiz-action-btn--exit {
+  .quiz-action-btn--card {
     flex-basis: 44px;
   }
 }

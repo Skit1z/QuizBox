@@ -97,14 +97,15 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 }
 .answer-card__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(32px, 36px));
-  justify-content: start;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, 30px);
+  justify-content: space-between;
+  gap: 8px 6px;
 }
 .ac-cell {
-  aspect-ratio: 1;
+  width: 30px;
+  height: 30px;
   border: 1.5px solid var(--border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text-2);
   font-size: 12px;
@@ -142,14 +143,14 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .answer-card__legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2);
-  font-size: 11px;
+  gap: 6px var(--sp-2);
+  font-size: 10px;
   color: var(--text-3);
 }
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 .legend-dot {
   width: 9px;
