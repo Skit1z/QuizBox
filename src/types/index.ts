@@ -153,6 +153,8 @@ export interface MetaShard {
   chapters: Record<string, Chapter>
   /** 管理员密码哈希（SHA-256），跨设备共享；空字符串表示未设置 */
   adminPwdHash?: string
+  /** 管理员发出的强制同步令牌；其它设备发现变化后强制拉取远端题库 */
+  forceSyncToken?: string
 }
 
 /** 单个题目分片（按科目分组，超出 250KB 自动拆分） */

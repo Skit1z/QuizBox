@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { showSuccessToast, showFailToast } from 'vant'
 import {
   useSettingsStore,
@@ -17,6 +18,7 @@ import type { SelectOption } from '@/components/ThemedSelect.vue'
 const settings = useSettingsStore()
 const syncStore = useSyncStore()
 const adminStore = useAdminStore()
+const router = useRouter()
 const ai = ref<AiSettings>({ ...settings.ai })
 const webdav = ref<WebdavSettings>({ ...settings.webdav })
 // WebDAV 默认折叠，仅在已启用时默认展开
@@ -78,6 +80,7 @@ const adminLoginPwd = ref('')
 const adminNewPwd = ref('')
 const adminConfirmPwd = ref('')
 const adminPulling = ref(false)
+const forceSyncing = ref(false)
 
 /** 从云端同步管理员密码（拉取 meta 分片后 applyRemoteHash 生效） */
 async function pullAdminFromCloud() {
@@ -146,6 +149,26 @@ async function changeAdminPassword() {
   adminNewPwd.value = ''
   adminConfirmPwd.value = ''
   showSuccessToast('管理密码已更新')
+}
+
+async function requestForceSync() {
+  if (forceSyncing.value) return
+  if (!adminStore.canOperate()) {
+    showFailToast('请先登入管理员')
+    return
+  }
+  const saved = await saveBank()
+  if (!saved) return
+  forceSyncing.value = true
+  try {
+    const { requestBankForceSync } = await import('@/services/sync')
+    await requestBankForceSync()
+    showSuccessToast('已发布同步指令')
+  } catch (e: any) {
+    showFailToast(e?.message || '发布失败')
+  } finally {
+    forceSyncing.value = false
+  }
 }
 
 const currentProvider = computed(
@@ -691,6 +714,30 @@ onMounted(async () => {
         管理员密码跨设备共享（随云端题库同步）。设置/修改后下次同步生效。刷新页面需重新验证。
       </p>
 
+      <div v-if="adminStore.isAdmin" class="admin-tools">
+        <div class="admin-tools__title">题库管理</div>
+        <div class="btn-row">
+          <van-button plain round icon="bookmark-o" @click="router.push({ name: 'library' })">
+            管理科目
+          </van-button>
+          <van-button plain round icon="upgrade" @click="router.push({ name: 'import' })">
+            导入题库
+          </van-button>
+        </div>
+        <van-button
+          block
+          plain
+          round
+          icon="replay"
+          :loading="forceSyncing"
+          :disabled="!bank.enabled"
+          @click="requestForceSync"
+        >
+          {{ forceSyncing ? '发布中…' : '要求其他设备同步' }}
+        </van-button>
+        <p class="field__tip">其它设备会在启动、首页下拉同步或手动云端同步时拉取最新题库。</p>
+      </div>
+
       <!-- 从云端同步：仅在本机尚未设置密码时可用（用于新设备继承共享管理员密码） -->
       <div v-if="!adminStore.hasPassword" style="margin-bottom: var(--sp-3)">
         <van-button block plain round :loading="adminPulling" @click="pullAdminFromCloud">
@@ -1068,6 +1115,19 @@ onMounted(async () => {
 .admin-status--locked {
   color: var(--danger);
   background: rgba(245, 63, 63, 0.08);
+}
+.admin-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  margin-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.admin-tools__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
 }
 .field__tip {
   font-size: 12px;
