@@ -888,6 +888,7 @@ export async function syncBank(): Promise<BankSyncResult> {
 
       let pushed = 0
       let shardsPushed = 0
+      let pushError = ''
       if (hasLocalChanges) {
         // 乐观并发：409 冲突时由 putShardsWithRetry 重拉合并后重试，避免多设备并发推送活锁
         try {
@@ -920,8 +921,10 @@ export async function syncBank(): Promise<BankSyncResult> {
           )
           if (result) remoteManifest = result
         } catch (e: any) {
-          // 重试仍冲突/失败：保留已拉取的合并结果，本次跳过推送，下次同步再试
+          // 重试仍冲突/失败：保留已拉取的合并结果，但不能推进 lastBankSyncAt。
+          // 否则本地未推送成功的 updatedAt 会被下一轮同步跳过。
           console.warn('[bank-sync] push failed after retries', e?.message)
+          pushError = e?.message || '云端推送失败'
           pushed = 0
           shardsPushed = 0
         }
@@ -929,12 +932,21 @@ export async function syncBank(): Promise<BankSyncResult> {
 
       // 4. 保存最新 manifest
       await saveLocalManifest(remoteManifest)
-      await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+      if (!pushError) {
+        await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+      }
       if (forceSyncToken) {
         await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: forceSyncToken })
       }
 
-      return { pulled, pushed, ok: true, shardsPulled, shardsPushed }
+      return {
+        pulled,
+        pushed,
+        ok: !pushError,
+        error: pushError || undefined,
+        shardsPulled,
+        shardsPushed,
+      }
     } catch (e: any) {
       console.warn('[bank-sync] failed', e)
       return { pulled: 0, pushed: 0, ok: false, error: e?.message || '云端同步失败' }

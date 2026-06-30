@@ -155,7 +155,7 @@ async function saveEdit() {
     const patch: Partial<{
       type: QuestionType
       stem: string
-      options?: string[]
+      options?: string[] | undefined
       answer: string | string[]
       analysis: string
     }> = {
@@ -170,6 +170,8 @@ async function saveEdit() {
         showFailToast('选项不能为空')
         return
       }
+    } else {
+      patch.options = undefined
     }
     await questionsRepo.update(editId.value, patch)
     showEdit.value = false

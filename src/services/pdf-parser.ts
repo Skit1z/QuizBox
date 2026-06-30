@@ -155,17 +155,17 @@ async function fetchResults(jsonlUrl: string): Promise<PdfParseResult> {
 
   // 并行下载所有图片
   const imgResults = await Promise.all(imgTasks)
-  // 按原始索引排列，保证 [IMG_n] 对应正确
-  const sortedImages: ParsedImage[] = new Array(imgIdx)
+  const remap = new Map<number, number>()
   for (const r of imgResults) {
-    if (r) sortedImages[r.idx] = { hash: r.hash, blob: r.blob }
-  }
-  // 压缩掉下载失败的空洞
-  for (const img of sortedImages) {
-    if (img) allImages.push(img)
+    if (!r) continue
+    remap.set(r.idx, allImages.length)
+    allImages.push({ hash: r.hash, blob: r.blob })
   }
 
-  const finalText = allTextParts.join('\n\n')
+  const finalText = allTextParts.join('\n\n').replace(/\[IMG_(\d+)\]/g, (_, rawIdx: string) => {
+    const nextIdx = remap.get(Number(rawIdx))
+    return nextIdx === undefined ? '' : `[IMG_${nextIdx}]`
+  })
   return {
     text: finalText,
     html: finalText,
