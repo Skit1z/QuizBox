@@ -33,6 +33,14 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '1.8.0',
+    date: '2026-06-30',
+    logs: [
+      '重做自测模式题型选择区域，改为带题量统计的卡片式多选，移动端选择更清晰',
+      '题型选择增加选中勾选状态、悬停和按压反馈，提升自测配置体验',
+    ],
+  },
+  {
     version: '1.7.30',
     date: '2026-06-30',
     logs: [

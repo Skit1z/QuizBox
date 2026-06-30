@@ -43,6 +43,14 @@ const availableTypes = computed(() => {
   return allTypes.filter((t) => currentTypes.has(t))
 })
 
+const typeCounts = computed(() => {
+  const counts: Record<string, number> = {}
+  for (const q of subjectQuestions.value) {
+    counts[q.type] = (counts[q.type] || 0) + 1
+  }
+  return counts
+})
+
 // 来自错题本的指定题目
 const presetQuestionIds = ref<string[]>(
   route.query.questionIds ? (route.query.questionIds as string).split(',').filter(Boolean) : [],
@@ -197,22 +205,31 @@ watch(
       <div v-if="!presetQuestionIds.length" class="card">
         <!-- 题型多选 -->
         <div class="field">
-          <label class="field__label"
-            >题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label
-          >
+          <div class="field__header">
+            <label class="field__label"
+              >题型{{ types.length ? `（已选 ${types.length}）` : '（全部）' }}</label
+            >
+            <span class="field__hint">不选默认练习全部题型</span>
+          </div>
           <div v-if="!subjectId" class="empty-hint">先选择科目后配置题型。</div>
           <div v-else-if="availableTypes.length === 0" class="empty-hint">
             当前科目还没有可练习的题目。
           </div>
-          <div v-else class="multi-chips">
-            <button
+          <div v-else class="type-grid">
+            <div
               v-for="t in availableTypes"
               :key="t"
-              :class="['mchip', types.includes(t) && 'mchip--active']"
+              :class="['type-card', types.includes(t) && 'type-card--active']"
               @click="toggleType(t)"
             >
-              {{ QUESTION_TYPE_LABELS[t] }}
-            </button>
+              <div class="type-card__checkbox">
+                <van-icon v-if="types.includes(t)" name="success" />
+              </div>
+              <div class="type-card__info">
+                <span class="type-card__label">{{ QUESTION_TYPE_LABELS[t] }}</span>
+                <span class="type-card__count">{{ typeCounts[t] || 0 }} 道题</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -284,11 +301,99 @@ watch(
   color: var(--text-2);
 }
 
-.multi-chips {
+.field__header {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-1);
+}
+.field__hint {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-2);
 }
+@media (max-width: 480px) {
+  .type-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.type-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-3) var(--sp-2);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+  user-select: none;
+}
+.type-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand);
+}
+.type-card:active {
+  transform: scale(0.97);
+}
+.type-card--active {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  box-shadow: 0 4px 12px rgba(var(--brand-rgb), 0.08);
+}
+.type-card__checkbox {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  font-size: 9px;
+  color: transparent;
+  transition: all 0.15s;
+}
+.type-card--active .type-card__checkbox {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #ffffff;
+}
+.type-card__info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.type-card__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  transition: color 0.15s;
+}
+.type-card--active .type-card__label {
+  color: var(--brand);
+  font-weight: 600;
+}
+.type-card__count {
+  font-size: 11px;
+  color: var(--text-3);
+  transition: color 0.15s;
+}
+.type-card--active .type-card__count {
+  color: rgba(var(--brand-rgb), 0.8);
+}
+
 .empty-hint {
   padding: var(--sp-3);
   border: 1px solid var(--border);
@@ -296,26 +401,6 @@ watch(
   background: var(--surface-2);
   color: var(--text-2);
   font-size: 13px;
-}
-.mchip {
-  padding: 6px var(--sp-3);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 13px;
-  border-radius: var(--r-full);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.mchip--active {
-  background: var(--brand-soft);
-  border-color: var(--brand);
-  color: var(--brand);
-  font-weight: 600;
-}
-.mchip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .switch-row {
