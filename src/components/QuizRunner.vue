@@ -80,6 +80,7 @@ const answeredMap = computed(() => {
   return m
 })
 const answeredCount = computed(() => Object.values(answeredMap.value).filter(Boolean).length)
+const sessionReady = ref(false)
 /** 各题对错（仅非 classic 即时反馈模式有值） */
 const correctnessMap = computed(() => {
   const m: Record<number, boolean> = {}
@@ -411,6 +412,7 @@ onMounted(async () => {
   if (!total.value) return
   window.addEventListener('resize', onResize)
   await initSession()
+  sessionReady.value = true
   if (!session.value) startedAt.value = Date.now()
   if (props.initialSession && props.classic && durationMinVal.value && remainingSec.value <= 0) {
     showToast('考试已超时，自动交卷')
@@ -457,6 +459,10 @@ const isWrongOption = (letter: string) => {
 
 <template>
   <div v-if="total === 0" class="placeholder">没有符合条件的题目</div>
+
+  <div v-else-if="!sessionReady" class="placeholder">
+    <van-loading size="24" />
+  </div>
 
   <div v-else :class="['quiz-shell', isDesktop && 'quiz-shell--desktop']">
     <div class="quiz-main">

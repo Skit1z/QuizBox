@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { showSuccessToast, showFailToast } from 'vant'
 import {
@@ -155,6 +155,93 @@ const updateHistory = [
     ],
   },
 ]
+
+const isDesktop = ref(typeof window !== 'undefined' && window.innerWidth >= 768)
+const updateLayout = () => {
+  isDesktop.value = window.innerWidth >= 768
+}
+onMounted(() => {
+  window.addEventListener('resize', updateLayout)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateLayout)
+})
+
+const popupStyle = computed(() => {
+  if (isDesktop.value) {
+    return {
+      width: '540px',
+      height: '80vh',
+      maxHeight: '700px',
+      borderRadius: '16px',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    }
+  } else {
+    return {
+      width: '100%',
+      height: '85vh',
+      borderTopLeftRadius: '20px',
+      borderTopRightRadius: '20px',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    }
+  }
+})
+
+interface LogDetail {
+  text: string
+  hash: string
+  type: 'feat' | 'fix' | 'refactor' | 'style' | 'other'
+  typeLabel: string
+  typeColor: string
+  typeBg: string
+}
+
+function parseLog(log: string): LogDetail {
+  const hashMatch = log.match(/（([a-f0-9]+)）$/)
+  let text = log
+  let hash = ''
+  if (hashMatch) {
+    text = log.replace(/（[a-f0-9]+）$/, '').trim()
+    hash = hashMatch[1]
+  }
+
+  let type: 'feat' | 'fix' | 'refactor' | 'style' | 'other' = 'other'
+  let typeLabel = '更改'
+  let typeColor = 'var(--text-3)'
+  let typeBg = 'var(--surface-2)'
+
+  if (text.startsWith('修复') || text.includes('修复')) {
+    type = 'fix'
+    typeLabel = '修复'
+    typeColor = 'var(--danger)'
+    typeBg = 'rgba(245, 63, 63, 0.08)'
+  } else if (text.startsWith('新增') || text.startsWith('引入') || text.startsWith('添加')) {
+    type = 'feat'
+    typeLabel = '新增'
+    typeColor = 'var(--success)'
+    typeBg = 'rgba(0, 180, 42, 0.08)'
+  } else if (
+    text.startsWith('优化') ||
+    text.startsWith('提升') ||
+    text.startsWith('改善') ||
+    text.startsWith('重构') ||
+    text.startsWith('隐藏') ||
+    text.startsWith('调整') ||
+    text.startsWith('拆分') ||
+    text.startsWith('兼容')
+  ) {
+    type = 'refactor'
+    typeLabel = '优化'
+    typeColor = 'var(--brand)'
+    typeBg = 'var(--brand-soft)'
+  }
+
+  return { text, hash, type, typeLabel, typeColor, typeBg }
+}
 
 // ===== 管理密码 =====
 const adminLoginPwd = ref('')
@@ -923,28 +1010,47 @@ onMounted(async () => {
     <!-- 更新历史弹窗 -->
     <van-popup
       v-model:show="showHistory"
-      position="right"
-      style="width: 100%; height: 100%; background: var(--bg)"
+      :position="isDesktop ? 'center' : 'bottom'"
+      :style="popupStyle"
     >
-      <div class="page history-page">
-        <div class="page-head page-head--row">
-          <div class="page-head__left" @click="showHistory = false">
-            <van-icon name="arrow-left" size="20" />
-            <h1 class="page-title page-title--sm">更新历史</h1>
-          </div>
+      <div class="history-popup">
+        <div class="history-popup__header">
+          <span class="history-popup__title">更新历史</span>
+          <button class="history-popup__close" aria-label="关闭" @click="showHistory = false">
+            <van-icon name="cross" size="18" />
+          </button>
         </div>
-        <p class="history-note">依据 Git 提交记录整理，括号内为对应提交短哈希。</p>
-        <div class="history-content">
-          <div v-for="h in updateHistory" :key="h.version" class="history-item card">
-            <div class="history-item__header">
-              <span class="history-item__version">v{{ h.version }}</span>
-              <span class="history-item__date">{{ h.date }}</span>
+        <div class="history-popup__body">
+          <p class="history-popup__note">
+            依据 Git 提交记录整理，已累计迭代 {{ updateHistory.length }} 个版本。
+          </p>
+          <div class="history-timeline">
+            <div v-for="h in updateHistory" :key="h.version" class="history-timeline__item">
+              <div class="history-timeline__node"></div>
+              <div class="history-card">
+                <div class="history-card__header">
+                  <span class="history-card__version">v{{ h.version }}</span>
+                  <span class="history-card__date">{{ h.date }}</span>
+                </div>
+                <div class="history-card__logs">
+                  <div v-for="(log, idx) in h.logs" :key="idx" class="history-card__log-item">
+                    <span
+                      class="log-badge"
+                      :style="{
+                        color: parseLog(log).typeColor,
+                        background: parseLog(log).typeBg,
+                      }"
+                    >
+                      {{ parseLog(log).typeLabel }}
+                    </span>
+                    <span class="log-text">{{ parseLog(log).text }}</span>
+                    <span v-if="parseLog(log).hash" class="log-hash">
+                      {{ parseLog(log).hash }}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <ul class="history-item__logs">
-              <li v-for="(log, idx) in h.logs" :key="idx" class="history-item__log">
-                {{ log }}
-              </li>
-            </ul>
           </div>
         </div>
       </div>
@@ -1226,59 +1332,156 @@ onMounted(async () => {
 }
 
 /* ===== 更新历史 ===== */
-.history-page {
-  padding: var(--sp-4) var(--sp-5) var(--sp-8);
-  min-height: 100vh;
-  box-sizing: border-box;
-}
-.history-note {
-  max-width: var(--content-max);
-  margin: var(--sp-2) auto 0;
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.history-content {
+.history-popup {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
-  margin-top: var(--sp-4);
-  max-width: var(--content-max);
-  margin-left: auto;
-  margin-right: auto;
+  height: 100%;
+  background: var(--bg);
 }
-.history-item {
-  padding: var(--sp-4) var(--sp-5);
-}
-.history-item__header {
+.history-popup__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding-bottom: var(--sp-2);
-  margin-bottom: var(--sp-3);
+  flex-shrink: 0;
 }
-.history-item__version {
+.history-popup__title {
   font-size: 16px;
-  font-weight: 700;
-  color: var(--brand);
+  font-weight: 600;
+  color: var(--text);
 }
-.history-item__date {
+.history-popup__close {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  transition: all 0.15s;
+}
+.history-popup__close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.history-popup__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4) var(--sp-5) var(--sp-6);
+  overscroll-behavior: contain;
+}
+.history-popup__note {
   font-size: 12px;
   color: var(--text-3);
+  margin: 0 0 var(--sp-4) var(--sp-2);
 }
-.history-item__logs {
-  padding-left: 18px;
+.history-timeline {
+  position: relative;
+  padding-left: var(--sp-4);
+  margin-left: var(--sp-3);
+  border-left: 2px solid var(--border-strong);
+}
+.history-timeline__item {
+  position: relative;
+  margin-bottom: var(--sp-6);
+}
+.history-timeline__item:last-child {
+  margin-bottom: var(--sp-3);
+}
+.history-timeline__node {
+  position: absolute;
+  left: calc(-1 * var(--sp-4) - 7px);
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-full);
+  background: var(--brand);
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1.5px var(--brand-soft);
+  z-index: 1;
+  transition: all 0.2s;
+}
+.history-timeline__item:hover .history-timeline__node {
+  transform: scale(1.2);
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(0, 180, 42, 0.2);
+}
+.history-card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  transition: all 0.2s ease-in-out;
+}
+.history-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+}
+.history-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--sp-2);
+}
+.history-card__version {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: monospace;
+}
+.history-card__date {
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.history-card__logs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
   margin: 0;
-  list-style-type: disc;
+  list-style: none;
 }
-.history-item__log {
-  font-size: 13.5px;
+.history-card__log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
   color: var(--text-2);
-  line-height: 1.6;
-  margin-bottom: 6px;
+  line-height: 1.55;
 }
-.history-item__log:last-child {
-  margin-bottom: 0;
+.log-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.log-text {
+  flex: 1;
+  word-break: break-all;
+}
+.log-hash {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 1px;
+  border: 1px solid var(--border);
 }
 </style>
