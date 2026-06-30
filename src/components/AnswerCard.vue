@@ -79,7 +79,7 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .answer-card {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
 .answer-card__head {
   display: flex;
@@ -87,28 +87,30 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
   justify-content: space-between;
 }
 .answer-card__title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text);
 }
 .answer-card__meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-3);
 }
 .answer-card__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 30px);
+  grid-template-columns: repeat(5, 44px);
   justify-content: space-between;
-  gap: 8px 6px;
+  gap: 12px 8px;
+  max-width: 280px;
+  margin: 0 auto;
 }
 .ac-cell {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border: 1.5px solid var(--border);
   border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text-2);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
@@ -143,18 +145,23 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .answer-card__legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px var(--sp-2);
-  font-size: 10px;
+  justify-content: center;
+  gap: 6px var(--sp-3);
+  font-size: 12px;
   color: var(--text-3);
+  margin-top: var(--sp-2);
+  max-width: 280px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 .legend-dot {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 3px;
   border: 1.5px solid var(--border);
   background: var(--surface);

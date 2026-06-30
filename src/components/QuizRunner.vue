@@ -715,7 +715,7 @@ const isWrongOption = (letter: string) => {
   max-width: 760px;
 }
 .quiz-aside {
-  width: 260px;
+  width: 290px;
   flex-shrink: 0;
   position: sticky;
   top: 0;
