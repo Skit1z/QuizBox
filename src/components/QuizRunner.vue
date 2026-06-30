@@ -657,11 +657,6 @@ const isWrongOption = (letter: string) => {
           >
             <van-button block type="primary" round @click="submit">确认答案</van-button>
           </div>
-          <div v-if="!props.classic && submitted[current.id]" class="feedback-tag">
-            <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'" size="large" round>
-              {{ gradeMap[current.id] ? '回答正确' : '回答错误' }}
-            </van-tag>
-          </div>
         </div>
 
         <!-- 答案与解析 (放置在选项下方，防止抖动) -->
@@ -675,8 +670,24 @@ const isWrongOption = (letter: string) => {
             class="feedback-row"
             style="margin-bottom: var(--sp-2)"
           >
-            <van-tag :type="gradeMap[current.id] ? 'success' : 'danger'">您的答案</van-tag>
-            <span class="feedback-text" :class="{ 'feedback-text--wrong': !gradeMap[current.id] }">
+            <van-tag
+              :type="
+                isObjective(current.type)
+                  ? gradeMap[current.id]
+                    ? 'success'
+                    : 'danger'
+                  : 'primary'
+              "
+            >
+              您的答案
+            </van-tag>
+            <span
+              class="feedback-text"
+              :class="{
+                'feedback-text--wrong': isObjective(current.type) && !gradeMap[current.id],
+                'feedback-text--neutral': !isObjective(current.type),
+              }"
+            >
               {{ formattedUserAnswer }}
             </span>
           </div>
@@ -967,11 +978,6 @@ const isWrongOption = (letter: string) => {
   padding: var(--sp-3) var(--sp-4);
   margin-top: var(--sp-3);
 }
-.feedback-tag {
-  text-align: center;
-  padding: var(--sp-3);
-}
-
 .quiz-feedback-card {
   margin-top: var(--sp-3);
 }
@@ -986,6 +992,9 @@ const isWrongOption = (letter: string) => {
 }
 .feedback-text--wrong {
   color: var(--danger) !important;
+}
+.feedback-text--neutral {
+  color: var(--text);
 }
 .feedback-analysis {
   margin-top: var(--sp-3);

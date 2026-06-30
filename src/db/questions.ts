@@ -152,6 +152,7 @@ export const questionsRepo = {
         if (!existing || isDeleted(existing.deletedAt)) continue
         await db.questions.update(id, {
           subjectId,
+          chapterId: null,
           updatedAt: now,
           revision: (existing.revision || 0) + 1,
         })
