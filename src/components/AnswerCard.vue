@@ -44,7 +44,6 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
     <!-- 图例 -->
     <div class="answer-card__legend">
       <span class="legend-item"><i class="legend-dot legend-dot--current"></i>当前</span>
-      <span class="legend-item"><i class="legend-dot legend-dot--answered"></i>已答</span>
       <span v-if="showCorrectness" class="legend-item"
         ><i class="legend-dot legend-dot--correct"></i>正确</span
       >
@@ -171,10 +170,6 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
 .legend-dot--current {
   border-color: var(--brand);
   background: var(--brand);
-}
-.legend-dot--answered {
-  border-color: var(--brand);
-  background: var(--brand-soft);
 }
 .legend-dot--correct {
   border-color: var(--success);

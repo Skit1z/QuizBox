@@ -33,6 +33,15 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '1.8.1',
+    date: '2026-06-30',
+    logs: [
+      '自测题型选择支持按每类题设置题量，并显示可选、已做、未做统计',
+      '自测模式新增全部、未做、做过筛选，可按学习记录定向刷题',
+      '收窄网页端自测配置区域，移除考试页顶部多余题型提示，并精简答题卡图例',
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-06-30',
     logs: [

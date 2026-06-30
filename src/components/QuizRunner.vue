@@ -482,7 +482,7 @@ const isWrongOption = (letter: string) => {
 
         <div class="quiz-header">
           <span>{{ idx + 1 }} / {{ total }}</span>
-          <van-tag plain>{{ QUESTION_TYPE_LABELS[current.type] }}</van-tag>
+          <van-tag v-if="!props.classic" plain>{{ QUESTION_TYPE_LABELS[current.type] }}</van-tag>
           <van-tag
             v-if="props.classic && remainingSec > 0"
             :type="remainingSec < 60 ? 'danger' : 'primary'"
