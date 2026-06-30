@@ -116,6 +116,10 @@ src-tauri/            Tauri 桌面端配置
   - 例：`fix: 修复下拉菜单滑动秒关`
 - **不要在 commit 里加 `Generated with Claude` / `Co-Authored-By` 等 AI 署名**。
 - 提交前必须本地通过：`npm run type-check && npm run build && npm run lint`。
+- **每次创建 PR 后必须补齐 PR 元数据**：
+  - 请求 Copilot review（GitHub CLI 使用 `--add-reviewer @copilot`）。
+  - 将 PR assign 给 `Skit1z`。
+  - 根据变更性质添加对应 label；功能/体验增强默认使用 `enhancement`。
 
 ---
 
