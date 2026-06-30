@@ -325,6 +325,14 @@ async function handlePut(req: VercelRequest, res: VercelResponse) {
 
   // 1. 写入 meta 分片
   if (parsed.meta) {
+    // 防御：旧版本/无密码客户端推送的 meta 不含（或为空）adminPwdHash，
+    // 不能让它把云端已有的管理员密码哈希抹掉。仅当本次带了非空哈希才覆盖，
+    // 否则保留云端现有值——与客户端 applyRemoteHash 的「空值不覆盖」对称，
+    // 杜绝混版客户端互相清空密码。
+    if (!parsed.meta.adminPwdHash) {
+      const existingMeta = await readJson<MetaShard>(META_PATH)
+      if (existingMeta?.adminPwdHash) parsed.meta.adminPwdHash = existingMeta.adminPwdHash
+    }
     const metaBody = JSON.stringify(parsed.meta)
     const hash = await sha256(metaBody)
     await writeJson(META_PATH, metaBody)
