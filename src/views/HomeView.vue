@@ -11,6 +11,7 @@ import { showToast } from 'vant'
 const router = useRouter()
 const subjectsStore = useSubjectsStore()
 const syncStore = useSyncStore()
+const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
 const stats = ref({ subjects: 0, questions: 0, wrong: 0 })
 const greeting = computed(() => {
@@ -54,15 +55,11 @@ const deviceText = computed(() => {
 
   // 优先使用 Tauri
   const isDesktop = (window as any).__TAURI__
-  const deviceName = isDesktop ? `桌面端${model ? ' · ' + model : ''}` : model || '移动端'
+  return isDesktop ? `桌面端${model ? ' · ' + model : ''}` : model || '移动端'
+})
 
-  // 根据设备类型加点有意思的尾缀
-  const isMobile = /Android|iPhone|iPad/i.test(ua)
-  if (isMobile) {
-    return `${deviceName} · 随时随地，碎片时间刷刷题 📱`
-  } else {
-    return `${deviceName} · 大屏幕大视角，复习效率加倍 ✨`
-  }
+const homeMetaText = computed(() => {
+  return [deviceText.value, version ? `v${version}` : ''].filter(Boolean).join(' · ')
 })
 
 const features = [
@@ -126,7 +123,7 @@ onBeforeUnmount(() => {
         <img class="home-icon" src="/favicon.svg" alt="题盒图标" />
         <p class="page-sub">{{ greeting }}</p>
         <h1 class="page-title">{{ dateText }}</h1>
-        <p v-if="deviceText" class="page-device">{{ deviceText }}</p>
+        <p v-if="homeMetaText" class="page-device">{{ homeMetaText }}</p>
       </div>
 
       <!-- 数据概览 -->
