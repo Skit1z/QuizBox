@@ -40,11 +40,12 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const idx = ref(0)
-watch(idx, (newIdx) => {
+function saveCurrentIndex(newIdx = idx.value) {
   if (session.value) {
     localStorage.setItem(`quizbox_last_idx_${session.value.id}`, String(newIdx))
   }
-})
+}
+watch(idx, (newIdx) => saveCurrentIndex(newIdx))
 const current = computed(() => props.questions[idx.value])
 const total = computed(() => props.questions.length)
 
@@ -206,7 +207,12 @@ function persistAnswersNow() {
   const snapshot = { ...answers.value }
   persistPromise = persistPromise
     .catch(() => undefined)
-    .then(() => examSessionsRepo.updateAnswers(currentSession.id, snapshot))
+    .then(async () => {
+      await examSessionsRepo.updateAnswers(currentSession.id, snapshot)
+      if (session.value?.id === currentSession.id) {
+        session.value = { ...session.value, answers: snapshot }
+      }
+    })
     .catch(() => undefined)
   return persistPromise
 }
@@ -417,6 +423,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopTimer()
   window.removeEventListener('resize', onResize)
+  saveCurrentIndex()
   // classic 模式：若已超时但未交卷，自动完成并记录结果（避免 session 卡在 in_progress）
   if (props.classic && session.value && remainingSec.value <= 0) {
     finishPractice(true)

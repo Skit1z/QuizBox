@@ -201,6 +201,7 @@ const answeredCount = computed(() => cells.value.filter((c) => c.isAnswered).len
     order: -1;
     width: 100%;
     max-width: none;
+    justify-content: flex-start;
     gap: 8px var(--sp-4);
     font-size: 13px;
     margin-top: 0;

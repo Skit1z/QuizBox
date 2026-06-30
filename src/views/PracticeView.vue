@@ -24,6 +24,7 @@ const finished = ref(false)
 const result = ref<any>(null)
 const questions = ref<Question[]>([])
 const restoredSession = ref<ExamSession | null>(null)
+const loadingSession = ref(!!route.query.sessionId)
 
 const subjectId = ref((route.query.subjectId as string) || '')
 const subjectQuestions = ref<Question[]>([])
@@ -109,28 +110,32 @@ function onFinish(r: any) {
 
 onMounted(async () => {
   await subjectsStore.load()
-  let session: ExamSession | undefined
-  const sessionId = route.query.sessionId as string | undefined
-  if (sessionId) {
-    session = await examSessionsRepo.get(sessionId)
-  }
-
-  if (session && session.status === 'in_progress' && session.config.subMode === 'practice') {
-    const rows = await questionsRepo.findByIds(session.questionIds)
-    const byId = new Map(rows.map((q) => [q.id, q]))
-    questions.value = session.questionIds
-      .map((id) => byId.get(id))
-      .filter((q): q is Question => !!q)
-    if (questions.value.length) {
-      restoredSession.value = session
-      subjectId.value = session.config.subjectId
-      started.value = true
-      return
+  try {
+    let session: ExamSession | undefined
+    const sessionId = route.query.sessionId as string | undefined
+    if (sessionId) {
+      session = await examSessionsRepo.get(sessionId)
     }
-    await examSessionsRepo.abandon(session.id)
-  }
-  if (!subjectId.value && subjectsStore.list.length === 1) {
-    subjectId.value = subjectsStore.list[0].id
+
+    if (session && session.status === 'in_progress' && session.config.subMode === 'practice') {
+      const rows = await questionsRepo.findByIds(session.questionIds)
+      const byId = new Map(rows.map((q) => [q.id, q]))
+      questions.value = session.questionIds
+        .map((id) => byId.get(id))
+        .filter((q): q is Question => !!q)
+      if (questions.value.length) {
+        restoredSession.value = session
+        subjectId.value = session.config.subjectId
+        started.value = true
+        return
+      }
+      await examSessionsRepo.abandon(session.id)
+    }
+    if (!subjectId.value && subjectsStore.list.length === 1) {
+      subjectId.value = subjectsStore.list[0].id
+    }
+  } finally {
+    loadingSession.value = false
   }
 })
 
@@ -145,7 +150,7 @@ watch(
 
 <template>
   <div :class="['page page--wide', started && 'page--running']">
-    <div v-if="!started && !finished" class="page-head page-head--row">
+    <div v-if="!loadingSession && !started && !finished" class="page-head page-head--row">
       <div class="page-head__left" @click="router.back()">
         <van-icon name="arrow-left" size="20" />
         <h1 class="page-title page-title--sm">自测模式</h1>
@@ -167,6 +172,10 @@ watch(
       :initial-session="restoredSession || undefined"
       @finish="onFinish"
     />
+
+    <div v-else-if="loadingSession" class="loading-session">
+      <van-loading size="24" />
+    </div>
 
     <div v-else class="setup-body">
       <div v-if="presetQuestionIds.length" class="preset-banner">
@@ -255,6 +264,13 @@ watch(
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+}
+
+.loading-session {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .field {
