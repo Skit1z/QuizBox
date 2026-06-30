@@ -37,6 +37,9 @@ const BLOB_OPTS = {
   access: 'private' as const,
   contentType: 'application/json',
   addRandomSuffix: false,
+  // @vercel/blob 2.x 起 put() 默认禁止覆盖已存在的 blob；本服务始终写固定路径
+  // （manifest/meta/分片），必须显式允许覆盖，否则每次推送都 500「blob already exists」。
+  allowOverwrite: true,
 }
 
 // ===== 通用 Blob 读写 =====
