@@ -12,6 +12,18 @@
 // 客户端在「设置」里填同样的密钥即可。
 
 import { del, get, put, head } from '@vercel/blob'
+import type { IncomingMessage, ServerResponse } from 'http'
+
+interface VercelRequest extends IncomingMessage {
+  query: Record<string, string | string[] | undefined>
+  body: any
+}
+
+interface VercelResponse extends ServerResponse {
+  status: (code: number) => VercelResponse
+  json: (data: any) => void
+  send: (data: any) => void
+}
 
 export const config = { runtime: 'nodejs' }
 
@@ -144,13 +156,13 @@ function blobMeta(data?: any) {
   }
 }
 
-function setCors(res: any) {
+function setCors(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization')
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCors(res)
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -182,7 +194,7 @@ export default async function handler(req: any, res: any) {
 
 // ===== GET =====
 
-async function handleGet(req: any, res: any) {
+async function handleGet(req: VercelRequest, res: VercelResponse) {
   const q = req.query || {}
   const manifest = await readManifest()
 
@@ -261,7 +273,7 @@ interface BankPutRequest {
   deletePaths?: string[]
 }
 
-async function handlePut(req: any, res: any) {
+async function handlePut(req: VercelRequest, res: VercelResponse) {
   const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {})
   let parsed: BankPutRequest
   try {
@@ -280,6 +292,9 @@ async function handlePut(req: any, res: any) {
   }
 
   // ===== v2 增量推送 =====
+  // 乐观并发控制：由于 Vercel Blob 当前不支持内置事务锁，此处 handlePut 在 readManifest() 后进行比对，
+  // 并在 hasChanges 时 writeManifest()，属于典型的 Read-Check-Write 乐观锁实现，在高并发时存在写覆盖的竞态漏洞。
+  // 在当前应用场景中，因多端并发 PUT 概率极低且客户端有 last-write-wins 自主合并，此限制在设计上是可接受的。
   let manifest = await readManifest()
 
   // 乐观并发控制：baseManifestUpdatedAt 不匹配 → 409，要求客户端重拉合并

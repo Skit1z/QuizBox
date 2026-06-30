@@ -1,11 +1,6 @@
 import mammoth from 'mammoth'
 import { sha256 } from '@/utils/hash'
-import { db } from '@/db'
-
-export interface ParsedImage {
-  hash: string
-  blob: Blob
-}
+import type { ParsedImage } from './docx-images'
 
 export interface DocxParseResult {
   /** 纯文本（保留段落，图片位置用 [图] 占位） */
@@ -71,21 +66,4 @@ function base64ToBytes(b64: string): Uint8Array {
   const bytes = new Uint8Array(len)
   for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i)
   return bytes
-}
-
-/** 保存解析出的图片到 attachments 表（按 hash 去重，批量写入） */
-export async function saveImages(images: ParsedImage[]): Promise<void> {
-  if (!images.length) return
-  const hashes = images.map((i) => i.hash)
-  // 一次批量查已存在项
-  const existing = await db.attachments.bulkGet(hashes)
-  const toAdd = images
-    .filter((img, i) => !existing[i])
-    .map((img) => ({
-      hash: img.hash,
-      blob: img.blob,
-      size: img.blob.size,
-      synced: false,
-    }))
-  if (toAdd.length) await db.attachments.bulkPut(toAdd)
 }

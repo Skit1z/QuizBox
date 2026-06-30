@@ -2,6 +2,20 @@
 // 解决浏览器 CORS 限制——网页请求 /api/webdav/...，由服务端转发到目标 WebDAV 服务器。
 // 目标地址通过请求头 X-WebDAV-Target 传入（前端设置），或回退到坚果云。
 
+import type { IncomingMessage, ServerResponse } from 'http'
+
+interface VercelRequest extends IncomingMessage {
+  query: Record<string, string | string[] | undefined>
+  body: any
+  url?: string
+}
+
+interface VercelResponse extends ServerResponse {
+  status: (code: number) => VercelResponse
+  json: (data: any) => void
+  send: (data: any) => void
+}
+
 export const config = {
   runtime: 'nodejs',
 }
@@ -28,7 +42,7 @@ function isAllowed(url: string): boolean {
   }
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 只允许标准 WebDAV 方法
   const method = req.method || 'GET'
 
@@ -56,12 +70,25 @@ export default async function handler(req: any, res: any) {
     'content-type',
     'depth',
     'overwrite',
-    'destination',
     'if-match',
     'if-none-match',
   ]
   for (const h of passThrough) {
-    if (req.headers[h]) forwardHeaders[h] = req.headers[h]
+    const val = req.headers[h]
+    if (val) forwardHeaders[h] = Array.isArray(val) ? val.join(', ') : val
+  }
+
+  // 对 Destination 头做特殊校验（防止 SSRF）
+  const destination = req.headers['destination']
+  if (destination) {
+    const destStr = Array.isArray(destination) ? destination[0] : destination
+    if (/^https?:\/\//i.test(destStr)) {
+      if (!isAllowed(destStr)) {
+        res.status(403).json({ error: 'Destination 目标地址不被允许' })
+        return
+      }
+    }
+    forwardHeaders['destination'] = destStr
   }
 
   // 读取请求体（PUT/POST 等）
