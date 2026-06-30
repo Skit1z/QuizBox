@@ -11,13 +11,21 @@
     {
       "source": "/sw.js",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, private, max-age=0"
+        },
         { "key": "Service-Worker-Allowed", "value": "/" }
       ]
     },
     {
       "source": "/(workbox-[^/]+\\.js)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, private, max-age=0"
+        }
+      ]
     },
     {
       "source": "/index.html",
