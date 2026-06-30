@@ -82,6 +82,18 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // mammoth（.docx 解析）体积大，把它的几个重依赖拆成独立 vendor 块。
+        // 这些库仅被懒加载的 docx-parser 引用，拆分后各块仍按需加载、单块不再超 500KB。
+        manualChunks: {
+          'vendor-jszip': ['jszip'],
+          'vendor-xmldom': ['@xmldom/xmldom'],
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 5173,
