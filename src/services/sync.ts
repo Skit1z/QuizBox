@@ -421,9 +421,58 @@ async function putShards(body: {
     headers: { ...bankAuthHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`推送失败：${await readErrorMessage(res)} (${res.status})`)
+  if (!res.ok) {
+    const err = new Error(`推送失败：${await readErrorMessage(res)} (${res.status})`)
+    ;(err as any).status = res.status
+    throw err
+  }
   const data = await res.json()
   return data.manifest as BankManifest
+}
+
+/**
+ * 推送并在 409（manifest 被其他设备抢先更新）时「重拉远端 + 合并新分片/meta + 重新检测本地变更」后重试。
+ * 多设备并发推送会撞乐观锁，单次推送必然失败；这里做有界重试让本地变更最终能推上去。
+ * @param build 给定最新远端 manifest，返回本次要推送的 body 与是否还有变更
+ */
+async function putShardsWithRetry(
+  build: (remote: BankManifest | null) => Promise<{
+    body: Parameters<typeof putShards>[0]
+    hasChanges: boolean
+  }>,
+  initialRemote: BankManifest | null,
+  localManifest: BankManifest | null,
+  maxAttempts = 4,
+): Promise<BankManifest | null> {
+  let remote = initialRemote
+  let base = localManifest
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { body, hasChanges } = await build(remote)
+    if (!hasChanges) return remote
+    try {
+      return await putShards(body)
+    } catch (e: any) {
+      if (e?.status !== 409 || attempt === maxAttempts - 1) throw e
+      // 409：远端被其他设备更新 → 重拉 manifest，合并新增/变化的 meta 与分片，再基于最新状态重试
+      const fresh = await fetchRemoteManifest()
+      if (fresh) {
+        if (isMetaChanged(base, fresh)) {
+          const metaRes = await fetch(
+            `${bankEndpoint()}?shard=${encodeURIComponent(fresh.meta.path)}`,
+            { headers: bankAuthHeaders() },
+          )
+          if (metaRes.ok) await mergeMetaToLocal((await metaRes.json()) as MetaShard)
+        }
+        for (const entry of diffManifestShards(base, fresh)) {
+          const shard = await fetchShard(entry.path).catch(() => null)
+          if (shard) await mergeShardToLocal(shard)
+        }
+      }
+      base = fresh
+      remote = fresh
+    }
+  }
+  return remote
 }
 
 export async function requestBankForceSync(): Promise<BankManifest> {
@@ -431,22 +480,34 @@ export async function requestBankForceSync(): Promise<BankManifest> {
   if (!s.loaded) await s.load()
   if (!s.bankSync.enabled) throw new Error('请先启用云端题库同步')
   const remoteManifest = await fetchRemoteManifest()
-  const changes = await detectLocalChanges(remoteManifest)
-  changes.meta = await exportMetaShard(`force_${Date.now()}`)
-  const newManifest = await putShards({
-    version: 2,
-    baseManifestUpdatedAt: remoteManifest?.updatedAt || 0,
-    meta: changes.meta,
-    shards: changes.shards.map((c) => ({
-      path: shardPath(c.subjectId, c.index),
-      content: c.content,
-    })),
-    deletePaths: changes.deletePaths,
-  })
-  await saveLocalManifest(newManifest)
+  const localManifest = await getLocalManifest()
+  // 整轮复用同一个 force token，保证 409 重试后云端 token 与本地 ACK 一致
+  const forceToken = `force_${Date.now()}`
+  const newManifest = await putShardsWithRetry(
+    async (remote) => {
+      const changes = await detectLocalChanges(remote)
+      const meta = await exportMetaShard(forceToken)
+      return {
+        hasChanges: true, // 强制同步：始终推 meta（带新 force token 广播给其它设备）
+        body: {
+          version: 2 as const,
+          baseManifestUpdatedAt: remote?.updatedAt || 0,
+          meta,
+          shards: changes.shards.map((c) => ({
+            path: shardPath(c.subjectId, c.index),
+            content: c.content,
+          })),
+          deletePaths: changes.deletePaths,
+        },
+      }
+    },
+    remoteManifest,
+    localManifest,
+  )
+  if (newManifest) await saveLocalManifest(newManifest)
   await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
-  await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: await getForceSyncToken() })
-  return newManifest
+  await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: forceToken })
+  return newManifest as BankManifest
 }
 
 // ----- 分片工具 -----
@@ -828,27 +889,41 @@ export async function syncBank(): Promise<BankSyncResult> {
       let pushed = 0
       let shardsPushed = 0
       if (hasLocalChanges) {
-        const changes = await detectLocalChanges(remoteManifest)
-        if (changes.shards.length || changes.meta || changes.deletePaths.length) {
-          // 乐观并发：失败时（409）重拉一次合并后重试
-          try {
-            const newManifest = await putShards({
-              version: 2,
-              baseManifestUpdatedAt: remoteManifest.updatedAt,
-              meta: changes.meta || undefined,
-              shards: changes.shards.map((c) => ({
-                path: shardPath(c.subjectId, c.index),
-                content: c.content,
-              })),
-              deletePaths: changes.deletePaths,
-            })
-            remoteManifest = newManifest
-            pushed = changes.shards.length
-            shardsPushed = changes.shards.length
-          } catch (e: any) {
-            // 推送冲突：保留已拉取的合并结果，本次跳过推送，下次同步重试
-            console.warn('[bank-sync] push conflict, will retry next sync', e?.message)
-          }
+        // 乐观并发：409 冲突时由 putShardsWithRetry 重拉合并后重试，避免多设备并发推送活锁
+        try {
+          const result = await putShardsWithRetry(
+            async (remote) => {
+              const changes = await detectLocalChanges(remote)
+              const hasChanges = !!(
+                changes.shards.length ||
+                changes.meta ||
+                changes.deletePaths.length
+              )
+              pushed = changes.shards.length
+              shardsPushed = changes.shards.length
+              return {
+                hasChanges,
+                body: {
+                  version: 2 as const,
+                  baseManifestUpdatedAt: remote?.updatedAt || 0,
+                  meta: changes.meta || undefined,
+                  shards: changes.shards.map((c) => ({
+                    path: shardPath(c.subjectId, c.index),
+                    content: c.content,
+                  })),
+                  deletePaths: changes.deletePaths,
+                },
+              }
+            },
+            remoteManifest,
+            localManifest,
+          )
+          if (result) remoteManifest = result
+        } catch (e: any) {
+          // 重试仍冲突/失败：保留已拉取的合并结果，本次跳过推送，下次同步再试
+          console.warn('[bank-sync] push failed after retries', e?.message)
+          pushed = 0
+          shardsPushed = 0
         }
       }
 
