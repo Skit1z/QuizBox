@@ -3,12 +3,6 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/home' },
   {
-    path: '/setup',
-    name: 'setup',
-    component: () => import('@/views/SetupView.vue'),
-    meta: { title: '初始化配置' },
-  },
-  {
     path: '/home',
     name: 'home',
     component: () => import('@/views/HomeView.vue'),

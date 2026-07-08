@@ -1,7 +1,7 @@
 {
   "name": "quizbox",
   "private": true,
-  "version": "1.8.1",
+  "version": "1.9.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -27,8 +27,7 @@
     "vant": "^4.9.6",
     "vue": "^3.5.13",
     "vue-router": "^4.4.5",
-    "vue-virtual-scroller": "2.0.0-beta.8",
-    "webdav": "^5.7.0"
+    "vue-virtual-scroller": "2.0.0-beta.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

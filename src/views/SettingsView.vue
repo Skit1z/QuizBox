@@ -5,10 +5,8 @@ import { showSuccessToast, showFailToast } from 'vant'
 import {
   useSettingsStore,
   type AiSettings,
-  type WebdavSettings,
   type BankSyncSettings,
 } from '@/stores/settings'
-import { useSyncStore } from '@/stores/sync'
 import { useAdminStore } from '@/stores/admin'
 import { AI_PROVIDERS, findProvider } from '@/services/ai-providers'
 import { THEME_COLORS, type ThemeColor } from '@/themes/tokens'
@@ -16,13 +14,9 @@ import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
 
 const settings = useSettingsStore()
-const syncStore = useSyncStore()
 const adminStore = useAdminStore()
 const router = useRouter()
 const ai = ref<AiSettings>({ ...settings.ai })
-const webdav = ref<WebdavSettings>({ ...settings.webdav })
-// WebDAV 默认折叠，仅在已启用时默认展开
-const webdavExpanded = ref(false)
 const bank = ref<BankSyncSettings>({ ...settings.bankSync })
 const bankTesting = ref(false)
 const bankSyncing = ref(false)
@@ -32,6 +26,28 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
 const showHistory = ref(false)
 const updateHistory = [
+  {
+    version: '1.9.1',
+    date: '2026-07-07',
+    logs: [
+      '移除 WebDAV 同步功能（已用不上），同步仅保留云端题库分片同步一条路径',
+      '修复开始新自测时会误删所有已保存的未完成自测会话的问题',
+      '修复导入预览列表在删除/排序后编辑错位、AI 校对 loading 显示到错误行的问题',
+      '修复自测恢复后再次点击 AI 评分或自评会重复记录答题历史的问题',
+      '修复题库页被缓存后重回不刷新、显示陈旧科目和题数的问题',
+      '统一填空题「同空多备选答案」的分隔约定（；专属备选分隔，避免判分与解析层不一致）',
+      '清理无用的 revision 字段（每次写入都在维护但同步合并从未使用）',
+    ],
+  },
+  {
+    version: '1.8.2',
+    date: '2026-07-07',
+    logs: [
+      '修复导入 OCR 题库时防盗版水印（vx 联系方式、版权声明、导出来源等）混入题干和选项的问题',
+      '修复填空题答案带「第X空：」前缀时前缀被当成答案内容、以及同空多备选答案被误拆成多个空的问题',
+      '填空题判分支持同一空的多个等价答案（用中文分号 ；分隔），用户填写任一备选即判对',
+    ],
+  },
   {
     version: '1.8.1',
     date: '2026-06-30',
@@ -434,55 +450,6 @@ async function testModel() {
   }
 }
 
-async function saveWebdav() {
-  await settings.saveWebdav(webdav.value)
-  showSuccessToast('同步设置已保存')
-}
-
-const wdTesting = ref(false)
-const wdResult = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
-async function testWebdav() {
-  if (wdTesting.value) return
-  if (!webdav.value.url) {
-    wdResult.value = { type: 'error', msg: '请先填写服务器地址' }
-    return
-  }
-  wdTesting.value = true
-  wdResult.value = null
-  try {
-    const { testWebdav: test } = await import('@/services/sync')
-    await test({
-      url: webdav.value.url,
-      username: webdav.value.username,
-      password: webdav.value.password,
-    })
-    wdResult.value = { type: 'success', msg: '连接成功' }
-  } catch (e: any) {
-    const msg = e?.message || '连接失败'
-    if (/401|403|unauthorized|auth/i.test(msg)) {
-      wdResult.value = { type: 'error', msg: '认证失败：账号或密码错误' }
-    } else if (/404|not found/i.test(msg)) {
-      wdResult.value = { type: 'error', msg: '地址不存在：请检查服务器地址' }
-    } else if (/cors|fetch|network/i.test(msg)) {
-      wdResult.value = { type: 'error', msg: '网络错误：地址不通或服务不支持跨域' }
-    } else {
-      wdResult.value = { type: 'error', msg: '连接失败' }
-    }
-  } finally {
-    wdTesting.value = false
-  }
-}
-
-async function manualSync() {
-  if (!webdav.value.enabled || !webdav.value.url) {
-    showFailToast('请先启用同步并填写地址')
-    return
-  }
-  const res = await syncStore.run()
-  if (res.ok) showSuccessToast(`同步成功：拉取 ${res.pulled}，推送 ${res.pushed}`)
-  else showFailToast('同步失败，请检查 WebDAV 设置')
-}
-
 async function saveBank() {
   if (/^vercel_blob_rw_/i.test(bank.value.key.trim())) {
     bankResult.value = {
@@ -596,8 +563,6 @@ onMounted(async () => {
   await settings.load()
   await adminStore.load()
   ai.value = { ...settings.ai }
-  webdav.value = { ...settings.webdav }
-  webdavExpanded.value = settings.webdav.enabled
   bank.value = { ...settings.bankSync }
   ocrToken.value = settings.ocr.token
 })
@@ -728,70 +693,6 @@ onMounted(async () => {
       <div v-if="bank.enabled" style="margin-top: var(--sp-3)">
         <van-button block plain round :loading="bankSyncing" @click="manualBankSync">
           {{ bankSyncing ? '同步中…' : '立即同步' }}
-        </van-button>
-      </div>
-    </div>
-
-    <!-- ===== WebDAV 同步（默认折叠） ===== -->
-    <button type="button" class="collapse-head" @click="webdavExpanded = !webdavExpanded">
-      <span class="collapse-head__title">WebDAV 同步</span>
-      <span v-if="webdav.enabled" class="collapse-head__badge">已启用</span>
-      <van-icon
-        :name="webdavExpanded ? 'arrow-up' : 'arrow-down'"
-        size="14"
-        color="var(--text-3)"
-      />
-    </button>
-    <div v-show="webdavExpanded" class="card">
-      <div class="field-group">
-        <div class="field field--row">
-          <label class="field__label">启用同步</label>
-          <van-switch
-            :model-value="webdav.enabled"
-            @update:model-value="(v: boolean) => (webdav.enabled = v)"
-          />
-        </div>
-        <div class="field">
-          <label class="field__label">服务器地址</label>
-          <input
-            v-model="webdav.url"
-            class="field__input"
-            placeholder="https://dav.jianguoyun.com/dav/"
-          />
-        </div>
-        <div class="field">
-          <label class="field__label">账号</label>
-          <input v-model="webdav.username" class="field__input" />
-        </div>
-        <div class="field">
-          <label class="field__label">密码 / 应用密码</label>
-          <input v-model="webdav.password" class="field__input" type="password" />
-        </div>
-        <div class="field">
-          <label class="field__label">远端目录</label>
-          <input v-model="webdav.remotePath" class="field__input" placeholder="/QuizBox" />
-        </div>
-      </div>
-      <div
-        v-if="wdResult"
-        :class="[
-          'test-result',
-          wdResult.type === 'success' ? 'test-result--ok' : 'test-result--err',
-        ]"
-      >
-        <van-icon :name="wdResult.type === 'success' ? 'success' : 'cross'" />
-        <span>{{ wdResult.msg }}</span>
-      </div>
-
-      <div class="btn-row">
-        <van-button type="primary" round @click="saveWebdav">保存</van-button>
-        <van-button plain type="primary" round :loading="wdTesting" @click="testWebdav">
-          {{ wdTesting ? '检测中…' : '检测连接' }}
-        </van-button>
-      </div>
-      <div v-if="webdav.enabled" style="margin-top: var(--sp-3)">
-        <van-button block plain round :loading="syncStore.syncing" @click="manualSync">
-          {{ syncStore.syncing ? '同步中…' : '立即同步' }}
         </van-button>
       </div>
     </div>

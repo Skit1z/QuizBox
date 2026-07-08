@@ -1,4 +1,5 @@
 import { isObjective, type Question, type QuestionType } from '@/types'
+import { FILL_ALT_SEPARATOR } from './rule-parser'
 
 export type MatchStrategy = 'exact' | 'contains' | 'regex'
 
@@ -63,6 +64,21 @@ function matchFill(user: string, std: string, strategy: MatchStrategy): boolean 
   const u = (user || '').trim()
   const s = (std || '').trim()
   if (!u) return false
+  // 标准答案用 FILL_ALT_SEPARATOR（；）分隔的多个等价备选答案
+  // （rule-parser.parseFillBlanks 保留同一空的多备选），任一命中即判对。
+  const candidates = s
+    .split(new RegExp(`[${FILL_ALT_SEPARATOR};]`))
+    .map((c) => c.trim())
+    .filter(Boolean)
+  const targets = candidates.length > 0 ? candidates : [s]
+  return targets.some((target) => matchSingleFill(u, target, strategy))
+}
+
+/** 单个标准答案字符串与用户答案的比对（原 matchFill 逻辑） */
+function matchSingleFill(user: string, std: string, strategy: MatchStrategy): boolean {
+  const u = (user || '').trim()
+  const s = (std || '').trim()
+  if (!u || !s) return false
   if (strategy === 'exact') return u === s
   if (strategy === 'regex') {
     try {

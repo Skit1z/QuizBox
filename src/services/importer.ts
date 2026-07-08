@@ -25,7 +25,7 @@ const CACHE_VERSION = 'repair-diff-v1'
 const SYSTEM_PROMPT = `你是一个题库结构化解析助手。用户给你若干道题的原始文本（已是按题切分的块，每个块是一道题及其选项/答案/解析）。
 请逐块解析为结构化题目。要求：
 1. 识别每道题的题型：single(单选) multiple(多选) judge(判断) fill(填空) short(简答) essay(论述)
-2. 单选/多选 answer 用字母（如 "A" 或 ["A","C"]）；判断 answer 用 "T" 或 "F"；填空 answer 用字符串数组（每个空一个）；简答/论述 answer 用参考答案文本
+2. 单选/多选 answer 用字母（如 "A" 或 ["A","C"]）；判断 answer 用 "T" 或 "F"；填空 answer 用字符串数组（每个空一个，同一空的多个等价答案用中文分号 ；连接成一个元素）；简答/论述 answer 用参考答案文本
 3. 保留题干中的 [IMG_n] 占位符原样
 4. 去除乱码、页眉页脚、无效符号
 5. 为每题给出 blockId（与输入对应）和 confidence (0-1)
@@ -215,7 +215,7 @@ const REPAIR_DIFF_SYSTEM = `你是题库校对助手。每个块给你「规则�
 1. 若该块不是有效题目（标题/说明/目录/乱码）→ 输出 {"blockId","isValid":false}
 2. 若是题目：
    - 总是给出 type（single/multiple/judge/fill/short/essay）与 answer
-   - 单选 answer 用单字母；多选用多字母如 "AC"；判断用 "T"/"F"；填空用字符串数组
+   - 单选 answer 用单字母；多选用多字母如 "AC"；判断用 "T"/"F"；填空用字符串数组（同一空的多个等价答案用 ； 连接成一个元素）
    - 仅当「规则解析」的题干或选项有明显错误/残缺时，才额外返回修正后的 stem / options
    - 题干选项正确时绝对不要重复输出它们
 3. 不要输出 analysis 字段。
@@ -394,7 +394,7 @@ const ANSWER_GEN_SYSTEM = `你是学科答题专家。根据题目（及选项�
 - 单选：answer 为单个字母，如 "B"
 - 多选：answer 为多个字母，如 "ACD"
 - 判断：answer 为 "T"(对) 或 "F"(错)
-- 填空：answer 为字符串数组，每空一项
+- 填空：answer 为字符串数组，每空一项；同一空的多个等价答案用 ； 连接成一个元素
 解析(analysis)控制在 80 字内，说明为什么。
 严格输出 JSON：{"answer": ..., "analysis": "..."}`
 

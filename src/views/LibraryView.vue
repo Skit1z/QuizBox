@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 defineOptions({ name: 'LibraryView' })
 import { showConfirmDialog, showSuccessToast } from 'vant'
@@ -124,6 +124,11 @@ function onAdminVerified() {
 onMounted(async () => {
   await adminStore.load()
   await refresh()
+})
+
+// keep-alive 下重回本页时刷新，避免显示陈旧的科目/题数
+onActivated(() => {
+  refresh()
 })
 </script>
 

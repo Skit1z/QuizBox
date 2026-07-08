@@ -28,7 +28,6 @@ export const wrongBookRepo = {
           interval: next.interval,
           reviewCount: next.reviewCount,
           updatedAt: now,
-          revision: (existing.revision || 0) + 1,
         }
         await db.wrongBook.update(existing.id, updated)
         return { ...existing, ...updated } as WrongItem
@@ -45,7 +44,6 @@ export const wrongBookRepo = {
         interval: 0,
         updatedAt: now,
         deletedAt: 0,
-        revision: 1,
       }
       await db.wrongBook.put(item)
       return item
@@ -63,7 +61,6 @@ export const wrongBookRepo = {
         nextReviewAt: next.nextReviewAt,
         status: (mastered ? 'mastered' : 'pending') as WrongStatus,
         updatedAt: now,
-        revision: (existing.revision || 0) + 1,
       }
       await db.wrongBook.update(existing.id, patch)
       return { ...existing, ...patch } as WrongItem
@@ -117,11 +114,9 @@ export const wrongBookRepo = {
   },
 
   async setStatus(id: string, status: WrongStatus): Promise<void> {
-    const existing = await db.wrongBook.get(id)
     await db.wrongBook.update(id, {
       status,
       updatedAt: Date.now(),
-      revision: (existing?.revision || 0) + 1,
     })
   },
 
@@ -131,13 +126,10 @@ export const wrongBookRepo = {
     const rows = await db.wrongBook.where('id').anyOf(ids).toArray()
     const aliveIds = rows.filter((r) => !isDeleted(r.deletedAt)).map((r) => r.id)
     if (aliveIds.length === 0) return
-    const revisionMap = new Map(
-      rows.filter((r) => aliveIds.includes(r.id)).map((row) => [row.id, (row.revision || 0) + 1]),
-    )
     await db.wrongBook.bulkUpdate(
       aliveIds.map((id) => ({
         key: id,
-        changes: { status, updatedAt: now, revision: revisionMap.get(id) || 1 },
+        changes: { status, updatedAt: now },
       })),
     )
   },
@@ -149,11 +141,10 @@ export const wrongBookRepo = {
       .where('status')
       .equals('pending')
       .modify((row) => {
-        // 已软删记录不动，避免改 tombstone 并 bump revision
+        // 已软删记录不动，避免改 tombstone
         if (isDeleted(row.deletedAt)) return
         row.status = 'mastered'
         row.updatedAt = now
-        row.revision = (row.revision || 0) + 1
       })
   },
 }
