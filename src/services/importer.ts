@@ -2,7 +2,7 @@ import { chatJson } from './ai'
 import type { QuestionType } from '@/types'
 import { db } from '@/db'
 import { sha256 } from '@/utils/hash'
-import { detectType, normalizeAnswer, splitRawChunks } from './rule-parser'
+import { detectType, normalizeAnswer } from './rule-parser'
 
 /** AI 解析返回的单道题（中间结构） */
 export interface ParsedQuestion {
@@ -17,23 +17,10 @@ export interface ParsedQuestion {
   confidence?: number
 }
 
-const SINGLE_CALL_LIMIT = 6000
 const MAX_BATCH_CHARS = 8000
 const MAX_BATCH_BLOCKS = 15
 const CACHE_VERSION = 'repair-diff-v1'
 
-const SYSTEM_PROMPT = `你是一个题库结构化解析助手。用户给你若干道题的原始文本（已是按题切分的块，每个块是一道题及其选项/答案/解析）。
-请逐块解析为结构化题目。要求：
-1. 识别每道题的题型：single(单选) multiple(多选) judge(判断) fill(填空) short(简答) essay(论述)
-2. 单选/多选 answer 用字母（如 "A" 或 ["A","C"]）；判断 answer 用 "T" 或 "F"；填空 answer 用字符串数组（每个空一个，同一空的多个等价答案用中文分号 ；连接成一个元素）；简答/论述 answer 用参考答案文本
-3. 保留题干中的 [IMG_n] 占位符原样
-4. 去除乱码、页眉页脚、无效符号
-5. 为每题给出 blockId（与输入对应）和 confidence (0-1)
-
-严格以 JSON 输出：{"questions":[{"blockId":"block_0","type","stem","options","answer","analysis","imagePlaceholders","confidence"}]}
-blockId 必须原样使用输入中的标注。`
-
-type IndexedBlock = { idx: number; text: string }
 export interface RepairItem {
   block: string
   candidate: ParsedQuestion
@@ -41,53 +28,11 @@ export interface RepairItem {
 
 type RepairWorkItem = RepairItem & { idx: number; hash: string }
 
-function packByChars(
-  items: IndexedBlock[],
-  limit: number,
-): Array<{ items: IndexedBlock[]; text: string }> {
-  const batches: Array<{ items: IndexedBlock[]; text: string }> = []
-  let batchItems: IndexedBlock[] = []
-  let batchText = ''
-
-  for (const item of items) {
-    const entry = `--- blockId: block_${item.idx} ---\n${compactText(item.text)}\n`
-    const wouldExceed =
-      batchItems.length >= MAX_BATCH_BLOCKS ||
-      (batchText.length + entry.length > limit && batchText.length > 0)
-
-    if (wouldExceed) {
-      batches.push({ items: batchItems, text: batchText })
-      batchItems = []
-      batchText = ''
-    }
-
-    batchItems.push(item)
-    batchText += entry
-  }
-
-  if (batchText) batches.push({ items: batchItems, text: batchText })
-  return batches
-}
-
 function compactText(text: string): string {
   return text
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{2,}/g, '\n')
     .trim()
-}
-
-function dedupeByStem(questions: ParsedQuestion[]): ParsedQuestion[] {
-  const seen = new Set<string>()
-  const result: ParsedQuestion[] = []
-
-  for (const q of questions) {
-    const key = q.stem.trim().replace(/\s+/g, '')
-    if (!key || seen.has(key)) continue
-    seen.add(key)
-    result.push(q)
-  }
-
-  return result
 }
 
 /** 去掉选项内容里残留的「A.」「B、」「(C)」等字母前缀（AI 返回的选项常带前缀，
@@ -131,82 +76,6 @@ export function sanitizeParsed(q: ParsedQuestion): ParsedQuestion | null {
     answer,
     confidence: Math.max(0, Math.min(q.confidence ?? 0.8, 1)),
   }
-}
-
-async function callParseBatch(
-  batchText: string,
-  hint?: string,
-  systemPrompt = SYSTEM_PROMPT,
-  maxTokens = 4000,
-): Promise<Map<number, ParsedQuestion>> {
-  const prefix = hint ? `${hint}\n\n` : ''
-  const res = await chatJson<{
-    questions: Array<ParsedQuestion & { blockId?: string; blockIndex?: number }>
-  }>(
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: prefix + batchText },
-    ],
-    { temperature: 0.1, maxTokens },
-  )
-
-  const parsed = new Map<number, ParsedQuestion>()
-  for (const q of res.questions || []) {
-    const { blockId, blockIndex, ...question } = q
-    const idMatch = blockId?.match(/^block_(\d+)$/)
-    const idx = idMatch ? Number(idMatch[1]) : blockIndex
-    if (idx === undefined || idx < 0 || !question.stem) continue
-
-    const sanitized = sanitizeParsed(question as ParsedQuestion)
-    if (sanitized) parsed.set(idx, sanitized)
-  }
-
-  return parsed
-}
-
-/**
- * 纯 AI 解析整篇文档（分批发送，避免输出 token 上限导致丢题）。
- * 适用于 rule-parser 无法处理的复杂格式。
- */
-export async function parseQuestionsWithAI(
-  text: string,
-  hint?: string,
-  onProgress?: (done: number, total: number) => void,
-): Promise<ParsedQuestion[]> {
-  const chunks = splitRawChunks(text)
-  const blocks = (chunks.length > 0 ? chunks : [text]).map((block, idx) => ({ idx, text: block }))
-  if (blocks.length === 0) return []
-
-  const batches =
-    text.length <= SINGLE_CALL_LIMIT
-      ? [{ items: blocks, text: packByChars(blocks, Number.POSITIVE_INFINITY)[0]?.text ?? '' }]
-      : packByChars(blocks, MAX_BATCH_CHARS)
-
-  const results = new Map<number, ParsedQuestion>()
-
-  if (text.length <= SINGLE_CALL_LIMIT) {
-    try {
-      const parsed = await callParseBatch(batches[0].text, hint)
-      for (const [idx, question] of parsed) results.set(idx, question)
-    } catch (e) {
-      console.warn('[importer] parse failed', e)
-    }
-    onProgress?.(1, 1)
-  } else {
-    const settled = await Promise.allSettled(
-      batches.map((batch) => callParseBatch(batch.text, hint)),
-    )
-    settled.forEach((result, batchIdx) => {
-      if (result.status === 'fulfilled') {
-        for (const [idx, question] of result.value) results.set(idx, question)
-      } else {
-        console.warn('[importer] batch failed', result.reason)
-      }
-      onProgress?.(batchIdx + 1, batches.length)
-    })
-  }
-
-  return dedupeByStem(blocks.map((_, i) => results.get(i)).filter((q): q is ParsedQuestion => !!q))
 }
 
 // ===== AI 判定：对规则解析不确定的块做差量修复 =====

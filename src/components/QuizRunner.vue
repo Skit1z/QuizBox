@@ -10,6 +10,7 @@ import { gradeObjective } from '@/services/grading'
 import { attemptsRepo } from '@/db/attempts'
 import { wrongBookRepo } from '@/db/wrongbook'
 import { examSessionsRepo } from '@/db/examSessions'
+import { debounce } from '@/utils/debounce'
 import type { AttemptMode, ExamSession, ExamSubMode, QuestionType } from '@/types'
 
 const props = defineProps<{
@@ -202,7 +203,8 @@ async function initSession() {
   }
 }
 
-// 答案变化后立即排队持久化，避免退出页面时防抖写入丢失。
+// 答案变化后防抖持久化（400ms），避免填空/简答每次键击都全量写 IndexedDB。
+// 退出页面 / 翻题时调 flushAnswers() 立即 flush，保证不丢数据。
 let persistPromise: Promise<void> = Promise.resolve()
 function persistAnswersNow() {
   const currentSession = session.value
@@ -220,12 +222,13 @@ function persistAnswersNow() {
   return persistPromise
 }
 
-function persistAnswers() {
+const persistAnswers = debounce(() => {
   void persistAnswersNow()
-}
+}, 400)
 
 function flushAnswers() {
-  return persistAnswersNow()
+  persistAnswers.flush()
+  return persistPromise
 }
 
 function restoreSubmittedState() {

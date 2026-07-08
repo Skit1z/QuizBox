@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { syncBank, syncOnStartup, autoSync } from '@/services/sync'
+import { syncBank, syncOnStartup } from '@/services/sync'
 import { db } from '@/db'
 
 function notifyDataChanged() {
@@ -15,11 +15,6 @@ export const useSyncStore = defineStore('sync', {
     syncing: false,
   }),
   actions: {
-    /** 写操作后调用，触发防抖自动同步 */
-    notifyChange() {
-      notifyDataChanged()
-      autoSync()
-    },
     async init() {
       const meta = await db.syncMeta.get('lastBankSyncAt')
       if (meta) this.lastSyncAt = Number(meta.value)

@@ -600,7 +600,7 @@ async function detectLocalChanges(
  * 3. 检测本地变更（基于 lastBankSyncAt），仅推送变化的分片
  * 4. 保存最新 manifest
  *
- * 与 WebDAV 同步独立，互不影响；并发调用复用进行中的结果。
+ * 并发调用复用进行中的结果。
  */
 export async function syncBank(): Promise<BankSyncResult> {
   const s = useSettingsStore()

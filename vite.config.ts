@@ -67,7 +67,7 @@ export default defineConfig({
       workbox: {
         // 不缓存 IndexedDB 相关的运行时；缓存静态资源
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-        // AI/WebDAV 请求不走缓存
+        // AI 请求不走缓存
         navigateFallbackDenylist: [/^\/api\//],
         // 新版本激活后立即清掉旧预缓存，避免旧资源残留
         cleanupOutdatedCaches: true,

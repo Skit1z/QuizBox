@@ -136,7 +136,6 @@ export interface Attachment {
   hash: string
   blob: Blob
   size: number
-  synced: boolean
 }
 
 export interface SyncMeta {

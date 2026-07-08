@@ -18,9 +18,12 @@ const updateLayout = () => {
 }
 onMounted(() => {
   window.addEventListener('resize', updateLayout)
+  // 关 tab / 切后台时 flush 待触发的防抖同步，避免 2 分钟窗口内的编辑丢失
+  window.addEventListener('pagehide', flushPendingSync)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateLayout)
+  window.removeEventListener('pagehide', flushPendingSync)
 })
 
 const navItems = [
@@ -30,6 +33,16 @@ const navItems = [
 ]
 
 const activeName = computed(() => route.name as string)
+
+/** 关 tab 时 flush 待触发的防抖同步（数据已落本地 IndexedDB，只是同步没发起） */
+async function flushPendingSync() {
+  try {
+    const { autoSync } = await import('@/services/sync')
+    autoSync.flush()
+  } catch {
+    // 同步模块加载失败不阻塞关闭
+  }
+}
 const showTabbar = computed(() => !!route.meta.tabbar)
 const mobileMainClass = computed(() => [
   'app-main-mobile',

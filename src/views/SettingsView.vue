@@ -27,6 +27,19 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '1.10.1',
+    date: '2026-07-08',
+    logs: [
+      '修复关闭浏览器标签页时未触发的防抖同步丢失问题（pagehide 时 flush）',
+      '优化填空/简答题答题写入：改为防抖 400ms 批量写，减少 IndexedDB 写入压力',
+      '优化题库列表增删改：改为乐观局部更新，不再每次全量重新加载',
+      '答题记录表自动裁剪：每题保留最近 50 条，避免无限增长拖慢查询',
+      '清理死代码：移除未使用的 parseQuestionsWithAI、notifyChange 等',
+      '移除附件表的 synced 字段（WebDAV 附件同步已删除，字段无人使用）',
+      '清理文档中残留的 WebDAV 相关说明',
+    ],
+  },
+  {
     version: '1.9.1',
     date: '2026-07-07',
     logs: [

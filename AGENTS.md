@@ -80,18 +80,15 @@ src-tauri/            Tauri 桌面端配置
 
 ## 4. 同步架构（重要）
 
-有两套独立同步机制，不要混淆：
-
-1. **WebDAV 同步**（`src/services/sync.ts` 的 `sync()`）：全量 `sync.json`，本地优先 + 逐条 last-write-wins 合并。
-2. **云端题库分片同步**（`src/services/sync.ts` 的 `syncBank()`）：按科目分片 + SHA-256 哈希增量。
+云端题库分片同步（`src/services/sync.ts` 的 `syncBank()`）：按科目分片 + SHA-256 哈希增量。
    - 存储布局：`quizbox/manifest.json` + `meta.json` + `shard_sub_*.json`（详见 `api/bank.ts` 顶部注释）
    - meta 分片含 subjects/chapters + 管理员密码哈希（`adminPwdHash`，跨设备共享）
    - 单分片上限 250KB，题目按 `updatedAt` 升序排列以保持旧分片哈希稳定
 
 **同步原则**：
-- 任何写操作后调用 `autoSync()`（防抖 30s）或 `useSyncStore().notifyChange()`。
+- 任何写操作后调用 `autoSync()`（防抖 2min，关 tab 时 `pagehide` 监听会 flush）。
 - 合并永远是**逐条 last-write-wins**（按 `updatedAt`），不要整片覆盖，避免多设备丢数据。
-- `syncMeta` 表存本地缓存（lastSyncAt / lastBankSyncAt / manifest / 密码哈希），不参与 WebDAV 同步。
+- `syncMeta` 表存本地缓存（lastBankSyncAt / manifest / 密码哈希），不参与云端同步。
 
 ---
 

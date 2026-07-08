@@ -174,9 +174,16 @@ async function saveEdit() {
       patch.options = undefined
     }
     await questionsRepo.update(editId.value, patch)
+    // 乐观局部更新：替换列表中的题目并按 updatedAt 重排（update 会 bump updatedAt，题应排到前面）
+    const now = Date.now()
+    const idx = questions.value.findIndex((q) => q.id === editId.value)
+    if (idx >= 0) {
+      const updated = { ...questions.value[idx], ...patch, updatedAt: now }
+      questions.value.splice(idx, 1, updated)
+      questions.value.sort((a, b) => b.updatedAt - a.updatedAt)
+    }
     showEdit.value = false
     showSuccessToast('已保存')
-    await load()
   } finally {
     editSaving.value = false
   }
@@ -218,8 +225,8 @@ async function load() {
 async function removeQuestion(id: string) {
   await showConfirmDialog({ title: '删除题目', message: '确定删除这道题？' })
   await questionsRepo.remove(id)
+  questions.value = questions.value.filter((q) => q.id !== id)
   showSuccessToast('已删除')
-  await load()
 }
 
 function toggleManage() {
@@ -246,10 +253,11 @@ async function batchRemove() {
     title: '删除题目',
     message: `确定删除选中的 ${selectedCount.value} 道题？`,
   })
+  const removedIds = new Set(selectedIds.value)
   await questionsRepo.removeBulk(selectedIds.value)
+  questions.value = questions.value.filter((q) => !removedIds.has(q.id))
   selectedIds.value = []
   showSuccessToast('已删除')
-  await load()
 }
 
 function openMove() {
@@ -267,11 +275,12 @@ function openMove() {
 
 async function batchMove() {
   if (!targetSubjectId.value || !selectedCount.value) return
+  const movedIds = new Set(selectedIds.value)
   await questionsRepo.moveToSubject(selectedIds.value, targetSubjectId.value)
+  questions.value = questions.value.filter((q) => !movedIds.has(q.id))
   selectedIds.value = []
   showMove.value = false
   showSuccessToast('已移动')
-  await load()
 }
 
 function practiceSelected() {
