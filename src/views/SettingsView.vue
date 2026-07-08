@@ -27,6 +27,13 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-08 09-15',
+    date: '2026-07-08',
+    logs: [
+      '移除提交时自动递增版本号的钩子，版本号改为构建时刻（yyyy-mm-dd hh-mm）',
+    ],
+  },
+  {
     version: '1.10.1',
     date: '2026-07-08',
     logs: [
@@ -921,7 +928,7 @@ onMounted(async () => {
       </div>
       <div class="about-row">
         <span class="about-row__label">版本号</span>
-        <span class="about-row__value">v{{ version }}</span>
+        <span class="about-row__value">{{ version }}</span>
       </div>
       <div class="about-row">
         <span class="about-row__label">开源协议</span>

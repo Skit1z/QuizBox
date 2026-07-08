@@ -119,28 +119,17 @@ src-tauri/            Tauri 桌面端配置
 
 ---
 
-## 7. 版本号规范（语义化版本）
+## 7. 版本号规范
 
-格式：`MAJOR.MINOR.PATCH`（如 `1.6.0`），遵循 https://semver.org/lang/zh-CN/
+**显示版本号**（面向用户）：构建时刻 `yyyy-mm-dd hh-mm` 格式（如 `2026-07-08 09-15`），由 `vite.config.ts` 在构建时通过 `__APP_VERSION__` 注入，无需手填。
+**工具链版本号**（`package.json` / `Cargo.toml` / `tauri.conf.json` 的 `version` 字段）：保持合法 semver（如 `1.10.1`），仅 npm / cargo / tauri 工具链使用，不用于显示。这两个版本号互不耦合，工具链版本号无需随每次提交递增。
 
-- **PATCH**（`1.6.0 → 1.6.1`）：bug 修复，向下兼容
-- **MINOR**（`1.6.1 → 1.7.0`）：新功能，向下兼容
-- **MAJOR**（`1.7.0 → 2.0.0`）：不兼容变更
-
-**bump 命令**（同步更新 package.json / package-lock.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml）：
-```bash
-npm run bump:patch   # 默认，修 bug 后用
-npm run bump:minor   # 加功能后用
-npm run bump:major   # 破坏性变更后用
-npm run bump -- 1.8.3   # 显式指定
-```
-**不要手改版本号**，一律走脚本。
+已移除自动 bump 钩子和 `scripts/bump-version.mjs`，不再有提交时自动改版本号的机制。
 
 **应用内更新历史**：
-- 每次版本更新、修复提交或功能提交，只要会触发版本号变化，必须同步维护 `src/views/SettingsView.vue` 中的 `updateHistory`。
+- 每次功能/修复提交后，同步维护 `src/views/SettingsView.vue` 中的 `updateHistory`。
 - `updateHistory` 内容必须基于真实 Git 提交与实际变更整理，不得编造功能、日期或提交哈希。
-- 新版本记录放在数组最前面，包含版本号、日期和面向用户可理解的变更说明；必要时在说明末尾保留对应短提交哈希。
-- 若提交钩子自动 bump 版本号，提交前需检查 `package.json` 中的最终版本，并确保 `updateHistory` 也写入同一版本。
+- 新版本记录放在数组最前面，`version` 字段填该次变更的日期（`yyyy-mm-dd hh-mm`），`date` 填日期，并附面向用户可理解的变更说明。
 
 ---
 

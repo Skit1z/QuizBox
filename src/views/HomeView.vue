@@ -59,7 +59,7 @@ const deviceText = computed(() => {
 })
 
 const homeMetaText = computed(() => {
-  return [deviceText.value, version ? `v${version}` : ''].filter(Boolean).join(' · ')
+  return [deviceText.value, version || ''].filter(Boolean).join(' · ')
 })
 
 const features = [
