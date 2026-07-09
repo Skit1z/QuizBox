@@ -325,8 +325,15 @@ function answerText(p: ParsedQuestion): string {
 
 /** 按需 AI 生成/校对单题答案 + 解析 */
 const aiGen = reactive<Record<string, boolean>>({})
-async function genAnswer(p: ParsedItem) {
-  if (aiGen[p.uid]) return
+// 批量 AI 补答案进度
+const batchAi = ref(false)
+const batchProgress = reactive({ done: 0, total: 0 })
+
+/** 缺答案题数（批量补答案按钮依据） */
+const missingAnswerCount = computed(() => parsed.value.filter((p) => !answerText(p)).length)
+
+/** 单题 AI 补答案的核心逻辑（不弹 toast），返回是否成功，供单题/批量复用 */
+async function genAnswerSilent(p: ParsedItem): Promise<boolean> {
   aiGen[p.uid] = true
   try {
     const { answer, analysis } = await generateAnswer({
@@ -337,10 +344,49 @@ async function genAnswer(p: ParsedItem) {
     p.answer = answer
     if (analysis) p.analysis = analysis
     if (typeof p.confidence === 'number') p.confidence = Math.max(p.confidence, 0.7)
-  } catch (e: any) {
-    showFailToast(e?.message || 'AI 生成失败')
+    return true
+  } catch {
+    return false
   } finally {
     aiGen[p.uid] = false
+  }
+}
+
+async function genAnswer(p: ParsedItem) {
+  if (aiGen[p.uid]) return
+  const ok = await genAnswerSilent(p)
+  if (!ok) showFailToast('AI 生成失败')
+}
+
+/** 一键对所有缺答案题批量调用 AI 补答案，串行避免触发供应商限流 */
+async function batchGenAnswers() {
+  if (batchAi.value) return
+  const targets = parsed.value.filter((p) => !answerText(p))
+  if (targets.length === 0) {
+    showFailToast('没有缺答案的题目')
+    return
+  }
+  batchAi.value = true
+  batchProgress.done = 0
+  batchProgress.total = targets.length
+  let success = 0
+  let failed = 0
+  try {
+    for (const p of targets) {
+      // 跳过被并发单题按钮占用的项，避免重复请求
+      if (aiGen[p.uid]) {
+        batchProgress.done++
+        continue
+      }
+      const ok = await genAnswerSilent(p)
+      if (ok) success++
+      else failed++
+      batchProgress.done++
+    }
+    if (failed === 0) showSuccessToast(`已补全 ${success} 题`)
+    else showFailToast(`成功 ${success} 题，失败 ${failed} 题`)
+  } finally {
+    batchAi.value = false
   }
 }
 
@@ -613,6 +659,37 @@ function onAdminDialogClose() {
         </div>
       </div>
 
+      <!-- 顶部操作 -->
+      <div class="preview-actions">
+        <van-button round size="small" :disabled="saving || batchAi" @click="step = 2"
+          >返回重试</van-button
+        >
+        <van-button
+          v-if="settingsStore.ai.apiKey && missingAnswerCount > 0"
+          round
+          size="small"
+          type="warning"
+          :loading="batchAi"
+          :disabled="saving"
+          @click="batchGenAnswers"
+        >
+          <template v-if="batchAi"
+            >AI 修复 {{ batchProgress.done }}/{{ batchProgress.total }}</template
+          >
+          <template v-else>AI 补答案 ({{ missingAnswerCount }})</template>
+        </van-button>
+        <van-button
+          type="primary"
+          round
+          size="small"
+          :loading="saving"
+          :disabled="batchAi"
+          loading-text="导入中…"
+          @click="saveAll"
+          >导入 {{ parsed.length }} 题</van-button
+        >
+      </div>
+
       <!-- 题目列表 -->
       <div class="preview-list">
         <van-swipe-cell
@@ -750,14 +827,6 @@ function onAdminDialogClose() {
             />
           </template>
         </van-swipe-cell>
-      </div>
-
-      <!-- 底部操作 -->
-      <div class="bottom-actions">
-        <van-button round :disabled="saving" @click="step = 2">返回重试</van-button>
-        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll"
-          >导入 {{ parsed.length }} 题</van-button
-        >
       </div>
     </div>
 
@@ -1058,6 +1127,17 @@ function onAdminDialogClose() {
   font-weight: 500;
 }
 
+/* ===== 顶部操作行 ===== */
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.preview-actions :deep(.van-button) {
+  flex: 1;
+}
+
 /* ===== 题目卡片 ===== */
 .preview-list {
   margin-top: var(--sp-4);
@@ -1279,15 +1359,5 @@ function onAdminDialogClose() {
   font-size: 12px;
   cursor: pointer;
   padding: 4px 0;
-}
-
-/* ===== 底部操作 ===== */
-.bottom-actions {
-  display: flex;
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
-}
-.bottom-actions :deep(.van-button) {
-  flex: 1;
 }
 </style>

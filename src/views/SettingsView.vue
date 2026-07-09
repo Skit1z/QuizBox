@@ -2,11 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { showSuccessToast, showFailToast } from 'vant'
-import {
-  useSettingsStore,
-  type AiSettings,
-  type BankSyncSettings,
-} from '@/stores/settings'
+import { useSettingsStore, type AiSettings, type BankSyncSettings } from '@/stores/settings'
 import { useAdminStore } from '@/stores/admin'
 import { AI_PROVIDERS, findProvider } from '@/services/ai-providers'
 import { THEME_COLORS, type ThemeColor } from '@/themes/tokens'
@@ -27,11 +23,18 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-09 08-34',
+    date: '2026-07-09',
+    logs: [
+      '题库列表页的题型筛选框改为只显示当前科目实际存在的题型，不再列出空题型',
+      '导入预览页的「导入」「返回重试」按钮从底部移到顶部，列表更清爽',
+      '导入预览页新增「AI 补答案」按钮：可一键对缺答案的题目批量调用 AI 补全答案与解析',
+    ],
+  },
+  {
     version: '2026-07-08 09-15',
     date: '2026-07-08',
-    logs: [
-      '移除提交时自动递增版本号的钩子，版本号改为构建时刻（yyyy-mm-dd hh-mm）',
-    ],
+    logs: ['移除提交时自动递增版本号的钩子，版本号改为构建时刻（yyyy-mm-dd hh-mm）'],
   },
   {
     version: '1.10.1',

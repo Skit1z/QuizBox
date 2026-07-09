@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { questionsRepo } from '@/db/questions'
@@ -189,10 +189,22 @@ async function saveEdit() {
   }
 }
 
-const typeOptions = computed<SelectOption[]>(() => [
-  { value: '', label: '全部题型' },
-  ...Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => ({ value, label })),
-])
+const typeOptions = computed<SelectOption[]>(() => {
+  // 只展示当前科目里实际存在的题型，避免筛选到一个空列表
+  const usedTypes = new Set(questions.value.map((q) => q.type))
+  return [
+    { value: '', label: '全部题型' },
+    ...Object.entries(QUESTION_TYPE_LABELS)
+      .filter(([value]) => usedTypes.has(value as QuestionType))
+      .map(([value, label]) => ({ value, label })),
+  ]
+})
+// 当前选中的题型若因数据增删而不再存在，自动回退到「全部」
+watch(typeOptions, (opts) => {
+  if (typeFilter.value && !opts.some((o) => o.value === typeFilter.value)) {
+    typeFilter.value = ''
+  }
+})
 
 const moveSubjectOptions = computed<SelectOption[]>(() =>
   subjectsStore.list.filter((s) => s.id !== subjectId).map((s) => ({ value: s.id, label: s.name })),
