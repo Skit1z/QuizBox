@@ -4,16 +4,20 @@ import Components from 'unplugin-vue-components/vite'
 import { VantResolver } from 'unplugin-vue-components/resolvers'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
-import { readFileSync } from 'node:fs'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+// 构建时刻版本号：yyyy-mm-dd hh-mm 格式，供 UI 显示
+const buildDate = new Date()
+const pad = (n: number) => String(n).padStart(2, '0')
+const buildVersion = `${buildDate.getFullYear()}-${pad(buildDate.getMonth() + 1)}-${pad(
+  buildDate.getDate(),
+)} ${pad(buildDate.getHours())}-${pad(buildDate.getMinutes())}`
 
 // https://vite.dev/config/
 export default defineConfig({
   define: {
-    // 构建期注入版本号，供 UI 显示
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    // 构建期注入版本号（构建时刻），供 UI 显示
+    __APP_VERSION__: JSON.stringify(buildVersion),
   },
   plugins: [
     vue(),
@@ -67,7 +71,7 @@ export default defineConfig({
       workbox: {
         // 不缓存 IndexedDB 相关的运行时；缓存静态资源
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-        // AI/WebDAV 请求不走缓存
+        // AI 请求不走缓存
         navigateFallbackDenylist: [/^\/api\//],
         // 新版本激活后立即清掉旧预缓存，避免旧资源残留
         cleanupOutdatedCaches: true,

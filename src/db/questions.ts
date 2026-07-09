@@ -87,7 +87,6 @@ export const questionsRepo = {
       sourceHash,
       updatedAt: now,
       deletedAt: 0, // 0 = 未删除
-      revision: 1,
     }
     await db.questions.put(q)
     autoSync()
@@ -113,7 +112,6 @@ export const questionsRepo = {
           input.sourceHash || (await sha256(input.stem + '|' + JSON.stringify(input.answer ?? ''))),
         updatedAt: now,
         deletedAt: 0,
-        revision: 1,
       })),
     )
     await db.questions.bulkPut(rows)
@@ -137,7 +135,6 @@ export const questionsRepo = {
       ...patch,
       sourceHash,
       updatedAt: now,
-      revision: (existing.revision || 0) + 1,
     })
     autoSync()
   },
@@ -154,7 +151,6 @@ export const questionsRepo = {
           subjectId,
           chapterId: null,
           updatedAt: now,
-          revision: (existing.revision || 0) + 1,
         })
       }
     })

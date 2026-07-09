@@ -38,14 +38,23 @@ const fileRef = ref<File | null>(null)
 const parsing = ref(false)
 const parseError = ref('')
 
-const parsed = ref<ParsedQuestion[]>([])
+/** 带 uid 的解析题（uid 用于列表 :key，避免删除/排序后下标错位） */
+type ParsedItem = ParsedQuestion & { uid: string }
+
+const parsed = ref<ParsedItem[]>([])
 const images: ParsedImage[] = []
 const pdfProgress = ref('')
-const editingIdx = ref<number | null>(null)
+const editingUid = ref<string | null>(null)
 const repairing = ref(false)
 const repairCount = ref(0)
 const saving = ref(false)
 const AUTO_REPAIR_LIMIT = 40
+
+/** 给解析结果注入稳定 uid（删除/排序后仍能正确定位编辑态、AI loading 态） */
+let uidSeq = 0
+function withUids(qs: ParsedQuestion[]): ParsedItem[] {
+  return qs.map((q) => ({ ...q, uid: `p${++uidSeq}` }))
+}
 
 const types: QuestionType[] = ['single', 'multiple', 'judge', 'fill', 'short', 'essay']
 
@@ -68,9 +77,15 @@ const typeOptions = computed<SelectOption[]>(() =>
 
 /** 把编辑态答案字符串与数组互转 */
 function editAnswer(p: ParsedQuestion, val: string) {
-  if (p.type === 'multiple' || p.type === 'fill') {
+  if (p.type === 'multiple') {
     p.answer = val
       .split(/[、,，;;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  } else if (p.type === 'fill') {
+    // 填空：`、` 和换行分空；`；` 保留在单空内作"同空多备选答案"分隔符
+    p.answer = val
+      .split(/[、,，\n]/)
       .map((s) => s.trim())
       .filter(Boolean)
   } else {
@@ -120,7 +135,7 @@ function pruneChoiceAnswer(p: ParsedQuestion) {
 }
 function confirmEdit(p: ParsedQuestion) {
   pruneChoiceAnswer(p)
-  editingIdx.value = null
+  editingUid.value = null
 }
 
 function editOption(p: ParsedQuestion, i: number, val: string) {
@@ -220,10 +235,11 @@ async function doParse() {
     // 有低完整度块 + 有 AI 配置 → AI 判定这些块（是题目则结构化，不是则丢弃）
     // 数量过大时不做逐题 AI 修复，避免一次导入把数百题全发给 AI。
     if (hybrid.lowConfidenceBlocks.length > 0 && settingsStore.ai.apiKey && !tooManyRepairBlocks) {
-      parsed.value = qs
+      // AI repair 阶段用本地数组按对象引用追踪（WeakSet），完成后统一注入 uid 再赋值
+      let working: ParsedQuestion[] = [...qs]
       const aiCandidates = new WeakSet<ParsedQuestion>()
       hybrid.lowConfidenceIndices.forEach((qIdx) => {
-        const q = parsed.value[qIdx]
+        const q = working[qIdx]
         if (q) aiCandidates.add(q)
       })
       step.value = 3
@@ -241,8 +257,8 @@ async function doParse() {
         const toDelete = new Set<number>()
         for (const [blockIdx, fixed] of fixes) {
           const qIdx = hybrid.lowConfidenceIndices[blockIdx]
-          if (qIdx !== undefined && qIdx < parsed.value.length) {
-            parsed.value[qIdx] = fixed
+          if (qIdx !== undefined && qIdx < working.length) {
+            working[qIdx] = fixed
             aiCandidates.add(fixed)
           }
         }
@@ -251,16 +267,15 @@ async function doParse() {
           if (!fixes.has(blockIdx)) toDelete.add(qIdx)
         })
         if (toDelete.size > 0) {
-          parsed.value = parsed.value.filter((_, i) => !toDelete.has(i))
+          working = working.filter((_, i) => !toDelete.has(i))
         }
       } catch {
         // AI 判定失败不影响已有结果
       } finally {
         repairing.value = false
         // 所有索引操作已完成，此时安全过滤空题干，杜绝空白卡片
-        parsed.value = prioritizeReviewQuestions(
-          parsed.value.filter(isRenderableQuestion),
-          aiCandidates,
+        parsed.value = withUids(
+          prioritizeReviewQuestions(working.filter(isRenderableQuestion), aiCandidates),
         )
       }
       return
@@ -279,7 +294,7 @@ async function doParse() {
         ? '未能识别出题目，请检查文档格式'
         : '未能识别出题目，配置 AI 接口可自动解析不确定的内容'
     } else {
-      parsed.value = cleaned
+      parsed.value = withUids(cleaned)
       step.value = 3
     }
   } catch (e: any) {
@@ -309,10 +324,17 @@ function answerText(p: ParsedQuestion): string {
 }
 
 /** 按需 AI 生成/校对单题答案 + 解析 */
-const aiGen = reactive<Record<number, boolean>>({})
-async function genAnswer(p: ParsedQuestion, i: number) {
-  if (aiGen[i]) return
-  aiGen[i] = true
+const aiGen = reactive<Record<string, boolean>>({})
+// 批量 AI 补答案进度
+const batchAi = ref(false)
+const batchProgress = reactive({ done: 0, total: 0 })
+
+/** 缺答案题数（批量补答案按钮依据） */
+const missingAnswerCount = computed(() => parsed.value.filter((p) => !answerText(p)).length)
+
+/** 单题 AI 补答案的核心逻辑（不弹 toast），返回是否成功，供单题/批量复用 */
+async function genAnswerSilent(p: ParsedItem): Promise<boolean> {
+  aiGen[p.uid] = true
   try {
     const { answer, analysis } = await generateAnswer({
       type: p.type,
@@ -322,15 +344,55 @@ async function genAnswer(p: ParsedQuestion, i: number) {
     p.answer = answer
     if (analysis) p.analysis = analysis
     if (typeof p.confidence === 'number') p.confidence = Math.max(p.confidence, 0.7)
-  } catch (e: any) {
-    showFailToast(e?.message || 'AI 生成失败')
+    return true
+  } catch {
+    return false
   } finally {
-    aiGen[i] = false
+    aiGen[p.uid] = false
   }
 }
 
-function removeParsed(i: number) {
-  parsed.value.splice(i, 1)
+async function genAnswer(p: ParsedItem) {
+  if (aiGen[p.uid]) return
+  const ok = await genAnswerSilent(p)
+  if (!ok) showFailToast('AI 生成失败')
+}
+
+/** 一键对所有缺答案题批量调用 AI 补答案，串行避免触发供应商限流 */
+async function batchGenAnswers() {
+  if (batchAi.value) return
+  const targets = parsed.value.filter((p) => !answerText(p))
+  if (targets.length === 0) {
+    showFailToast('没有缺答案的题目')
+    return
+  }
+  batchAi.value = true
+  batchProgress.done = 0
+  batchProgress.total = targets.length
+  let success = 0
+  let failed = 0
+  try {
+    for (const p of targets) {
+      // 跳过被并发单题按钮占用的项，避免重复请求
+      if (aiGen[p.uid]) {
+        batchProgress.done++
+        continue
+      }
+      const ok = await genAnswerSilent(p)
+      if (ok) success++
+      else failed++
+      batchProgress.done++
+    }
+    if (failed === 0) showSuccessToast(`已补全 ${success} 题`)
+    else showFailToast(`成功 ${success} 题，失败 ${failed} 题`)
+  } finally {
+    batchAi.value = false
+  }
+}
+
+function removeParsed(uid: string) {
+  const i = parsed.value.findIndex((p) => p.uid === uid)
+  if (i >= 0) parsed.value.splice(i, 1)
 }
 
 async function saveAll() {
@@ -597,11 +659,42 @@ function onAdminDialogClose() {
         </div>
       </div>
 
+      <!-- 顶部操作 -->
+      <div class="preview-actions">
+        <van-button round size="small" :disabled="saving || batchAi" @click="step = 2"
+          >返回重试</van-button
+        >
+        <van-button
+          v-if="settingsStore.ai.apiKey && missingAnswerCount > 0"
+          round
+          size="small"
+          type="warning"
+          :loading="batchAi"
+          :disabled="saving"
+          @click="batchGenAnswers"
+        >
+          <template v-if="batchAi"
+            >AI 修复 {{ batchProgress.done }}/{{ batchProgress.total }}</template
+          >
+          <template v-else>AI 补答案 ({{ missingAnswerCount }})</template>
+        </van-button>
+        <van-button
+          type="primary"
+          round
+          size="small"
+          :loading="saving"
+          :disabled="batchAi"
+          loading-text="导入中…"
+          @click="saveAll"
+          >导入 {{ parsed.length }} 题</van-button
+        >
+      </div>
+
       <!-- 题目列表 -->
       <div class="preview-list">
         <van-swipe-cell
           v-for="(p, i) in parsed"
-          :key="i"
+          :key="p.uid"
           class="swipe-card"
           :class="{ 'swipe-card--low': (p.confidence ?? 1) < 0.6 }"
         >
@@ -611,15 +704,15 @@ function onAdminDialogClose() {
               <span v-if="(p.confidence ?? 1) < 0.6" class="chip chip--danger">把握低</span>
               <span class="q-item__idx">#{{ i + 1 }}</span>
               <button
-                :class="['q-item__edit', editingIdx === i && 'q-item__edit--active']"
-                @click="editingIdx = editingIdx === i ? null : i"
+                :class="['q-item__edit', editingUid === p.uid && 'q-item__edit--active']"
+                @click="editingUid = editingUid === p.uid ? null : p.uid"
               >
-                <van-icon :name="editingIdx === i ? 'cross' : 'edit'" size="14" />
+                <van-icon :name="editingUid === p.uid ? 'cross' : 'edit'" size="14" />
               </button>
             </div>
 
             <!-- 浏览态 -->
-            <template v-if="editingIdx !== i">
+            <template v-if="editingUid !== p.uid">
               <div class="q-item__stem">{{ p.stem }}</div>
               <div v-if="p.options?.length" class="q-item__options">
                 <div v-for="(opt, oi) in p.options" :key="oi">
@@ -628,16 +721,16 @@ function onAdminDialogClose() {
                 </div>
               </div>
               <div class="q-item__answer">
-                <van-icon name="success" size="13" />
+                <span class="q-item__answer-label">参考答案</span>
                 <span v-if="answerText(p)">{{ answerText(p) }}</span>
                 <span v-else class="q-item__answer-empty">缺答案</span>
                 <button
                   v-if="settingsStore.ai.apiKey"
                   class="ai-gen-btn"
-                  :disabled="aiGen[i]"
-                  @click="genAnswer(p, i)"
+                  :disabled="aiGen[p.uid]"
+                  @click="genAnswer(p)"
                 >
-                  <van-loading v-if="aiGen[i]" size="12" />
+                  <van-loading v-if="aiGen[p.uid]" size="12" />
                   <template v-else
                     ><van-icon name="bulb-o" size="12" /> AI
                     {{ answerText(p) ? '校对' : '补答案' }}</template
@@ -704,7 +797,11 @@ function onAdminDialogClose() {
                     :value="answerInputVal(p)"
                     @input="(e) => editAnswer(p, (e.target as HTMLInputElement).value)"
                     :placeholder="
-                      p.type === 'multiple' || p.type === 'fill' ? '多个答案用、分隔' : ''
+                      p.type === 'multiple'
+                        ? '多个答案用、分隔'
+                        : p.type === 'fill'
+                          ? '多个空用、分隔，同空多答案用；分隔'
+                          : ''
                     "
                   />
                 </div>
@@ -726,18 +823,10 @@ function onAdminDialogClose() {
               type="danger"
               text="移除"
               style="height: 100%"
-              @click="removeParsed(i)"
+              @click="removeParsed(p.uid)"
             />
           </template>
         </van-swipe-cell>
-      </div>
-
-      <!-- 底部操作 -->
-      <div class="bottom-actions">
-        <van-button round :disabled="saving" @click="step = 2">返回重试</van-button>
-        <van-button type="primary" round :loading="saving" loading-text="导入中…" @click="saveAll"
-          >导入 {{ parsed.length }} 题</van-button
-        >
       </div>
     </div>
 
@@ -1038,6 +1127,17 @@ function onAdminDialogClose() {
   font-weight: 500;
 }
 
+/* ===== 顶部操作行 ===== */
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.preview-actions :deep(.van-button) {
+  flex: 1;
+}
+
 /* ===== 题目卡片 ===== */
 .preview-list {
   margin-top: var(--sp-4);
@@ -1100,12 +1200,15 @@ function onAdminDialogClose() {
 .q-item__answer {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   margin-top: var(--sp-2);
   padding-top: var(--sp-2);
   border-top: 1px dashed var(--border-strong);
   font-size: 13px;
-  color: var(--success);
+  color: var(--text-2);
+}
+.q-item__answer-label {
+  color: var(--text-3);
 }
 .q-item__answer-empty {
   color: var(--danger);
@@ -1256,15 +1359,5 @@ function onAdminDialogClose() {
   font-size: 12px;
   cursor: pointer;
   padding: 4px 0;
-}
-
-/* ===== 底部操作 ===== */
-.bottom-actions {
-  display: flex;
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
-}
-.bottom-actions :deep(.van-button) {
-  flex: 1;
 }
 </style>

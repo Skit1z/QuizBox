@@ -6,11 +6,21 @@
 import type { QuestionType } from '@/types'
 import type { ParsedQuestion } from './importer'
 
+/**
+ * 填空题「同一空的多个等价备选答案」分隔符。
+ * 全系统约定：`；`（中文分号）只用于分隔同一空的多个备选答案，
+ * 不用于分隔多个空。判分时（grading.ts matchFill）按此分隔后任一命中即对。
+ */
+export const FILL_ALT_SEPARATOR = '；'
+
 // ===== 正则模式 =====
 
-// 大题区段标题：一、单选题 / 二、多选题（共 xx 题）
+// Markdown/OCR 常把答案、解析、大题标题转成标题行，解析前统一剥离排版标记。
+const RE_MARKDOWN_HEADING = /^[\s　]{0,3}#{1,6}\s*/
+
+// 大题区段标题：一、单选题 / 二、多选题（共 xx 题）/ 判断题（xx 题）
 const RE_SECTION_HEADER =
-  /^[一二三四五六七八九十百]+[、.．]\s*(单选|多选|判断|填空|简答|论述|选择|不定项选择)/m
+  /^[\s　]*(?:[一二三四五六七八九十百]+[、.．]\s*)?(不定项选择|单选|多选|判断|填空|简答|论述|选择)题?/m
 const SECTION_TYPE_MAP: Record<string, QuestionType> = {
   单选: 'single',
   选择: 'single',
@@ -43,9 +53,9 @@ const RE_INLINE_OPT_SPLIT =
 
 // 答案标记（冒号可选，兼容「正确答案C」「答案：C」）
 const RE_ANSWER =
-  /^[\s　•◦▪▪·●○■□*\-‑–—]*(?:【?答案】?|答案|Answer|answer|正确答案|答)\s*[:：]?\s*/i
+  /^[\s　•◦▪▪·●○■□*\-‑–—#]*(?:【?答案】?|答案|Answer|answer|正确答案|参考答案|答)\s*[:：]?\s*/i
 // 解析标记
-const RE_ANALYSIS = /^[\s　]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
+const RE_ANALYSIS = /^[\s　#]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
 
 // 判断题改错格式：「错：零和博弈改为合作共赢」→ 答案=F，解析=改错内容
 const RE_JUDGE_CORRECTION = /^[\s　]*(对|错|正确|错误)\s*[：:]\s*(.*)/
@@ -66,6 +76,54 @@ const RE_BLANK = /_{2,}|（\s*）|\(\s*\)/
 
 // 垃圾行：分隔线、纯符号
 const RE_JUNK_LINE = /^[\s　]*[=\-_─━═~·•●■□▪▫◆◇]{3,}[\s　]*$/
+
+// 联系方式特征（跨来源稳定）：vx / V： / 微信 / QQ / 加V 等。
+// 注意只匹配「联系方式本体」这种结构化特征，不匹配学校名、话术等内容词。
+const RE_WATERMARK_PATTERNS = [
+  /[加+＋]\s*[vｖ][xｘ]/i, // 加vx / +vx（英文「vx」组合在正常题干里几乎不出现）
+  /[vｖ][xｘ]\s*[:：]\s*\S/, // vx:xxx（冒号 + 内容才算，避免误伤正文）
+  /(?:微信|qq|企鹅)\s*[:：]?\s*[\w\-]{5,}/i, // 微信:xxxxx / QQ:123456
+]
+
+/**
+ * 过滤防盗版/广告水印行。采用「结构启发式」而非内容黑名单，保证对任意
+ * 学校/卖家/话术都通用。两条策略叠加：
+ *
+ * 1. 重复行检测（最普适）：水印的最大特征是「每隔几题插一次，整段重复」。
+ *    全扫一遍统计每行（trim 后）出现次数，≥2 次的短行（≤40 字、无句末
+ *    标点）视为水印。题目正文几乎不会逐字重复，所以不会误伤。
+ * 2. 联系方式特征：单次出现的水印靠 vx/微信/QQ 等联系方式兜底。
+ */
+function filterWatermarks(lines: string[]): string[] {
+  const counts = new Map<string, number>()
+  for (const raw of lines) {
+    const t = raw.trim()
+    if (!t) continue
+    counts.set(t, (counts.get(t) ?? 0) + 1)
+  }
+
+  // 重复 ≥2 次 + 像水印（短、无句末标点、非题号/选项/答案行）
+  const repeatedWatermarks = new Set<string>()
+  for (const [t, n] of counts) {
+    if (n < 2) continue
+    if (t.length > 40) continue
+    // 句末标点表明它是正常句子（题干/选项/解析），不可能是水印
+    if (/[。．！？]$/.test(t)) continue
+    // 排除结构性行（题号/选项/答案/章节标题）——它们可能重复但不是水印
+    if (RE_QUESTION_NUM.test(t) || RE_OPTION_HEAD.test(t)) continue
+    if (RE_ANSWER.test(t) || RE_ANALYSIS.test(t)) continue
+    if (RE_SECTION_HEADER.test(t)) continue
+    repeatedWatermarks.add(t)
+  }
+
+  return lines.filter((raw) => {
+    const t = raw.trim()
+    if (!t) return true // 空行保留（分块逻辑需要）
+    if (repeatedWatermarks.has(t)) return false
+    if (RE_WATERMARK_PATTERNS.some((re) => re.test(t))) return false
+    return true
+  })
+}
 
 // 常见中文标点（用于可读性判断）
 const RE_CN_PUNCT = /[。，、；：！？""''（）《》【】\-—…·]/g
@@ -175,7 +233,11 @@ function stripTrailingContentCapture(src: string): string {
 }
 
 function parseHybridInternal(text: string): HybridResult {
-  const lines = text.split(/\r?\n/).flatMap(splitMergedSectionUnits)
+  const preprocessed = text
+    .split(/\r?\n/)
+    .map(normalizeOcrMarkdownLine)
+    .flatMap(splitMergedSectionUnits)
+  const lines = filterWatermarks(preprocessed)
   const expanded = expandInlineOptions(lines)
   const blocks = splitIntoBlocks(expanded)
   const { answerMap, keyIdx } = extractAnswerKey(blocks)
@@ -339,7 +401,11 @@ interface ParsedEntry {
 }
 
 export function splitRawChunks(text: string): string[] {
-  const lines = text.split(/\r?\n/).flatMap(splitMergedSectionUnits)
+  const preprocessed = text
+    .split(/\r?\n/)
+    .map(normalizeOcrMarkdownLine)
+    .flatMap(splitMergedSectionUnits)
+  const lines = filterWatermarks(preprocessed)
   const expanded = expandInlineOptions(lines)
   const blocks = splitIntoBlocks(expanded)
   return blocks.map((b) => b.lines.join('\n').trim()).filter(Boolean)
@@ -361,6 +427,8 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
   }
 
   for (const line of lines) {
+    if (!currentSectionType && buf.length === 0 && isLikelyDocumentHeading(line)) continue
+
     // 检测区段标题（一、单选题 等，带题型信息）
     const secMatch = line.match(RE_SECTION_HEADER)
     if (secMatch) {
@@ -401,6 +469,23 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
   flush()
 
   return blocks
+}
+
+/**
+ * OCR 转 Markdown 后常把结构性行写成标题。这里只移除排版符号，
+ * 不绑定具体题库内容，后续仍由题号/题型/答案规则决定是否采纳。
+ */
+function normalizeOcrMarkdownLine(line: string): string {
+  return line.replace(RE_MARKDOWN_HEADING, '')
+}
+
+function isLikelyDocumentHeading(line: string): boolean {
+  const t = line.trim()
+  if (!t) return true
+  if (RE_SECTION_HEADER.test(t) || RE_QUESTION_NUM.test(t) || RE_OPTION_HEAD.test(t)) return false
+  if (RE_ANSWER.test(t) || RE_ANALYSIS.test(t)) return false
+  if (!/(题库|试题|试卷|练习|习题)/.test(t)) return false
+  return !/[。！？?]/.test(t) && t.length <= 40
 }
 
 /** 是否为「判断题答案/改错」终止行：错：xxx / 对 / 答案：正确 等 */
@@ -486,6 +571,7 @@ function parseBlock(block: RawBlock): ParsedBlock | null {
     }
 
     if (phase === 'answer') {
+      if (shouldIgnoreAnswerContinuation(trimmed, answerRaw, sectionType)) continue
       answerRaw += '\n' + trimmed
       continue
     }
@@ -575,6 +661,24 @@ function parseBlock(block: RawBlock): ParsedBlock | null {
 function hasAnswer(answer: ParsedQuestion['answer']): boolean {
   if (Array.isArray(answer)) return answer.length > 0
   return !!answer
+}
+
+function shouldIgnoreAnswerContinuation(
+  line: string,
+  currentAnswer: string,
+  sectionType?: QuestionType,
+): boolean {
+  const current = currentAnswer.trim()
+  const next = line.trim()
+  if (!current || !next) return false
+
+  // 单选区里「正确答案：A」后多出孤立 B，通常是 OCR 把下一处选项残片误断到答案段。
+  // 多选区保留 A/B/C 的多行答案写法。
+  return (
+    sectionType === 'single' &&
+    /^[A-Ha-h]$/.test(current) &&
+    /^[A-Ha-h]$/.test(next)
+  )
 }
 
 function extractAnswerKey(blocks: RawBlock[]): {
@@ -813,6 +917,10 @@ export function detectType(
 
   // 硬证据：答案含多个字母 → 多选（即使无选项）
   if (answer) {
+    if (RE_JUDGE_TRUE.test(answer) || RE_JUDGE_FALSE.test(answer)) return 'judge'
+    if (/[√✓×✗]/.test(answer)) return 'judge'
+    if (/^(对|错|正确|错误)$/.test(answer.trim())) return 'judge'
+
     const letters = answer.match(/[A-Ha-h]/g)
     if (letters && letters.length > 1) return 'multiple'
     if (letters && letters.length === 1) return 'single'
@@ -822,10 +930,6 @@ export function detectType(
   if (sectionType) return sectionType
 
   // 判断题特征
-  if (RE_JUDGE_TRUE.test(answer) || RE_JUDGE_FALSE.test(answer)) return 'judge'
-  if (/[√✓×✗]/.test(answer)) return 'judge'
-  if (/^(对|错|正确|错误)$/.test(answer.trim())) return 'judge'
-
   // 填空特征
   if (RE_BLANK.test(stem)) return 'fill'
 
@@ -858,15 +962,73 @@ export function normalizeAnswer(
       return raw
     }
     case 'fill': {
-      const parts = raw
-        .split(/[;；,，\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-      return parts.length > 0 ? parts : [raw]
+      return parseFillBlanks(raw)
     }
     default:
       return raw
   }
+}
+
+// 「第X空：」前缀，X 为汉字数字或阿拉伯数字。OCR 题库填空答案常见格式。
+const RE_FILL_BLANK_PREFIX = /第([一二三四五六七八九十\d]+)空\s*[：:]\s*/
+// 汉字数字 → 阿拉伯数字（仅覆盖常见的小数字，足够填空分空用）
+const CN_NUM_MAP: Record<string, number> = {
+  一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+}
+
+/**
+ * 解析填空题答案，返回「每空一项」的字符串数组。
+ * 同一空的多个等价答案用 `；` 连接成单元素（判分时按 `；` 拆成备选）。
+ *
+ * 三种格式按优先级处理：
+ * 1. 含「第X空：」前缀 → 按前缀归位到对应空位，剥离前缀。
+ *    （OCR 题库最常见，如「第一空：A；B\n第二空：C」）
+ * 2. 不含前缀但含 `\n` → 每行一个空（AI 路径 sanitizeParsed 走这条）。
+ * 3. 不含前缀也不含 `\n` → 按旧分隔符 `[;；,，]` 拆空（兼容老题库，
+ *    如「答案1；答案2」视为两个空）。
+ */
+function parseFillBlanks(raw: string): string[] {
+  const text = raw.trim()
+  if (!text) return []
+
+  // 分支 1：带「第X空：」前缀
+  if (RE_FILL_BLANK_PREFIX.test(text)) {
+    // 把文本按前缀位置切开，每段对应一个空。
+    const parts = text.split(RE_FILL_BLANK_PREFIX)
+    // split 捕获组会导致 [前文本, 数字1, 内容1, 数字2, 内容2, ...]
+    const blanks: string[] = []
+    for (let i = 1; i < parts.length; i += 2) {
+      const numStr = parts[i]
+      const content = (parts[i + 1] || '').trim()
+      const num = CN_NUM_MAP[numStr] ?? parseInt(numStr, 10)
+      if (!Number.isNaN(num) && content) {
+        // 去掉内容末尾可能粘连的「第一空」等下一段前缀残片
+        const cleanContent = content.replace(RE_FILL_BLANK_PREFIX, '').trim()
+        blanks[num - 1] = cleanContent
+      }
+    }
+    const filled = blanks.filter((b) => b !== undefined && b !== '')
+    if (filled.length > 0) return filled
+  }
+
+  // 分支 2：不含前缀但含换行 → 每行一空
+  if (text.includes('\n')) {
+    const lines = text
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (lines.length > 0) return lines
+  }
+
+  // 分支 3：旧格式按 [,，] 分空。
+  // 注意：`；` 不在此处分空——它在全系统里专属「同一空的多个等价备选答案」
+  // 分隔符（见 grading.ts matchFill）。老题库用 `；` 分多空的写法（如「答案一；答案二」）
+  // 会被当作单空的两备选，判分时任一命中即对，语义不丢分。
+  const parts = text
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return parts.length > 0 ? parts : [text]
 }
 
 function computeConfidence(

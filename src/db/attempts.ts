@@ -1,6 +1,9 @@
 import { db, uid } from '@/db'
 import type { Attempt, AttemptMode } from '@/types'
 
+/** 每题最多保留的答题记录数（超过则删最旧的，控制表无限增长） */
+const MAX_ATTEMPTS_PER_QUESTION = 50
+
 export const attemptsRepo = {
   async record(input: {
     questionId: string
@@ -23,33 +26,32 @@ export const attemptsRepo = {
       createdAt: Date.now(),
     }
     await db.attempts.put(a)
+    // 写入后裁剪：每题保留最近 N 条，删最旧的（不阻塞答题流程）
+    void pruneAttempts(input.questionId)
     return a
-  },
-
-  async listByQuestion(questionId: string): Promise<Attempt[]> {
-    const all = await db.attempts.where('questionId').equals(questionId).toArray()
-    return all.sort((a, b) => b.createdAt - a.createdAt)
   },
 
   async getAttemptedQuestionIds(questionIds: string[]): Promise<Set<string>> {
     if (questionIds.length === 0) return new Set()
-    const rows = await db.attempts.where('questionId').anyOf(questionIds).toArray()
-    return new Set(rows.map((row) => row.questionId))
+    // 只取 questionId 索引键，不加载整行（避免反序列化 aiFeedback 等长文本）
+    const keys = await db.attempts.where('questionId').anyOf(questionIds).keys()
+    return new Set(keys as string[])
   },
+}
 
-  async getObjectiveStats(
-    questionIds: string[],
-  ): Promise<Map<string, { total: number; wrong: number }>> {
-    const stats = new Map<string, { total: number; wrong: number }>()
-    if (questionIds.length === 0) return stats
-    const rows = await db.attempts.where('questionId').anyOf(questionIds).toArray()
-    for (const row of rows) {
-      if (row.isCorrect === undefined) continue
-      const cur = stats.get(row.questionId) || { total: 0, wrong: 0 }
-      cur.total++
-      if (!row.isCorrect) cur.wrong++
-      stats.set(row.questionId, cur)
-    }
-    return stats
-  },
+/** 裁剪指定题目的答题记录，保留最近 MAX_ATTEMPTS_PER_QUESTION 条 */
+async function pruneAttempts(questionId: string): Promise<void> {
+  try {
+    const count = await db.attempts.where('questionId').equals(questionId).count()
+    if (count <= MAX_ATTEMPTS_PER_QUESTION) return
+    // 按 createdAt 降序跳过前 N 条，删剩余最旧的
+    await db.attempts
+      .where('questionId')
+      .equals(questionId)
+      .reverse()
+      .offset(MAX_ATTEMPTS_PER_QUESTION)
+      .delete()
+  } catch {
+    // 裁剪失败不影响答题
+  }
 }

@@ -17,7 +17,6 @@ export async function saveImages(images: ParsedImage[]): Promise<void> {
       hash: img.hash,
       blob: img.blob,
       size: img.blob.size,
-      synced: false,
     }))
   if (toAdd.length) await db.attachments.bulkPut(toAdd)
 }

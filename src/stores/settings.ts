@@ -12,15 +12,6 @@ export interface AiSettings {
   model: string
 }
 
-export interface WebdavSettings {
-  enabled: boolean
-  url: string
-  username: string
-  password: string
-  /** 远端目录路径 */
-  remotePath: string
-}
-
 export interface OcrSettings {
   /** PaddleOCR 云 API Token */
   token: string
@@ -49,16 +40,7 @@ const DEFAULT_AI: AiSettings = {
   model: 'deepseek-v4-flash',
 }
 
-const DEFAULT_WEBDAV: WebdavSettings = {
-  enabled: false,
-  url: 'https://dav.jianguoyun.com/dav/',
-  username: '',
-  password: '',
-  remotePath: '/QuizBox',
-}
-
 const META_KEY_AI = 'ai_settings'
-const META_KEY_WEBDAV = 'webdav_settings'
 const META_KEY_OCR = 'ocr_settings'
 const META_KEY_BANK = 'bank_sync_settings'
 const META_KEY_THEME = 'theme'
@@ -70,18 +52,10 @@ interface StoredAi {
   apiKey: string // 加密
   model: string
 }
-interface StoredWebdav {
-  enabled: boolean
-  url: string
-  username: string
-  password: string // 加密
-  remotePath: string
-}
 
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
     ai: { ...DEFAULT_AI },
-    webdav: { ...DEFAULT_WEBDAV },
     ocr: { ...DEFAULT_OCR },
     bankSync: { ...DEFAULT_BANK },
     theme: 'auto' as 'light' | 'dark' | 'auto',
@@ -92,9 +66,8 @@ export const useSettingsStore = defineStore('settings', {
   actions: {
     async load() {
       if (this.loaded) return // 避免重复加载（含解密开销）
-      const [aiMeta, wdMeta, ocrMeta, bankMeta, themeMeta, colorMeta] = await Promise.all([
+      const [aiMeta, ocrMeta, bankMeta, themeMeta, colorMeta] = await Promise.all([
         db.syncMeta.get(META_KEY_AI),
-        db.syncMeta.get(META_KEY_WEBDAV),
         db.syncMeta.get(META_KEY_OCR),
         db.syncMeta.get(META_KEY_BANK),
         db.syncMeta.get(META_KEY_THEME),
@@ -110,18 +83,6 @@ export const useSettingsStore = defineStore('settings', {
           baseUrl: provider && !provider.custom ? provider.baseUrl : raw.baseUrl,
           apiKey,
           model: raw.model || provider?.model || '',
-        }
-      }
-      if (wdMeta) {
-        const raw = JSON.parse(wdMeta.value) as StoredWebdav
-        const password = await this.tryDecrypt(raw.password, 'WebDAV 密码')
-        this.webdav = {
-          enabled: raw.enabled,
-          // url 为空时回退默认值（坚果云），兼容旧版存了空字符串的用户
-          url: raw.url || DEFAULT_WEBDAV.url,
-          username: raw.username,
-          password,
-          remotePath: raw.remotePath || '/QuizBox',
         }
       }
       if (ocrMeta) {
@@ -181,21 +142,6 @@ export const useSettingsStore = defineStore('settings', {
       }
       await db.syncMeta.put({ key: META_KEY_AI, value: JSON.stringify(stored) })
       this.secretErrors = this.secretErrors.filter((x) => x !== 'AI API Key')
-    },
-
-    async saveWebdav(settings: Partial<WebdavSettings>) {
-      this.webdav = { ...this.webdav, ...settings }
-      const stored: StoredWebdav = {
-        enabled: this.webdav.enabled,
-        url: this.webdav.url,
-        username: this.webdav.username,
-        password: this.webdav.password ? await encryptSecret(this.webdav.password) : '',
-        remotePath: this.webdav.remotePath,
-      }
-      await db.syncMeta.put({ key: META_KEY_WEBDAV, value: JSON.stringify(stored) })
-      this.secretErrors = this.secretErrors.filter((x) => x !== 'WebDAV 密码')
-      const { resetSyncClient } = await import('@/services/sync')
-      resetSyncClient()
     },
 
     async saveOcr(settings: Partial<OcrSettings>) {

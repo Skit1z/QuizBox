@@ -138,12 +138,8 @@ async function start() {
   let qs: Question[]
   restoredSession.value = null
 
-  // 清理旧的进行中自测场次：每次开始新练习前，把残留的 in_progress 练习
-  // 标记为放弃，避免「我的练习」列表累积废弃场次
-  const stale = await examSessionsRepo.listInProgressPractice()
-  if (stale.length) {
-    await Promise.all(stale.map((s) => examSessionsRepo.abandon(s.id)))
-  }
+  // 不再自动放弃所有进行中的自测：用户可能主动保存了多个未完成会话，
+  // 等「我的自测」里继续。废弃会话由用户在列表页手动清理。
 
   if (presetQuestionIds.value.length) {
     qs = await questionsRepo.findByIds(presetQuestionIds.value)

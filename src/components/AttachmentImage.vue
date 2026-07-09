@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { db } from '@/db'
-import { fetchAttachment } from '@/services/sync'
 
 const props = defineProps<{
   hash: string
@@ -22,11 +21,9 @@ function release() {
 async function load() {
   release()
   loading.value = true
+  // 附件仅从本地 IndexedDB 读取（WebDAV 远端拉取已随 WebDAV 同步一并移除）
   const att = await db.attachments.get(props.hash)
-  let blob = att?.blob || null
-  if (!blob) {
-    blob = await fetchAttachment(props.hash)
-  }
+  const blob = att?.blob || null
   if (blob) {
     url.value = URL.createObjectURL(blob)
   }

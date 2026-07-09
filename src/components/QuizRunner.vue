@@ -10,6 +10,7 @@ import { gradeObjective } from '@/services/grading'
 import { attemptsRepo } from '@/db/attempts'
 import { wrongBookRepo } from '@/db/wrongbook'
 import { examSessionsRepo } from '@/db/examSessions'
+import { debounce } from '@/utils/debounce'
 import type { AttemptMode, ExamSession, ExamSubMode, QuestionType } from '@/types'
 
 const props = defineProps<{
@@ -54,6 +55,8 @@ const submitted = ref<Record<string, boolean>>({})
 const gradeMap = ref<Record<string, boolean>>({})
 /** 已记录 attempt 的题目 id，防止恢复会话后重做重复记录 */
 const recorded = ref<Set<string>>(new Set())
+// 主观题的 AI 评分/自评也已记录 attempt 的题目集合，防止 resume 后重复写
+const recordedSubjective = ref<Set<string>>(new Set())
 
 const selfRating = ref<Record<string, number>>({})
 const aiResult = ref<Record<string, { score: number; feedback: string }>>({})
@@ -200,7 +203,8 @@ async function initSession() {
   }
 }
 
-// 答案变化后立即排队持久化，避免退出页面时防抖写入丢失。
+// 答案变化后防抖持久化（400ms），避免填空/简答每次键击都全量写 IndexedDB。
+// 退出页面 / 翻题时调 flushAnswers() 立即 flush，保证不丢数据。
 let persistPromise: Promise<void> = Promise.resolve()
 function persistAnswersNow() {
   const currentSession = session.value
@@ -218,12 +222,13 @@ function persistAnswersNow() {
   return persistPromise
 }
 
-function persistAnswers() {
+const persistAnswers = debounce(() => {
   void persistAnswersNow()
-}
+}, 400)
 
 function flushAnswers() {
-  return persistAnswersNow()
+  persistAnswers.flush()
+  return persistPromise
 }
 
 function restoreSubmittedState() {
@@ -239,6 +244,12 @@ function restoreSubmittedState() {
   }
   submitted.value = nextSubmitted
   gradeMap.value = nextGradeMap
+  // resume 时把已有 AI 评分/自评记录的题标记为「已记录」，避免再次点击重复写 attempt
+  for (const q of props.questions) {
+    if (aiResult.value[q.id] || selfRating.value[q.id] != null) {
+      recordedSubjective.value.add(q.id)
+    }
+  }
 }
 
 // ===== 答题逻辑 =====
@@ -383,13 +394,16 @@ async function callAi() {
       },
     ])
     aiResult.value[q.id] = res
-    attemptsRepo.record({
-      questionId: q.id,
-      mode: props.mode,
-      userAnswer: ans || '',
-      aiScore: res.score,
-      aiFeedback: res.feedback,
-    })
+    if (!recordedSubjective.value.has(q.id)) {
+      recordedSubjective.value.add(q.id)
+      attemptsRepo.record({
+        questionId: q.id,
+        mode: props.mode,
+        userAnswer: ans || '',
+        aiScore: res.score,
+        aiFeedback: res.feedback,
+      })
+    }
   } catch (e: any) {
     showToast(e?.message || 'AI 评分失败')
   } finally {
@@ -400,12 +414,15 @@ async function callAi() {
 function submitSelf(rating: number) {
   selfRating.value[current.value.id] = rating
   persistAnswers()
-  attemptsRepo.record({
-    questionId: current.value.id,
-    mode: props.mode,
-    userAnswer: answers.value[current.value.id] || '',
-    selfRating: rating,
-  })
+  if (!recordedSubjective.value.has(current.value.id)) {
+    recordedSubjective.value.add(current.value.id)
+    attemptsRepo.record({
+      questionId: current.value.id,
+      mode: props.mode,
+      userAnswer: answers.value[current.value.id] || '',
+      selfRating: rating,
+    })
+  }
 }
 
 onMounted(async () => {

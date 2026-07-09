@@ -28,7 +28,6 @@ export interface SyncRecord {
   updatedAt: number
   /** 0 表示未删除，时间戳(>0)表示软删除时间；兼容读取旧 null 数据由 isDeleted 处理 */
   deletedAt: number
-  revision: number
 }
 
 // ===== 数据表 =====
@@ -137,7 +136,6 @@ export interface Attachment {
   hash: string
   blob: Blob
   size: number
-  synced: boolean
 }
 
 export interface SyncMeta {

@@ -68,6 +68,11 @@ export class QADatabase extends Dexie {
             delete question[['diff', 'iculty'].join('')]
           }),
       )
+
+    // version 5：移除 attachments 的 synced 索引（WebDAV 附件同步已删除，字段无人读写）
+    this.version(5).stores({
+      attachments: 'hash, size',
+    })
   }
 }
 

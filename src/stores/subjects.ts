@@ -36,7 +36,6 @@ export const useSubjectsStore = defineStore('subjects', {
         color,
         updatedAt: Date.now(),
         deletedAt: 0,
-        revision: 1,
       }
       await db.subjects.put(subject)
       this.list.push(subject)
@@ -54,12 +53,12 @@ export const useSubjectsStore = defineStore('subjects', {
         const liveQuestions = await db.questions.where('subjectId').equals(id).toArray()
         const deadQs = liveQuestions
           .filter((q) => !isDeleted(q.deletedAt))
-          .map((q) => ({ ...q, ...tombstonePatch, revision: (q.revision || 0) + 1 }))
+          .map((q) => ({ ...q, ...tombstonePatch }))
         if (deadQs.length) await db.questions.bulkPut(deadQs)
         const liveChapters = await db.chapters.where('subjectId').equals(id).toArray()
         const deadChapters = liveChapters
           .filter((c) => !isDeleted(c.deletedAt))
-          .map((c) => ({ ...c, ...tombstonePatch, revision: (c.revision || 0) + 1 }))
+          .map((c) => ({ ...c, ...tombstonePatch }))
         if (deadChapters.length) await db.chapters.bulkPut(deadChapters)
       })
       autoSync()
