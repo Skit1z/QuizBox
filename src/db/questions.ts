@@ -16,6 +16,21 @@ export interface QuestionInput {
   sourceHash?: string
 }
 
+/** 规范化题目内容哈希，避免同题干/答案但题型或选项不同的题被误判为重复。 */
+export async function questionSourceHash(
+  input: Pick<QuestionInput, 'type' | 'stem' | 'options' | 'answer'>,
+): Promise<string> {
+  const normalized = {
+    type: input.type,
+    stem: input.stem.trim().replace(/\s+/g, ' '),
+    options: (input.options ?? []).map((option) => option.trim().replace(/\s+/g, ' ')),
+    answer: Array.isArray(input.answer)
+      ? input.answer.map((answer) => String(answer).trim())
+      : String(input.answer ?? '').trim(),
+  }
+  return sha256(JSON.stringify(normalized))
+}
+
 export const questionsRepo = {
   /** 按科目查询未删除题目 */
   async listBySubject(subjectId: string): Promise<Question[]> {
@@ -71,8 +86,7 @@ export const questionsRepo = {
 
   async create(input: QuestionInput): Promise<Question> {
     const now = Date.now()
-    const sourceHash =
-      input.sourceHash || (await sha256(input.stem + '|' + JSON.stringify(input.answer ?? '')))
+    const sourceHash = input.sourceHash || (await questionSourceHash(input))
     const q: Question = {
       id: uid('q_'),
       subjectId: input.subjectId,
@@ -108,8 +122,7 @@ export const questionsRepo = {
         analysis: input.analysis,
         attachments: input.attachments,
         tags: input.tags,
-        sourceHash:
-          input.sourceHash || (await sha256(input.stem + '|' + JSON.stringify(input.answer ?? ''))),
+        sourceHash: input.sourceHash || (await questionSourceHash(input)),
         updatedAt: now,
         deletedAt: 0,
       })),
@@ -123,13 +136,19 @@ export const questionsRepo = {
     const existing = await db.questions.get(id)
     if (!existing) return
     const now = Date.now()
-    // 题干或答案变了 → 重算 sourceHash，否则改了内容后导入相同新题
-    // 会被误判重复/漏判重复
-    const contentChanged = patch.stem !== undefined || patch.answer !== undefined
+    // 任一参与去重的内容变化都重算 sourceHash，避免后续导入误判重复或漏判重复。
+    const contentChanged =
+      patch.type !== undefined ||
+      patch.stem !== undefined ||
+      patch.options !== undefined ||
+      patch.answer !== undefined
     const sourceHash = contentChanged
-      ? await sha256(
-          (patch.stem ?? existing.stem) + '|' + JSON.stringify(patch.answer ?? existing.answer),
-        )
+      ? await questionSourceHash({
+          type: patch.type ?? existing.type,
+          stem: patch.stem ?? existing.stem,
+          options: patch.options ?? existing.options,
+          answer: patch.answer ?? existing.answer,
+        })
       : (patch.sourceHash ?? existing.sourceHash)
     await db.questions.update(id, {
       ...patch,

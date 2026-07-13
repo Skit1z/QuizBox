@@ -4,14 +4,12 @@
 //   quizbox/manifest.json           (~1 KB, 索引)
 //   quizbox/meta.json               (~0.5 KB, subjects + chapters)
 //   quizbox/shard_sub_<subjectId>_<index>.json  (<250 KB, 题目分片)
-//   quizbox/bank.json               (旧版全量，向后兼容)
 //
 // 部署前需在 Vercel 项目里创建一个 Blob store（Storage → Blob → Create），
 // 它会自动注入 BLOB_READ_WRITE_TOKEN 环境变量。
-// 可选：设置环境变量 BANK_KEY 作为共享密钥（非账号系统，仅防陌生人覆盖），
-// 客户端在「设置」里填同样的密钥即可。
+// 可选设置 BANK_KEY 作为共享密钥；未设置时同源网页可直接同步当前项目的 Blob。
 
-import { del, get, put, head } from '@vercel/blob'
+import { del, get, put } from '@vercel/blob'
 import type { IncomingMessage, ServerResponse } from 'http'
 
 interface VercelRequest extends IncomingMessage {
@@ -30,8 +28,10 @@ export const config = { runtime: 'nodejs' }
 const PREFIX = 'quizbox/'
 const MANIFEST_PATH = `${PREFIX}manifest.json`
 const META_PATH = `${PREFIX}meta.json`
-const LEGACY_BANK_PATH = `${PREFIX}bank.json`
 const SHARD_PATH_RE = /^quizbox\/shard_sub_[A-Za-z0-9_-]+_\d+\.json$/
+const SUBJECT_ID_RE = /^[A-Za-z0-9_-]+$/
+const MAX_REQUEST_BYTES = 4 * 1024 * 1024
+const MAX_SHARD_BYTES = 250 * 1024
 
 const BLOB_OPTS = {
   access: 'private' as const,
@@ -60,11 +60,6 @@ async function writeJson(path: string, body: string) {
   await put(path, body, BLOB_OPTS)
 }
 
-async function blobExists(path: string): Promise<boolean> {
-  const b = await head(path).catch(() => null)
-  return !!b
-}
-
 // SHA-256（Node Web Crypto，Vercel Node runtime 支持）
 async function sha256(text: string): Promise<string> {
   const buf = new TextEncoder().encode(text)
@@ -91,8 +86,6 @@ interface BankManifest {
   updatedAt: number
   meta: { path: string; hash: string; size: number }
   shards: ShardEntry[]
-  /** 旧版 bank.json 是否已清理（清理后不再每次 PUT 都 head/del 检查，省 Advanced Operations） */
-  legacyCleaned?: boolean
 }
 
 interface MetaShard {
@@ -117,51 +110,24 @@ async function writeManifest(m: BankManifest) {
   await writeJson(MANIFEST_PATH, JSON.stringify(m))
 }
 
-/** 根据 manifest 重新拼装出旧版全量 bank.json 结构（供旧客户端降级读取） */
-async function assembleLegacyBank(manifest: BankManifest): Promise<{
-  version: number
-  tables: Record<string, Record<string, any>>
-}> {
-  const tables: Record<string, Record<string, any>> = {
-    subjects: {},
-    chapters: {},
-    questions: {},
-  }
-  const meta = await readJson<MetaShard>(META_PATH)
-  if (meta) {
-    tables.subjects = meta.subjects || {}
-    tables.chapters = meta.chapters || {}
-  }
-  for (const entry of manifest.shards) {
-    const shard = await readJson<QuestionShard>(entry.path)
-    if (shard?.questions) Object.assign(tables.questions, shard.questions)
-  }
-  return { version: 1, tables }
-}
-
-function countTables(data: any) {
-  const tables = data?.tables || {}
-  return Object.fromEntries(
-    ['subjects', 'chapters', 'questions'].map((name) => [
-      name,
-      tables[name] ? Object.keys(tables[name]).length : 0,
-    ]),
-  )
-}
-
-function blobMeta(data?: any) {
+async function blobMeta(manifest: BankManifest | null) {
+  const meta = manifest ? await readJson<MetaShard>(META_PATH) : null
   return {
-    exists: !!data,
+    exists: !!manifest,
     pathname: MANIFEST_PATH,
-    size: data ? JSON.stringify(data).length : 0,
+    size: manifest ? JSON.stringify(manifest).length : 0,
     uploadedAt: new Date().toISOString(),
-    tableCounts: data ? countTables(data) : undefined,
+    tableCounts: {
+      subjects: Object.keys(meta?.subjects || {}).length,
+      chapters: Object.keys(meta?.chapters || {}).length,
+      questions: manifest?.shards.reduce((sum, shard) => sum + shard.count, 0) || 0,
+    },
   }
 }
 
 function setCors(res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,OPTIONS')
+  // Web/PWA 与 API 同源部署在 Vercel，不开放跨域调用。
+  res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization')
 }
 
@@ -172,21 +138,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  // 可选共享密钥校验
+  // 同源 Vercel Web/PWA 默认可直接同步；配置 BANK_KEY 后再额外校验共享密钥。
   const key = process.env.BANK_KEY
-  if (key) {
-    const auth = String(req.headers['authorization'] || '')
-    if (auth !== `Bearer ${key}`) {
-      res.status(401).json({ error: '未授权：密钥不匹配' })
-      return
-    }
+  const auth = String(req.headers['authorization'] || '')
+  if (key && auth !== `Bearer ${key}`) {
+    res.status(401).json({ error: '未授权：密钥不匹配' })
+    return
   }
 
   try {
     if (req.method === 'GET') {
       return await handleGet(req, res)
     }
-    if (req.method === 'PUT' || req.method === 'POST') {
+    if (req.method === 'PUT') {
       return await handlePut(req, res)
     }
     res.status(405).json({ error: 'method not allowed' })
@@ -203,13 +167,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
 
   // ?manifest=1：只返回索引（~1 KB），增量同步核心入口
   if (q.manifest === '1') {
-    if (!manifest) {
-      // 兼容：远端仍是旧版全量 bank.json
-      const legacyExists = await blobExists(LEGACY_BANK_PATH)
-      res.status(200).json({ ok: true, manifest: null, legacy: legacyExists })
-      return
-    }
-    res.status(200).json({ ok: true, manifest })
+    res.status(200).json({ ok: true, manifest: manifest || null })
     return
   }
 
@@ -231,34 +189,13 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  // ?meta=1：兼容旧版统计信息
+  // ?meta=1：设置页连通性与题量统计
   if (q.meta === '1') {
-    if (manifest) {
-      const bank = await assembleLegacyBank(manifest)
-      res.status(200).json({ ok: true, ...blobMeta(bank) })
-      return
-    }
-    // 旧版 bank.json
-    const legacy = await readJson<any>(LEGACY_BANK_PATH)
-    res.status(200).json({
-      ok: true,
-      exists: !!legacy,
-      pathname: LEGACY_BANK_PATH,
-      size: legacy ? JSON.stringify(legacy).length : 0,
-      tableCounts: legacy ? countTables(legacy) : countTables(null),
-    })
+    res.status(200).json({ ok: true, ...(await blobMeta(manifest)) })
     return
   }
 
-  // 无参数：返回完整合并后的 bank（降级模式，供旧客户端使用）
-  if (manifest) {
-    const bank = await assembleLegacyBank(manifest)
-    res.status(200).json(bank)
-    return
-  }
-  // 旧版全量
-  const legacy = await readJson<any>(LEGACY_BANK_PATH)
-  res.status(200).json(legacy || { version: 1, tables: {} })
+  res.status(400).json({ error: '缺少 manifest、shard 或 meta 查询参数' })
 }
 
 // ===== PUT =====
@@ -278,6 +215,10 @@ interface BankPutRequest {
 
 async function handlePut(req: VercelRequest, res: VercelResponse) {
   const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {})
+  if (Buffer.byteLength(body) > MAX_REQUEST_BYTES) {
+    res.status(413).json({ error: '请求体超过 4MB 限制' })
+    return
+  }
   let parsed: BankPutRequest
   try {
     parsed = JSON.parse(body)
@@ -286,12 +227,33 @@ async function handlePut(req: VercelRequest, res: VercelResponse) {
     return
   }
 
-  // ===== 旧版兼容：version !== 2 视为全量 bank.json 推送 =====
   if (parsed.version !== 2) {
-    await writeJson(LEGACY_BANK_PATH, body)
-    const verified = JSON.parse(body)
-    res.status(200).json({ ok: true, ...blobMeta(verified) })
+    res.status(400).json({ error: '仅支持 version=2 的 Vercel 分片同步协议' })
     return
+  }
+
+  if (parsed.meta && (!isRecord(parsed.meta.subjects) || !isRecord(parsed.meta.chapters))) {
+    res.status(400).json({ error: 'meta 结构不合法' })
+    return
+  }
+  for (const shard of parsed.shards || []) {
+    const expectedPath = `quizbox/shard_sub_${shard.content?.subjectId}_${shard.content?.index}.json`
+    const shardBody = JSON.stringify(shard.content)
+    if (
+      !SHARD_PATH_RE.test(shard.path) ||
+      !SUBJECT_ID_RE.test(shard.content?.subjectId || '') ||
+      !Number.isInteger(shard.content?.index) ||
+      shard.content.index < 0 ||
+      shard.path !== expectedPath ||
+      !isRecord(shard.content?.questions)
+    ) {
+      res.status(400).json({ error: `分片结构或路径不合法：${shard.path}` })
+      return
+    }
+    if (Buffer.byteLength(shardBody) > MAX_SHARD_BYTES) {
+      res.status(413).json({ error: `分片超过 250KB：${shard.path}` })
+      return
+    }
   }
 
   // ===== v2 增量推送 =====
@@ -299,6 +261,11 @@ async function handlePut(req: VercelRequest, res: VercelResponse) {
   // 并在 hasChanges 时 writeManifest()，属于典型的 Read-Check-Write 乐观锁实现，在高并发时存在写覆盖的竞态漏洞。
   // 在当前应用场景中，因多端并发 PUT 概率极低且客户端有 last-write-wins 自主合并，此限制在设计上是可接受的。
   let manifest = await readManifest()
+
+  if (typeof parsed.baseManifestUpdatedAt !== 'number') {
+    res.status(400).json({ error: '缺少 baseManifestUpdatedAt' })
+    return
+  }
 
   // 乐观并发控制：baseManifestUpdatedAt 不匹配 → 409，要求客户端重拉合并
   if (
@@ -320,7 +287,6 @@ async function handlePut(req: VercelRequest, res: VercelResponse) {
       updatedAt: 0,
       meta: { path: META_PATH, hash: '', size: 0 },
       shards: [],
-      legacyCleaned: false,
     }
   }
 
@@ -394,16 +360,12 @@ async function handlePut(req: VercelRequest, res: VercelResponse) {
     manifest.shards = shardEntries.sort((a, b) =>
       a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : a.index - b.index,
     )
-    // 清理旧版 bank.json：仅首次迁移时做一次 head+del，之后用 legacyCleaned 标记跳过
-    // （head/del 都是 Advanced Operations，每次 PUT 都查会快速耗尽配额）
-    if (!manifest.legacyCleaned) {
-      if (await blobExists(LEGACY_BANK_PATH)) {
-        await del(LEGACY_BANK_PATH).catch(() => {})
-      }
-      manifest.legacyCleaned = true
-    }
     await writeManifest(manifest)
   }
 
   res.status(200).json({ ok: true, manifest })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }

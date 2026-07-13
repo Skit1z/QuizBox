@@ -1,3 +1,4 @@
+import Dexie from 'dexie'
 import { db, uid } from '@/db'
 import type { Attempt, AttemptMode } from '@/types'
 
@@ -44,12 +45,12 @@ async function pruneAttempts(questionId: string): Promise<void> {
   try {
     const count = await db.attempts.where('questionId').equals(questionId).count()
     if (count <= MAX_ATTEMPTS_PER_QUESTION) return
-    // 按 createdAt 降序跳过前 N 条，删剩余最旧的
+    // 复合索引先按时间升序排列，超出上限时只删除最旧记录。
+    const excess = count - MAX_ATTEMPTS_PER_QUESTION
     await db.attempts
-      .where('questionId')
-      .equals(questionId)
-      .reverse()
-      .offset(MAX_ATTEMPTS_PER_QUESTION)
+      .where('[questionId+createdAt]')
+      .between([questionId, Dexie.minKey], [questionId, Dexie.maxKey])
+      .limit(excess)
       .delete()
   } catch {
     // 裁剪失败不影响答题

@@ -4,8 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { showFailToast, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { useSettingsStore } from '@/stores/settings'
-import { questionsRepo, type QuestionInput } from '@/db/questions'
-import { sha256 } from '@/utils/hash'
+import { questionsRepo, questionSourceHash, type QuestionInput } from '@/db/questions'
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS } from '@/services/file-parser'
 import { saveImages } from '@/services/docx-images'
 import type { ParsedImage } from '@/services/docx-images'
@@ -257,14 +256,14 @@ async function doParse() {
         const toDelete = new Set<number>()
         for (const [blockIdx, fixed] of fixes) {
           const qIdx = hybrid.lowConfidenceIndices[blockIdx]
-          if (qIdx !== undefined && qIdx < working.length) {
+          if (fixed && qIdx !== undefined && qIdx < working.length) {
             working[qIdx] = fixed
             aiCandidates.add(fixed)
           }
         }
-        // 低置信度块中 AI 未返回的 → 判为非题目，删除占位
+        // 只有 AI 明确返回 isValid=false 才删除；漏项/超时保留给用户人工确认。
         hybrid.lowConfidenceIndices.forEach((qIdx, blockIdx) => {
-          if (!fixes.has(blockIdx)) toDelete.add(qIdx)
+          if (fixes.get(blockIdx) === null) toDelete.add(qIdx)
         })
         if (toDelete.size > 0) {
           working = working.filter((_, i) => !toDelete.has(i))
@@ -434,8 +433,6 @@ async function doSave() {
   let imported = 0
   let skipped = 0
 
-  await saveImages(images)
-
   const candidates: QuestionInput[] = []
   const candidateHashes: string[] = []
   const seenInFile = new Set<string>()
@@ -450,7 +447,7 @@ async function doSave() {
 
     const answer = plainAnswer(p.answer)
     const options = p.options?.map((option) => String(option).trim()).filter(Boolean)
-    const hash = await sha256(stem + '|' + JSON.stringify(answer))
+    const hash = await questionSourceHash({ type: p.type, stem, options, answer })
     if (seenInFile.has(hash)) {
       skipped++
       continue
@@ -483,6 +480,8 @@ async function doSave() {
   })
 
   if (inputs.length > 0) {
+    const referencedHashes = new Set(inputs.flatMap((input) => input.attachments ?? []))
+    await saveImages(images.filter((image) => referencedHashes.has(image.hash)))
     const created = await questionsRepo.createBulk(inputs)
     imported = created.length
   }

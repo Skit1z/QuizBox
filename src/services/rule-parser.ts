@@ -674,11 +674,7 @@ function shouldIgnoreAnswerContinuation(
 
   // 单选区里「正确答案：A」后多出孤立 B，通常是 OCR 把下一处选项残片误断到答案段。
   // 多选区保留 A/B/C 的多行答案写法。
-  return (
-    sectionType === 'single' &&
-    /^[A-Ha-h]$/.test(current) &&
-    /^[A-Ha-h]$/.test(next)
-  )
+  return sectionType === 'single' && /^[A-Ha-h]$/.test(current) && /^[A-Ha-h]$/.test(next)
 }
 
 function extractAnswerKey(blocks: RawBlock[]): {
@@ -973,7 +969,16 @@ export function normalizeAnswer(
 const RE_FILL_BLANK_PREFIX = /第([一二三四五六七八九十\d]+)空\s*[：:]\s*/
 // 汉字数字 → 阿拉伯数字（仅覆盖常见的小数字，足够填空分空用）
 const CN_NUM_MAP: Record<string, number> = {
-  一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+  十: 10,
 }
 
 /**

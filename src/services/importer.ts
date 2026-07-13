@@ -158,7 +158,7 @@ function mergeRepair(candidate: ParsedQuestion, ai: RepairDiff): ParsedQuestion 
 async function callRepairBatch(
   batchText: string,
   items: RepairWorkItem[],
-): Promise<Map<number, ParsedQuestion>> {
+): Promise<Map<number, ParsedQuestion | null>> {
   const res = await chatJson<{
     results?: RepairDiff[]
     questions?: RepairDiff[]
@@ -171,7 +171,7 @@ async function callRepairBatch(
   )
 
   const itemByIdx = new Map(items.map((item) => [item.idx, item]))
-  const repaired = new Map<number, ParsedQuestion>()
+  const repaired = new Map<number, ParsedQuestion | null>()
   for (const diff of res.results ?? res.questions ?? []) {
     const idMatch = diff.blockId?.match(/^block_(\d+)$/)
     const idx = idMatch ? Number(idMatch[1]) : undefined
@@ -180,6 +180,10 @@ async function callRepairBatch(
     const item = itemByIdx.get(idx)
     if (!item) continue
 
+    if (diff.isValid === false) {
+      repaired.set(idx, null)
+      continue
+    }
     const merged = mergeRepair(item.candidate, diff)
     if (merged) repaired.set(idx, merged)
   }
@@ -195,8 +199,8 @@ async function callRepairBatch(
 export async function repairWithAI(
   items: RepairItem[],
   onProgress?: (done: number, total: number) => void,
-): Promise<Map<number, ParsedQuestion>> {
-  const repaired = new Map<number, ParsedQuestion>()
+): Promise<Map<number, ParsedQuestion | null>> {
+  const repaired = new Map<number, ParsedQuestion | null>()
   if (items.length === 0) return repaired
 
   const misses: RepairWorkItem[] = []
@@ -234,6 +238,11 @@ export async function repairWithAI(
         if (idx < 0 || idx >= items.length) continue
         const miss = missByIdx.get(idx)
         if (!miss) continue
+
+        if (!question) {
+          repaired.set(idx, null)
+          continue
+        }
 
         question.confidence = Math.max(question.confidence ?? 0.8, 0.7)
         repaired.set(idx, question)

@@ -11,12 +11,6 @@ import type {
   QuestionShard,
 } from '@/types'
 
-// 需要参与同步的 Dexie 表名（带 updatedAt/deletedAt 的）
-const SYNC_TABLES = ['subjects', 'chapters', 'questions'] as const
-type SyncTable = (typeof SYNC_TABLES)[number]
-
-const TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
-
 /** 防抖自动同步（云端题库分片同步）。
  *  拉长到 2 分钟：写操作频繁时合并为一次同步，降低 Vercel Blob 计费操作次数。 */
 export const autoSync = debounce(() => {
@@ -30,100 +24,10 @@ export async function syncOnStartup() {
   if (s.bankSync.enabled) await syncBank()
 }
 
-// ===== 数据导入导出（云端题库 legacy fallback 依赖） =====
-
-interface SyncFileData {
-  version: number
-  tables: Record<SyncTable, Record<string, any>>
-}
-
-/**
- * 导出本地全量数据（云端题库的 legacy 全量回退路径使用）。
- * 全量导出以避免增量导出带来的数据丢失风险（未变化但远端缺失的记录会被丢弃）。
- */
-async function exportLocal(): Promise<SyncFileData> {
-  const tables: Record<SyncTable, Record<string, any>> = {} as any
-  for (const t of SYNC_TABLES) {
-    const rows = await (db as any)[t].toArray()
-    const map: Record<string, any> = {}
-    for (const r of rows) map[r.id] = r
-    tables[t] = map
-  }
-  return { version: 1, tables }
-}
-
-function isExpiredTombstone(row: any, now = Date.now()): boolean {
-  return isDeleted(row?.deletedAt) && now - Number(row.deletedAt) > TOMBSTONE_RETENTION_MS
-}
-
-interface MergeStats {
-  pulled: number
-  pushed: number
-}
-
-/** 合并：逐条 last-write-wins */
-function mergeAll(local: SyncFileData, remote: SyncFileData): SyncFileData & { stats: MergeStats } {
-  const merged: SyncFileData = { version: 1, tables: {} as any }
-  let pulled = 0
-  let pushed = 0
-
-  for (const t of SYNC_TABLES) {
-    const lmap = local.tables[t] || {}
-    const rmap = remote.tables[t] || {}
-    // 远端可能存的是全量（旧版），也可能是增量；取并集 id
-    const allIds = new Set([...Object.keys(lmap), ...Object.keys(rmap)])
-    const out: Record<string, any> = {}
-    for (const id of allIds) {
-      const l = lmap[id]
-      const r = rmap[id]
-      if (!r) {
-        out[id] = l
-        pushed++
-      } else if (!l) {
-        out[id] = r
-        pulled++
-      } else {
-        const lt = (l as SyncRecord).updatedAt || 0
-        const rt = (r as SyncRecord).updatedAt || 0
-        if (rt > lt) {
-          out[id] = r
-          pulled++
-        } else {
-          out[id] = l
-          pushed++
-        }
-      }
-    }
-    merged.tables[t] = out
-  }
-  return { ...merged, stats: { pulled, pushed } }
-}
-
-function pruneMergedTombstones(
-  merged: SyncFileData & { stats: MergeStats },
-): SyncFileData & { stats: MergeStats } {
-  const now = Date.now()
-  for (const t of SYNC_TABLES) {
-    const table = merged.tables[t] || {}
-    for (const [id, row] of Object.entries(table)) {
-      if (isExpiredTombstone(row, now)) delete table[id]
-    }
-  }
-  return merged
-}
-
-async function importLocal(merged: SyncFileData & { stats: MergeStats }) {
-  for (const t of SYNC_TABLES) {
-    const rows = Object.values(merged.tables[t] || {})
-    if (rows.length) await (db as any)[t].bulkPut(rows)
-  }
-}
-
 // ===== 云端题库同步（部署自带的 /api/bank，跨设备共享） =====
 // v2：按科目分片 + 哈希增量同步。
 //   - 拉取：仅下载 manifest（~1 KB）+ 哈希变化的分片
 //   - 推送：仅上传本地变更的分片（基于 lastBankSyncAt 检测）
-//   - 兼容：远端若仍是旧版 bank.json，自动全量拉取后升级为分片格式
 
 function bankEndpoint(): string {
   return '/api/bank'
@@ -213,14 +117,6 @@ async function fetchShard(path: string): Promise<QuestionShard> {
   return (await res.json()) as QuestionShard
 }
 
-async function fetchLegacyFullBank(): Promise<SyncFileData | null> {
-  const res = await fetch(bankEndpoint(), { headers: bankAuthHeaders() })
-  if (!res.ok) throw new Error(`全量拉取失败：${await readErrorMessage(res)} (${res.status})`)
-  const data = (await res.json()) as SyncFileData
-  if (!data?.tables) return null
-  return data
-}
-
 async function putShards(body: {
   version: 2
   baseManifestUpdatedAt: number
@@ -291,6 +187,7 @@ export async function requestBankForceSync(): Promise<BankManifest> {
   const s = useSettingsStore()
   if (!s.loaded) await s.load()
   if (!s.bankSync.enabled) throw new Error('请先启用云端题库同步')
+  const syncUpperBound = Date.now() - 1
   const remoteManifest = await fetchRemoteManifest()
   const localManifest = await getLocalManifest()
   // 整轮复用同一个 force token，保证 409 重试后云端 token 与本地 ACK 一致
@@ -317,7 +214,7 @@ export async function requestBankForceSync(): Promise<BankManifest> {
     localManifest,
   )
   if (newManifest) await saveLocalManifest(newManifest)
-  await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+  await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(syncUpperBound) })
   await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: forceToken })
   return newManifest as BankManifest
 }
@@ -336,25 +233,31 @@ function splitIntoShards(subjectId: string, questions: Record<string, Question>)
   const sorted = Object.values(questions).sort((a, b) => (a.updatedAt || 0) - (b.updatedAt || 0))
   const shards: QuestionShard[] = []
   let current: Record<string, Question> = {}
-  let currentSize = 0
 
   const flush = (index: number) => {
     if (Object.keys(current).length > 0) {
       shards.push({ subjectId, index, questions: { ...current } })
       current = {}
-      currentSize = 0
     }
   }
 
   let index = 0
   for (const q of sorted) {
-    const qSize = new Blob([JSON.stringify(q)]).size
-    if (currentSize + qSize > SHARD_MAX_BYTES && Object.keys(current).length > 0) {
+    const trial = { ...current, [q.id]: q }
+    const trialSize = new Blob([
+      JSON.stringify({ subjectId, index, questions: trial } satisfies QuestionShard),
+    ]).size
+    if (trialSize > SHARD_MAX_BYTES && Object.keys(current).length > 0) {
       flush(index)
       index++
     }
+    const singleSize = new Blob([
+      JSON.stringify({ subjectId, index, questions: { [q.id]: q } } satisfies QuestionShard),
+    ]).size
+    if (singleSize > SHARD_MAX_BYTES) {
+      throw new Error(`题目 ${q.id} 超过单分片 250KB 限制，请压缩题干内容`)
+    }
     current[q.id] = q
-    currentSize += qSize
   }
   flush(index)
   return shards
@@ -511,7 +414,8 @@ interface ChangedShard {
 async function detectLocalChanges(
   remoteManifest: BankManifest | null,
 ): Promise<{ meta: MetaShard | null; shards: ChangedShard[]; deletePaths: string[] }> {
-  const lastSync = await getLastBankSyncAt()
+  // 云端尚未初始化时必须全量扫描，不能沿用其它部署留下的本地同步水位。
+  const lastSync = remoteManifest ? await getLastBankSyncAt() : 0
   const result: { meta: MetaShard | null; shards: ChangedShard[]; deletePaths: string[] } = {
     meta: null,
     shards: [],
@@ -609,6 +513,8 @@ export async function syncBank(): Promise<BankSyncResult> {
   if (bankSyncing) return bankSyncing
 
   bankSyncing = (async () => {
+    // 成功后只能推进到同步开始前，避免同步过程中产生的本地写入被水位跨过去。
+    const syncUpperBound = Date.now() - 1
     try {
       // 1. 拉取远端 manifest
       let remoteManifest = await fetchRemoteManifest()
@@ -618,14 +524,7 @@ export async function syncBank(): Promise<BankSyncResult> {
       let shardsPulled = 0
 
       if (!remoteManifest) {
-        // 远端仍是旧版全量 bank.json：全量拉取并升级为分片格式
-        const legacy = await fetchLegacyFullBank()
-        if (legacy) {
-          const merged = pruneMergedTombstones(mergeAll(await exportLocal(), legacy))
-          await importLocal(merged)
-          pulled = merged.stats.pulled
-        }
-        // 首次推送本地全量 → 触发服务端建立分片格式
+        // Vercel Blob 尚未初始化：首次推送本地全量并建立分片格式。
         const changes = await detectLocalChanges(null)
         if (changes.shards.length || changes.meta) {
           const newManifest = await putShards({
@@ -639,7 +538,7 @@ export async function syncBank(): Promise<BankSyncResult> {
             deletePaths: changes.deletePaths,
           })
           await saveLocalManifest(newManifest)
-          await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+          await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(syncUpperBound) })
           return {
             pulled,
             pushed: changes.shards.length,
@@ -649,7 +548,7 @@ export async function syncBank(): Promise<BankSyncResult> {
           }
         }
         // 本地也无数据：无需推送
-        await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+        await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(syncUpperBound) })
         return { pulled, pushed: 0, ok: true, shardsPulled, shardsPushed: 0 }
       }
 
@@ -745,7 +644,7 @@ export async function syncBank(): Promise<BankSyncResult> {
       // 4. 保存最新 manifest
       await saveLocalManifest(remoteManifest)
       if (!pushError) {
-        await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(Date.now()) })
+        await db.syncMeta.put({ key: 'lastBankSyncAt', value: String(syncUpperBound) })
       }
       if (forceSyncToken) {
         await db.syncMeta.put({ key: FORCE_SYNC_ACK_KEY, value: forceSyncToken })

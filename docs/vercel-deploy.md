@@ -4,7 +4,7 @@
 手机/平板打开同一网址即可接着做题。
 
 > 为什么用 Vercel：自动 HTTPS、自带 `/api/*` serverless 函数、题库接口与网页**同源**（无 CORS、
-> 无混合内容问题），跨设备同步零配置。
+> 无混合内容问题）。本项目只维护 Vercel Web/PWA 部署路径。
 
 ---
 
@@ -55,12 +55,12 @@ Vercel Blob: Cannot use public access on a private store.
 
 ---
 
-## 四、设置共享密钥（强烈建议）
+## 四、设置共享密钥（可选）
 
 `BANK_KEY` 是应用层共享密钥，不是 Vercel Blob 的读写 token。
 
-不设密钥的话，任何知道你网址的人都能通过 `/api/bank` 读取/覆盖你的题库。加一把"钥匙"
-（这不是账号系统，只是一个固定口令）：
+默认情况下，应用会直接通过同源 `/api/bank` 同步当前 Vercel 项目连接的 Blob，无需填写密钥。
+如果希望增加一层访问保护，可以配置一把共享“钥匙”（这不是账号系统，只是一个固定口令）：
 
 1. 项目 → **Settings → Environment Variables**。
 2. 新增：
@@ -68,8 +68,6 @@ Vercel Blob: Cannot use public access on a private store.
    - **Value**: 自定义一个口令（如 `my-quizbox-2026`）
    - 环境勾选 **Production**（建议三个环境都勾）。
 3. 保存。
-
-如果你只是自己用，也可以先不设置 `BANK_KEY`，应用里的「共享密钥」就留空。
 
 不要把 `BLOB_READ_WRITE_TOKEN` 填进应用的「共享密钥」输入框：
 
@@ -88,11 +86,7 @@ Vercel Blob: Cannot use public access on a private store.
 
 部署完成后，`/api/bank` 接口即可用。
 
-你可以直接打开以下地址做服务端自检：
-
-```text
-https://你的域名/api/bank?meta=1
-```
+未配置 `BANK_KEY` 时可直接在应用中点击「检测接口」；配置后需先填写相同共享密钥。
 
 正常但还没有同步过题库时会返回类似：
 
@@ -100,13 +94,13 @@ https://你的域名/api/bank?meta=1
 {
   "ok": true,
   "exists": false,
-  "pathname": "quizbox/bank.json",
+  "pathname": "quizbox/manifest.json",
   "size": 0
 }
 ```
 
 这表示接口能通，只是还没有写入题库快照。需要在应用里点「立即同步」后才会生成
-`quizbox/bank.json`。
+`quizbox/manifest.json` 和对应分片。
 
 ---
 
@@ -115,7 +109,7 @@ https://你的域名/api/bank?meta=1
 ### 电脑端（网页）
 
 1. 打开你的 Vercel 网址 → **设置 → 云端题库同步**。
-2. **启用** 打开；**共享密钥**默认是 `skit1z`。如果你在第四步设置了其它 `BANK_KEY`，这里要改成同一个值。
+2. 同步默认启用；未配置 `BANK_KEY` 时共享密钥留空，配置后填写相同值。
 3. **保存** → **检测接口**。
    - 显示「接口连通，但云端还没有题库快照」是正常的，说明还没上传过题库。
    - 显示已有记录数，说明云端已经存在快照。
@@ -125,7 +119,7 @@ https://你的域名/api/bank?meta=1
 ### 手机 / 平板（网页）
 
 1. 打开**同一个** Vercel 网址 → 设置 → 云端题库同步。
-2. **启用** + 填**相同的**共享密钥 → 保存 → **立即同步**（或直接刷新页面，启动会自动拉取）。
+2. 默认会在启动时自动拉取；如果配置了 `BANK_KEY`，先填写相同共享密钥并保存。
 3. 题库出现，接着做题即可。
 
 > 想当 App 用：手机浏览器「添加到主屏幕」，即以 PWA 全屏运行。
@@ -148,32 +142,27 @@ https://你的域名/api/bank?meta=1
 **Q：检测接口报 401？**
 密钥不匹配。确认应用设置里的密钥与 Vercel 的 `BANK_KEY` 完全一致，且改完环境变量已重部署。
 
-**Q：我没有设置 `BANK_KEY`，共享密钥留空还是无法同步？**
-留空只表示不做应用层密钥校验，不代表 Blob 一定能写入。继续看页面里的具体错误：
+其它常见错误：
 
 - `Cannot use public access on a private store`：Blob Store 是 Private，但代码/依赖还按 Public 写入。
   更新到支持 Private Blob 的版本后重新部署。
 - `Blob store not found` / 缺 token：没有把 Blob store 连接到当前 Vercel 项目，或环境变量没有勾选
   Production。
-- `401`：服务端配置了 `BANK_KEY`，但客户端没填或填错。当前应用默认共享密钥是 `skit1z`。
+- `401`：服务端配置了 `BANK_KEY`，但客户端没填或填错。
 
 **Q：检测接口报 500 / "云端题库存储错误"？**
 多半是没创建/连接 Blob 存储（缺 `BLOB_READ_WRITE_TOKEN`）。回到第三步创建并连接，再重部署。
 
 **Q：提示 "接口连通，但云端还没有题库快照" 是不是没存进去？**
-不是。这个提示只说明 GET 能通，但 Blob 里还没有 `quizbox/bank.json`。电脑端导入题库后点
+不是。这个提示只说明 GET 能通，但 Blob 里还没有 `quizbox/manifest.json`。电脑端导入题库后点
 「立即同步」，成功后页面会显示写入的记录数、路径和大小。
 
 **Q：手机拉到的是旧题库？**
 接口已加时间戳绕过 CDN 缓存；若仍旧，确认电脑端已点过「立即同步」把最新快照推上去。
 
-**Q：桌面端（Tauri）能用吗？**
-当前云端题库同步固定使用同源 `/api/bank`，优先服务 Vercel 网页与 PWA。桌面端如需云端题库同步，
-请打开已部署的网站。
-
 **Q：安全性？**
-题库快照存在你自己的 Vercel Blob；接口由 `BANK_KEY` 校验。题库内容本身敏感度低，
-如需更强隔离可改用私有数据库（见 `docs/` 后续方案）。
+题库快照存在你自己的 Vercel Private Blob。默认同源接口没有用户身份认证；如果网址可能被他人访问，
+建议配置 `BANK_KEY`，接口会对所有读写请求校验该密钥。
 
 **Q：免费额度够吗？**
 个人题库快照通常几百 KB ~ 数 MB，Vercel Blob / 函数调用的免费额度绰绰有余。

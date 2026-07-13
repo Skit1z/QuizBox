@@ -3,8 +3,8 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 defineOptions({ name: 'WrongBookView' })
 import { showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
-import { db } from '@/db'
 import { wrongBookRepo } from '@/db/wrongbook'
+import { questionsRepo } from '@/db/questions'
 import { useSubjectsStore } from '@/stores/subjects'
 import ThemedSelect from '@/components/ThemedSelect.vue'
 import type { SelectOption } from '@/components/ThemedSelect.vue'
@@ -36,8 +36,9 @@ async function load() {
   // pending：仅到期需复习；all：所有未掌握（含未到期）
   const wrongs =
     filter.value === 'pending' ? await wrongBookRepo.listPending() : await wrongBookRepo.listAll()
-  const questions = await db.questions.bulkGet(wrongs.map((w) => w.questionId))
-  items.value = wrongs.map((w, i) => ({ ...w, question: questions[i] as Question }))
+  const questions = await questionsRepo.findByIds(wrongs.map((w) => w.questionId))
+  const questionById = new Map(questions.map((question) => [question.id, question]))
+  items.value = wrongs.map((wrong) => ({ ...wrong, question: questionById.get(wrong.questionId) }))
   selectedIds.value = selectedIds.value.filter((id) =>
     items.value.some((item) => item.questionId === id),
   )

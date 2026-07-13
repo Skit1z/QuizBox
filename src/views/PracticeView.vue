@@ -73,7 +73,11 @@ const typeStats = computed(() => {
       const done = all.filter((q) => attemptedQuestionIds.value.has(q.id)).length
       const unseen = all.length - done
       const available =
-        practiceScope.value === 'done' ? done : practiceScope.value === 'unseen' ? unseen : all.length
+        practiceScope.value === 'done'
+          ? done
+          : practiceScope.value === 'unseen'
+            ? unseen
+            : all.length
       return { type, label: QUESTION_TYPE_LABELS[type], total: all.length, done, unseen, available }
     })
     .filter((item) => item.total > 0)
@@ -304,7 +308,10 @@ watch(onlyWrong, () => {
               <div
                 v-for="item in typeStats"
                 :key="item.type"
-                :class="['type-quota', Number(typeQuotas[item.type] || 0) > 0 && 'type-quota--active']"
+                :class="[
+                  'type-quota',
+                  Number(typeQuotas[item.type] || 0) > 0 && 'type-quota--active',
+                ]"
                 @click.self="toggleType(item.type)"
               >
                 <button
@@ -354,9 +361,7 @@ watch(onlyWrong, () => {
                   </button>
                 </div>
               </div>
-              <div class="type-summary">
-                本次自测 {{ selectedCount }} 道题
-              </div>
+              <div class="type-summary">本次自测 {{ selectedCount }} 道题</div>
             </div>
           </div>
         </div>
