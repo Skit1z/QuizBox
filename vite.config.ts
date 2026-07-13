@@ -8,10 +8,20 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 // 构建时刻版本号：yyyy-mm-dd hh-mm 格式，供 UI 显示
 const buildDate = new Date()
-const pad = (n: number) => String(n).padStart(2, '0')
-const buildVersion = `${buildDate.getFullYear()}-${pad(buildDate.getMonth() + 1)}-${pad(
-  buildDate.getDate(),
-)} ${pad(buildDate.getHours())}-${pad(buildDate.getMinutes())}`
+const buildDateParts = Object.fromEntries(
+  new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+    .formatToParts(buildDate)
+    .map(({ type, value }) => [type, value]),
+)
+const buildVersion = `${buildDateParts.year}-${buildDateParts.month}-${buildDateParts.day} ${buildDateParts.hour}-${buildDateParts.minute}`
 
 // https://vite.dev/config/
 export default defineConfig({
