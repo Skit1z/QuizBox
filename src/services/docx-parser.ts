@@ -47,17 +47,24 @@ export async function parseDocx(file: File): Promise<DocxParseResult> {
 }
 
 function htmlToText(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .trim()
+  return (
+    html
+      // Word 自动编号经 Mammoth 转成 ol/li；若直接剥标签，题号和题目边界都会消失。
+      // 每个有序列表项补一个合成题号即可触发规则分块，真实序号不参与最终题目数据。
+      .replace(/<ol(?:\s[^>]*)?>\s*<li(?:\s[^>]*)?>/gi, '\n\n1. ')
+      .replace(/<\/li>\s*<\/ol>/gi, '\n\n')
+      .replace(/<\/?li(?:\s[^>]*)?>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .trim()
+  )
 }
 
 function base64ToBytes(b64: string): Uint8Array {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showFailToast, showSuccessToast } from 'vant'
+import { showDialog, showFailToast, showSuccessToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { useSettingsStore } from '@/stores/settings'
 import { questionsRepo, questionSourceHash, type QuestionInput } from '@/db/questions'
@@ -158,10 +158,12 @@ function prioritizeReviewQuestions(
     .map((q, i) => ({
       q,
       i,
-      priority: aiCandidates.has(q) || (q.confidence ?? 1) < 0.6,
+      missingAnswer: !answerText(q),
+      needsReview: aiCandidates.has(q) || (q.confidence ?? 1) < 0.6,
     }))
     .sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority ? -1 : 1
+      if (a.missingAnswer !== b.missingAnswer) return a.missingAnswer ? -1 : 1
+      if (a.needsReview !== b.needsReview) return a.needsReview ? -1 : 1
       return a.i - b.i
     })
     .map((item) => item.q)
@@ -431,7 +433,11 @@ async function doSave() {
   const subjectId = selectedSubjectId.value
   const toHash = placeholderToHash()
   let imported = 0
-  let skipped = 0
+  const skipped = {
+    emptyStem: 0,
+    duplicateInFile: 0,
+    alreadyExists: 0,
+  }
 
   const candidates: QuestionInput[] = []
   const candidateHashes: string[] = []
@@ -441,7 +447,7 @@ async function doSave() {
     pruneChoiceAnswer(p)
     const stem = p.stem?.trim()
     if (!stem) {
-      skipped++
+      skipped.emptyStem++
       continue
     }
 
@@ -449,7 +455,7 @@ async function doSave() {
     const options = p.options?.map((option) => String(option).trim()).filter(Boolean)
     const hash = await questionSourceHash({ type: p.type, stem, options, answer })
     if (seenInFile.has(hash)) {
-      skipped++
+      skipped.duplicateInFile++
       continue
     }
     seenInFile.add(hash)
@@ -473,7 +479,7 @@ async function doSave() {
   const duplicates = await questionsRepo.findDuplicateHashes(subjectId, candidateHashes)
   const inputs = candidates.filter((input) => {
     if (input.sourceHash && duplicates.has(input.sourceHash)) {
-      skipped++
+      skipped.alreadyExists++
       return false
     }
     return true
@@ -486,11 +492,29 @@ async function doSave() {
     imported = created.length
   }
 
+  const skippedTotal = skipped.emptyStem + skipped.duplicateInFile + skipped.alreadyExists
+  const skipDetails = [
+    skipped.duplicateInFile > 0 ? `文件内完全重复：${skipped.duplicateInFile} 题` : '',
+    skipped.alreadyExists > 0 ? `当前题库已存在：${skipped.alreadyExists} 题` : '',
+    skipped.emptyStem > 0 ? `题干为空：${skipped.emptyStem} 题` : '',
+  ].filter(Boolean)
+
   if (imported === 0) {
-    throw new Error(skipped > 0 ? '没有新题可导入，可能已全部存在或为空' : '没有可导入的题目')
+    throw new Error(
+      skippedTotal > 0 ? `没有新题可导入。\n${skipDetails.join('\n')}` : '没有可导入的题目',
+    )
   }
 
-  showSuccessToast(`已导入 ${imported} 题${skipped ? `，跳过 ${skipped} 题` : ''}`)
+  showSuccessToast(`已导入 ${imported} 题`)
+  await showDialog({
+    title: '导入完成',
+    message:
+      skippedTotal > 0
+        ? `成功导入：${imported} 题\n跳过：${skippedTotal} 题\n\n${skipDetails.join('\n')}`
+        : `成功导入：${imported} 题\n没有跳过题目`,
+    messageAlign: 'left',
+    confirmButtonText: '查看题库',
+  })
   router.replace({ name: 'subject-detail', params: { subjectId } })
 }
 

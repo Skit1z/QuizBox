@@ -110,7 +110,7 @@ function filterWatermarks(lines: string[]): string[] {
     // 句末标点表明它是正常句子（题干/选项/解析），不可能是水印
     if (/[。．！？]$/.test(t)) continue
     // 排除结构性行（题号/选项/答案/章节标题）——它们可能重复但不是水印
-    if (RE_QUESTION_NUM.test(t) || RE_OPTION_HEAD.test(t)) continue
+    if (RE_QUESTION_NUM.test(t) || RE_OPTION_HEAD.test(t) || isLooseOptionSourceLine(t)) continue
     if (RE_ANSWER.test(t) || RE_ANALYSIS.test(t)) continue
     if (RE_SECTION_HEADER.test(t)) continue
     repeatedWatermarks.add(t)
@@ -277,7 +277,7 @@ function parseHybridInternal(text: string): HybridResult {
 
   for (const entry of entries) {
     if (hasAnswer(entry.q.answer) || entry.seq === undefined) continue
-    const rawAnswer = answerMap.get(entry.seq)
+    const rawAnswer = answerMap.get(answerKeyId(entry.block.sectionType, entry.seq))
     if (!rawAnswer) continue
 
     const options = entry.q.options ?? []
@@ -370,6 +370,23 @@ function expandInlineOptions(lines: string[]): string[] {
         continue
       }
     }
+    // 宽松兜底：无标点粘连的内联选项（A正确B错误 / A观测法B考察法C访谈法D实验法）。
+    // 这类选项字母后直接跟内容，RE_OPTION_HEAD 要求字母后有标点故匹配不到，需独立检测。
+    // 放在 RE_OPTION_HEAD 之后，避免抢走正常带标点的选项行。
+    const loose = splitInlineOptionsLoose(trimmed)
+    if (loose.length >= 2) {
+      result.push(...loose)
+      if (answerLine) result.push(answerLine)
+      continue
+    }
+    // Word 题库常把每个选项单独成段但省略标点（A统计声级）。补成标准前缀后，
+    // parseBlock 才能把它识别为选项，而不是拼进题干。
+    const singleLoose = normalizeSingleLooseOption(trimmed)
+    if (singleLoose) {
+      result.push(singleLoose)
+      if (answerLine) result.push(answerLine)
+      continue
+    }
     // 即使没有多个选项，也用去掉 bullet 的版本
     if (answerLine) {
       result.push(trimmed)
@@ -379,6 +396,68 @@ function expandInlineOptions(lines: string[]): string[] {
     }
   }
   return result
+}
+
+/**
+ * 宽松拆分无标点粘连的内联选项：A正确B错误 / A观测法B考察法C访谈法D实验法。
+ *
+ * 这类「字母直接跟内容、无标点」的选项 RE_OPTION_HEAD 匹配不到（它要求字母后有
+ * [.、．)]）。本函数独立识别行首的 A，再用「连续大写字母 A→B→C→D」位置切分。
+ *
+ * 防误拆策略：
+ * 1. 行首必须是 A（可选 bullet），不能是其他字母
+ * 2. 后续选项字母必须从 B 开始连续（A、B、C…）
+ * 3. 每个选项字母的前一字符不能是英文字母（避免 GBZ 的 B、dB 的 B）
+ * 4. 至少 2 个选项才算成功
+ */
+function splitInlineOptionsLoose(line: string): string[] {
+  // 行首（允许前导空白/bullet）必须是 A，A 后面跟非英文字母（中文/数字/空格等）
+  const headMatch = line.match(/^[\s　•◦▪▪·●○■□*\-‑–—]*A(?=[^A-Za-z]|$)/)
+  if (!headMatch) return []
+  const contentStart = headMatch.index! + headMatch[0].length
+
+  // 收集 B、C、D… 作为后续选项标记的位置
+  const markers: { key: string; index: number }[] = []
+  for (let i = 1; i < 8; i++) {
+    const letter = String.fromCharCode(65 + i)
+    const re = new RegExp(`(?<![A-Za-z])${letter}(?=[^A-Za-z]|$)`, 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(line)) !== null) {
+      if (m.index >= contentStart) markers.push({ key: letter, index: m.index })
+    }
+  }
+  markers.sort((a, b) => a.index - b.index)
+
+  // 必须从 B 开始连续
+  const sequence: { key: string; index: number }[] = [{ key: 'A', index: headMatch.index! }]
+  for (const mk of markers) {
+    const expected = String.fromCharCode(65 + sequence.length)
+    if (mk.key !== expected) break
+    if (sequence.some((s) => s.key === mk.key)) continue
+    sequence.push(mk)
+  }
+  if (sequence.length < 2) return []
+
+  const parts: string[] = []
+  for (let i = 0; i < sequence.length; i++) {
+    const cur = sequence[i]
+    const next = sequence[i + 1]
+    const seg = line.slice(cur.index + 1, next ? next.index : line.length).trim()
+    if (seg) parts.push(`${cur.key}.${seg}`)
+  }
+  return parts.filter(Boolean)
+}
+
+/** 把独占一行的无标点选项 A正文 规范成 A.正文。 */
+function normalizeSingleLooseOption(line: string): string | null {
+  const match = line.match(/^[\s　•◦▪▪·●○■□*\-‑–—]*([A-Ha-h])(?=[^A-Za-z])\s*(.+)$/)
+  if (!match) return null
+  return `${match[1].toUpperCase()}.${match[2].trim()}`
+}
+
+/** 水印过滤发生在选项规范化之前，需提前保护无标点选项，避免重复的「A正确B错误」被删。 */
+function isLooseOptionSourceLine(line: string): boolean {
+  return splitInlineOptionsLoose(line).length >= 2 || normalizeSingleLooseOption(line) !== null
 }
 
 // ===== 分块 =====
@@ -415,8 +494,8 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
   const blocks: RawBlock[] = []
   let currentSectionType: QuestionType | undefined
   let buf: string[] = []
-  // 上一条非空行是否为「判断答案/改错」终止行（用于切分无题号的连续判断改错题）
-  let prevJudgeTerminator = false
+  // 上一条非空行是否为答案终止行（用于切分 Word 自动编号丢失或原文漏编号的题）
+  let prevAnswerTerminator = false
 
   function flush() {
     const joined = buf.join('\n').trim()
@@ -435,7 +514,7 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
       flush()
       const key = secMatch[1]
       currentSectionType = SECTION_TYPE_MAP[key]
-      prevJudgeTerminator = false
+      prevAnswerTerminator = false
       continue
     }
 
@@ -445,11 +524,11 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
       if (typeInLine) {
         flush()
         currentSectionType = SECTION_TYPE_MAP[typeInLine[1]]
-        prevJudgeTerminator = false
+        prevAnswerTerminator = false
         continue
       }
       flush()
-      prevJudgeTerminator = false
+      prevAnswerTerminator = false
       continue
     }
 
@@ -457,14 +536,13 @@ function splitIntoBlocks(lines: string[]): RawBlock[] {
     if (buf.length > 0 && RE_QUESTION_NUM.test(line)) {
       flush()
     }
-    // 无题号的判断改错题：上一行是答案/改错行，本行又是一句完整新陈述 → 切成新题
-    // （兼容原文档漏写题号的连续判断改错题，避免后一题被吞进前一题的解析）
-    else if (buf.length > 0 && prevJudgeTerminator && looksLikeNewStatement(line)) {
+    // 上一题已有答案，本行又是一句完整新题干时切分。除判断题外，也兼容原文漏编号的选择题。
+    else if (buf.length > 0 && prevAnswerTerminator && looksLikeNewStatement(line)) {
       flush()
     }
 
     buf.push(line)
-    if (line.trim()) prevJudgeTerminator = isJudgeTerminatorLine(line)
+    if (line.trim()) prevAnswerTerminator = isQuestionTerminatorLine(line, currentSectionType)
   }
   flush()
 
@@ -488,14 +566,17 @@ function isLikelyDocumentHeading(line: string): boolean {
   return !/[。！？?]/.test(t) && t.length <= 40
 }
 
-/** 是否为「判断题答案/改错」终止行：错：xxx / 对 / 答案：正确 等 */
-function isJudgeTerminatorLine(line: string): boolean {
+/** 是否为「判断题答案/改错」终止行：错：xxx / 对 / 答案：正确 等。
+ *  在判断题区段内，「答案：A/B」这种用选项字母表示对/错的写法也视为终止行——
+ *  否则连续无题号的判断题（每题三行：题干/A对B错/答案：A）无法分块，会被合并成巨块。 */
+function isQuestionTerminatorLine(line: string, sectionType?: QuestionType): boolean {
   const t = line.trim()
-  return (
-    RE_JUDGE_CORRECTION.test(t) ||
-    RE_JUDGE_STANDALONE.test(t) ||
-    /^(?:答案|正确答案)\s*[:：]\s*(?:正确|错误|对|错|[√✓×✗TF])\s*$/.test(t)
-  )
+  if (RE_ANSWER.test(t)) return true
+  if (RE_JUDGE_CORRECTION.test(t) || RE_JUDGE_STANDALONE.test(t)) return true
+  if (/^(?:答案|正确答案)\s*[:：]\s*(?:正确|错误|对|错|[√✓×✗TF])\s*$/.test(t)) return true
+  // 判断题区段里，选项常是「A正确 B错误」，答案用 A/B 表示对/错
+  if (sectionType === 'judge' && /^(?:答案|正确答案)\s*[:：]\s*[AB]\s*$/.test(t)) return true
+  return false
 }
 
 /** 是否为一句独立的完整陈述（判断题题干特征），且不是答案/选项/题号/解析行 */
@@ -640,7 +721,20 @@ function parseBlock(block: RawBlock): ParsedBlock | null {
 
   // 推断题型
   const type = detectType(stem, options, answerRaw, sectionType)
-  const answer = normalizeAnswer(type, answerRaw, options)
+  // 判断题选项是「对/错」二元词，但答案写成字母（A正确 B错误 → 答案：A）时，
+  // 把字母映射成对应选项的语义（对/错），让后续 normalizeAnswer 正确转 T/F。
+  let resolvedAnswerRaw = answerRaw
+  if (
+    type === 'judge' &&
+    options.length >= 2 &&
+    options.every((o) => RE_JUDGE_OPTION.test(o.trim())) &&
+    /^[A-Ha-h]$/.test(answerRaw.trim())
+  ) {
+    const idx = answerRaw.trim().toUpperCase().charCodeAt(0) - 65
+    const optContent = options[idx]?.trim()
+    if (optContent) resolvedAnswerRaw = optContent
+  }
+  const answer = normalizeAnswer(type, resolvedAnswerRaw, options)
 
   return {
     seq,
@@ -678,10 +772,10 @@ function shouldIgnoreAnswerContinuation(
 }
 
 function extractAnswerKey(blocks: RawBlock[]): {
-  answerMap: Map<number, string>
+  answerMap: Map<string, string>
   keyIdx: Set<number>
 } {
-  const answerMap = new Map<number, string>()
+  const answerMap = new Map<string, string>()
   const keyIdx = new Set<number>()
 
   blocks.forEach((block, idx) => {
@@ -692,7 +786,7 @@ function extractAnswerKey(blocks: RawBlock[]): {
     for (const match of text.matchAll(
       /(\d{1,3})\s*[.、):：]\s*(?:答案[:：]?\s*)?([A-Ha-h]+|[√✓×✗]|对|错|正确|错误|[TF])/g,
     )) {
-      answerMap.set(Number(match[1]), match[2])
+      answerMap.set(answerKeyId(block.sectionType, Number(match[1])), match[2])
     }
 
     for (const match of text.matchAll(/(\d{1,3})\s*[-~—]\s*(\d{1,3})\s*[:：]?\s*([A-Ha-h]+)/g)) {
@@ -700,11 +794,18 @@ function extractAnswerKey(blocks: RawBlock[]): {
       const end = Number(match[2])
       const letters = match[3].toUpperCase()
       if (end - start + 1 !== letters.length) continue
-      for (let n = start; n <= end; n++) answerMap.set(n, letters[n - start])
+      for (let n = start; n <= end; n++) {
+        answerMap.set(answerKeyId(block.sectionType, n), letters[n - start])
+      }
     }
   })
 
   return { answerMap, keyIdx }
+}
+
+/** 不同大题会从第 1 题重新编号，答案索引必须同时包含题型区段。 */
+function answerKeyId(sectionType: QuestionType | undefined, seq: number): string {
+  return `${sectionType ?? 'unknown'}:${seq}`
 }
 
 function looksLikeAnswerKey(text: string): boolean {
@@ -717,7 +818,8 @@ function looksLikeAnswerKey(text: string): boolean {
   const usefulLines = lines.filter((line) => !RE_JUNK_LINE.test(line))
   if (usefulLines.length === 0) return false
 
-  const titleMatched = RE_ANSWER_KEY_TITLE.test(text)
+  // 普通题块也含「答案：A」，只有首个有效行就是答案标题时才属于独立答案表。
+  const titleMatched = RE_ANSWER_KEY_TITLE.test(usefulLines[0])
   const itemMatches = usefulLines.filter((line) => RE_ANSWER_KEY_ITEM.test(line)).length
   const hasRange = /(\d{1,3})\s*[-~—]\s*(\d{1,3})\s*[:：]?\s*[A-Ha-h]{2,}/.test(text)
   const inlineMatches = Array.from(
@@ -897,16 +999,27 @@ function isLikelyInlineOptionMarker(text: string, index: number): boolean {
   return true
 }
 
+// 判断题典型选项：正确/错误/对/错/是/否/√/× 等二元判定词
+// 用于识别「A. 正确  B. 不正确」这类伪装成选择题的判断题
+const RE_JUDGE_OPTION =
+  /^(正确|错误|对|错|是对的|是错的|不正确|是对的。?$|是错的。?$|是|否|√|×|✓|✗|T|F)\s*[。.．]?$/
+
 export function detectType(
   stem: string,
   options: string[],
   answer: string,
   sectionType?: QuestionType,
 ): QuestionType {
-  // 硬证据优先：有选项 → 一定是选择题（覆盖 sectionType）
+  // 硬证据优先：选项内容是「对/错」二元判定 → 判断题（即使伪装成 A/B 选项）
+  // 典型：「A. 正确  B. 不正确」「A正确B错误」常见于判断题
+  if (options.length >= 2 && options.every((o) => RE_JUDGE_OPTION.test(o.trim()))) return 'judge'
+
+  // 有选项 → 选择题
   if (options.length >= 1) {
     const letters = answer.match(/[A-Ha-h]/g)
     if (letters && letters.length > 1) return 'multiple'
+    // 判断题区段里若有选项但答案不是字母（如答案：对），仍归判断题
+    if (sectionType === 'judge' && !letters) return 'judge'
     if (!letters && (sectionType === 'single' || sectionType === 'multiple')) return sectionType
     return 'single'
   }
