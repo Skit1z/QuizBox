@@ -23,6 +23,16 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-13 21-06',
+    date: '2026-07-13',
+    logs: [
+      '修复不同大题题号重复时答案串用、有效题目被误判为答案表的问题',
+      '修复 Word 自动编号和无标点选项在导入时丢失，保留原始 DOCX 的完整题目边界',
+      '导入预览优先显示缺答案题，导入完成后按原因汇总文件内重复、题库已有和空题干',
+      '构建版本号固定使用北京时间，避免 Vercel 与本地构建相差 8 小时',
+    ],
+  },
+  {
     version: '2026-07-13 12-00',
     date: '2026-07-13',
     logs: [
