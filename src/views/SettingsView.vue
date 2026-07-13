@@ -23,6 +23,18 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-13 12-00',
+    date: '2026-07-13',
+    logs: [
+      '修复同步期间新增修改可能被同步水位跳过的问题，避免本地变更漏传',
+      '修复限时考试在后台挂起后时间停止、答题历史未按时间裁剪的问题',
+      '修复不同选项题目被误判重复，并只保存实际入库题目引用的图片',
+      '主观题 AI 低分或低自评会进入错题复习，错题页统一通过数据仓库读取题目',
+      '云端同步收敛为 Vercel 分片协议，增加请求大小、分片结构和可选 BANK_KEY 校验',
+      '默认启用同源 Vercel Blob 同步，无需额外配置即可连接当前项目的 Blob',
+    ],
+  },
+  {
     version: '2026-07-09 08-34',
     date: '2026-07-09',
     logs: [
@@ -495,7 +507,7 @@ async function testBank() {
   if (/^vercel_blob_rw_/i.test(bank.value.key.trim())) {
     bankResult.value = {
       type: 'error',
-      msg: '共享密钥不是 Blob Token。若未在 Vercel 配置 BANK_KEY，这里请留空。',
+      msg: '共享密钥不是 Blob Token；这里只能填写可选的 Vercel BANK_KEY。',
     }
     return
   }
@@ -693,7 +705,7 @@ onMounted(async () => {
             v-model="bank.key"
             class="field__input"
             type="password"
-            placeholder="留空；或填写自定义 BANK_KEY"
+            placeholder="未配置 BANK_KEY 时留空"
           />
         </div>
       </div>

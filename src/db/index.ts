@@ -73,6 +73,11 @@ export class QADatabase extends Dexie {
     this.version(5).stores({
       attachments: 'hash, size',
     })
+
+    // version 6：答题历史按题目 + 时间排序，保证裁剪时只删除最旧记录
+    this.version(6).stores({
+      attempts: 'id, questionId, mode, createdAt, isCorrect, [questionId+createdAt]',
+    })
   }
 }
 

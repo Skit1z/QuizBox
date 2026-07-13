@@ -130,6 +130,7 @@ const startedAt = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
 const session = ref<ExamSession | null>(null)
 const durationMinVal = computed(() => Number(props.durationMin || 0))
+const finishing = ref(false)
 
 function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60)
@@ -139,14 +140,27 @@ function fmtTime(sec: number): string {
 
 function startTimer() {
   if (!props.classic || !durationMinVal.value) return
-  if (remainingSec.value <= 0) remainingSec.value = durationMinVal.value * 60
+  updateRemainingTime()
   timer = setInterval(() => {
-    remainingSec.value--
+    updateRemainingTime()
     if (remainingSec.value <= 0) {
       showToast('时间到，自动交卷')
-      finishPractice(true)
+      void finishPractice(true)
     }
   }, 1000)
+}
+
+/** 用绝对截止时间校准，避免后台标签页定时器节流后获得额外考试时间。 */
+function updateRemainingTime() {
+  if (!props.classic || !durationMinVal.value) return
+  const deadline = startedAt.value + durationMinVal.value * 60 * 1000
+  remainingSec.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState !== 'visible' || !props.classic) return
+  updateRemainingTime()
+  if (remainingSec.value <= 0) void finishPractice(true)
 }
 
 function stopTimer() {
@@ -166,7 +180,10 @@ async function initSession() {
     // 优先恢复上次退出的题号，其次是首个未答题号
     const savedIdx = localStorage.getItem(`quizbox_last_idx_${props.initialSession.id}`)
     if (savedIdx !== null) {
-      idx.value = Number(savedIdx)
+      const restoredIdx = Number(savedIdx)
+      idx.value = Number.isInteger(restoredIdx)
+        ? Math.max(0, Math.min(restoredIdx, props.questions.length - 1))
+        : 0
     } else {
       const firstUnanswered = props.questions.findIndex((q) => {
         const ans = answers.value[q.id]
@@ -198,6 +215,7 @@ async function initSession() {
       },
       props.questions.map((q) => q.id),
     )
+    startedAt.value = session.value.startTime
   } catch {
     // 持久化失败不阻塞做题
   }
@@ -308,8 +326,15 @@ async function prev() {
 }
 
 async function finishPractice(_auto = false) {
+  if (finishing.value) return
+  finishing.value = true
   stopTimer()
-  const durationMs = Date.now() - startedAt.value
+  const durationMs = Math.min(
+    Date.now() - startedAt.value,
+    props.classic && durationMinVal.value
+      ? durationMinVal.value * 60 * 1000
+      : Number.POSITIVE_INFINITY,
+  )
 
   // classic 模式：交卷时统一判分所有客观题，主观题仅记录作答
   if (props.classic) {
@@ -366,14 +391,18 @@ async function finishPractice(_auto = false) {
     session.value = null
   }
 
-  emit('finish', {
-    total: total.value,
-    correct,
-    answered,
-    durationMs,
-    session: finalSession || undefined,
-    detail,
-  })
+  try {
+    emit('finish', {
+      total: total.value,
+      correct,
+      answered,
+      durationMs,
+      session: finalSession || undefined,
+      detail,
+    })
+  } finally {
+    finishing.value = false
+  }
 }
 
 async function callAi() {
@@ -394,6 +423,12 @@ async function callAi() {
       },
     ])
     aiResult.value[q.id] = res
+    await wrongBookRepo.recordAttempt({
+      questionId: q.id,
+      isCorrect: res.score >= 60,
+      selfRating: res.score,
+      reason: res.score < 60 ? 'AI 评分未达 60 分' : undefined,
+    })
     if (!recordedSubjective.value.has(q.id)) {
       recordedSubjective.value.add(q.id)
       attemptsRepo.record({
@@ -423,11 +458,18 @@ function submitSelf(rating: number) {
       selfRating: rating,
     })
   }
+  void wrongBookRepo.recordAttempt({
+    questionId: current.value.id,
+    isCorrect: rating >= 60,
+    selfRating: rating,
+    reason: rating < 60 ? '主观题自评未达 60 分' : undefined,
+  })
 }
 
 onMounted(async () => {
   if (!total.value) return
   window.addEventListener('resize', onResize)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   await initSession()
   sessionReady.value = true
   if (!session.value) startedAt.value = Date.now()
@@ -442,6 +484,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopTimer()
   window.removeEventListener('resize', onResize)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   saveCurrentIndex()
   // classic 模式：若已超时但未交卷，自动完成并记录结果（避免 session 卡在 in_progress）
   if (props.classic && session.value && remainingSec.value <= 0) {

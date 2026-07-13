@@ -20,7 +20,7 @@ export interface OcrSettings {
 export interface BankSyncSettings {
   /** 启用云端题库同步（跨设备共享） */
   enabled: boolean
-  /** 共享密钥（可选，须与服务端 BANK_KEY 一致） */
+  /** 可选共享密钥；服务端配置 BANK_KEY 时须保持一致 */
   key: string
 }
 
@@ -30,7 +30,7 @@ const DEFAULT_OCR: OcrSettings = {
 
 const DEFAULT_BANK: BankSyncSettings = {
   enabled: true,
-  key: 'skit1z',
+  key: '',
 }
 
 const DEFAULT_AI: AiSettings = {

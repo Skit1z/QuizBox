@@ -9,7 +9,7 @@
 本地优先 · 可部署到 Vercel 开启云端题库同步
 
 ![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)
-![Tauri](https://img.shields.io/badge/Tauri-2-FFC131.svg)
+![Vercel](https://img.shields.io/badge/Vercel-Web%20%2F%20PWA-black.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Skit1z/QuizBox)
@@ -83,7 +83,7 @@ QuizBox 面向个人题库使用场景：把已有 Word / Markdown / PDF 题库�
 - Vant 4 + Pinia + Vue Router
 - Dexie / IndexedDB 本地存储
 - Vercel Serverless Functions + Vercel Blob 云端题库同步
-- Tauri 2 桌面端打包
+- Vercel Web / PWA 部署
 
 ---
 
@@ -97,8 +97,7 @@ npm install
 npm run dev        # http://localhost:5173
 
 # 生产构建
-npm run build      # Web 版
-npm run tauri build  # 桌面端（需要 Rust 环境）
+npm run build
 ```
 
 | 命令                 | 说明                |
@@ -107,7 +106,6 @@ npm run tauri build  # 桌面端（需要 Rust 环境）
 | `npm run build`      | 生产构建            |
 | `npm run lint`       | ESLint 检查         |
 | `npm run format`     | 格式化代码          |
-| `npm run tauri dev`  | 桌面端开发调试      |
 | `npm run preview`    | 预览生产构建产物    |
 
 ---
@@ -125,17 +123,7 @@ npm i -g vercel && vercel --prod
 部署到 Vercel 还能一键开启**云端题库同步**（电脑导入、手机接着做），完整步骤见
 **[docs/vercel-deploy.md](docs/vercel-deploy.md)**（含 Blob 存储与共享密钥配置）。
 
-也可部署到任意静态托管，但 `/api/bank` 云同步依赖 serverless 函数和 Blob 存储；纯静态托管只能使用本地数据。
-
 部署完成后，移动端浏览器访问并「添加到主屏幕」即可作为 PWA 使用。
-
-### 桌面端（Tauri）
-
-```bash
-npm run tauri build
-```
-
-产物位于 `src-tauri/target/release/bundle/`（macOS `.app` / Windows `.exe`）。桌面端默认使用本地存储，如需多端同步可部署 Vercel 后启用云端题库同步。
 
 ---
 
@@ -145,7 +133,7 @@ npm run tauri build
 
 **AI 接口** — 选择供应商后填写 API Key 即可。每个供应商均附有 Key 申请指引链接。
 
-**云端题库同步** — 部署到 Vercel 后可用。设置中启用并填共享密钥即可通过同源 `/api/bank` 跨设备共享题库。配置详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)。
+**云端题库同步** — Vercel 部署默认通过同源 `/api/bank` 连接 Blob；可选配置 `BANK_KEY` 增加访问保护。配置详见 [docs/vercel-deploy.md](docs/vercel-deploy.md)。
 
 **外观** — 支持亮色 / 暗色 / 跟随系统三种主题模式，以及多套主题色切换。
 
@@ -179,7 +167,6 @@ src/
 ├── types/         类型定义
 └── styles/        全局样式
 api/               Vercel Serverless 函数（bank 云端题库）
-src-tauri/         Tauri 桌面端配置
 docs/              部署教程与设计文档
 ```
 
