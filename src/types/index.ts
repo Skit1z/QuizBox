@@ -200,3 +200,6 @@ export interface BankManifest {
   /** 题目分片列表 */
   shards: ShardEntry[]
 }
+
+// 文档资料阅读器类型（独立文件,这里 re-export 保持单一类型入口约定）
+export type { DocMeta, DocsManifest, DocRecord, DocCacheRecord } from './docs'
