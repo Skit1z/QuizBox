@@ -280,7 +280,6 @@ const popupStyle = computed(() => {
 
 interface LogDetail {
   text: string
-  hash: string
   type: 'feat' | 'fix' | 'refactor' | 'style' | 'other'
   typeLabel: string
   typeColor: string
@@ -288,13 +287,7 @@ interface LogDetail {
 }
 
 function parseLog(log: string): LogDetail {
-  const hashMatch = log.match(/（([a-f0-9]+)）$/)
-  let text = log
-  let hash = ''
-  if (hashMatch) {
-    text = log.replace(/（[a-f0-9]+）$/, '').trim()
-    hash = hashMatch[1]
-  }
+  const text = log.replace(/（[a-f0-9]+）$/, '').trim()
 
   let type: 'feat' | 'fix' | 'refactor' | 'style' | 'other' = 'other'
   let typeLabel = '更改'
@@ -327,7 +320,7 @@ function parseLog(log: string): LogDetail {
     typeBg = 'var(--brand-soft)'
   }
 
-  return { text, hash, type, typeLabel, typeColor, typeBg }
+  return { text, type, typeLabel, typeColor, typeBg }
 }
 
 // ===== 管理密码 =====
@@ -1013,9 +1006,6 @@ onMounted(async () => {
                       {{ parseLog(log).typeLabel }}
                     </span>
                     <span class="log-text">{{ parseLog(log).text }}</span>
-                    <span v-if="parseLog(log).hash" class="log-hash">
-                      {{ parseLog(log).hash }}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -1439,18 +1429,5 @@ onMounted(async () => {
 .log-text {
   flex: 1;
   word-break: break-all;
-}
-.log-hash {
-  font-size: 11px;
-  font-family: monospace;
-  color: var(--text-3);
-  background: var(--surface-2);
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 6px;
-  flex-shrink: 0;
-  align-self: flex-start;
-  margin-top: 1px;
-  border: 1px solid var(--border);
 }
 </style>

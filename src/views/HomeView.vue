@@ -89,7 +89,7 @@ async function onPullRefresh() {
       const pulledMsg = res.pulled > 0 ? `已同步 ${res.pulled} 条` : '已是最新'
       showToast(pulledMsg)
     } else if (res.error) {
-      showToast(res.error)
+      showToast(`同步失败：${res.error}`)
     }
   } finally {
     await loadStats()

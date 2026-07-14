@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showDialog, showFailToast, showSuccessToast } from 'vant'
+import { showDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { useSettingsStore } from '@/stores/settings'
 import { questionsRepo, questionSourceHash, type QuestionInput } from '@/db/questions'
@@ -400,7 +400,7 @@ async function batchGenAnswers() {
       batchProgress.done++
     }
     if (failed === 0) showSuccessToast(`已补全 ${success} 题`)
-    else showFailToast(`成功 ${success} 题，失败 ${failed} 题`)
+    else showToast(`已补 ${success} 题，${failed} 题失败`)
   } finally {
     batchAi.value = false
   }
