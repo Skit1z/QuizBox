@@ -29,6 +29,7 @@ onBeforeUnmount(() => {
 const navItems = [
   { name: 'home', label: '首页', icon: 'wap-home-o' },
   { name: 'library', label: '题库', icon: 'bookmark-o' },
+  { name: 'docs', label: '资料', icon: 'description-o' },
   { name: 'settings', label: '设置', icon: 'setting-o' },
 ]
 

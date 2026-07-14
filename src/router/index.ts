@@ -27,6 +27,18 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '错题本' },
   },
   {
+    path: '/docs',
+    name: 'docs',
+    component: () => import('@/views/DocsView.vue'),
+    meta: { title: '资料', tabbar: true },
+  },
+  {
+    path: '/docs/:id',
+    name: 'doc-reader',
+    component: () => import('@/views/DocReaderView.vue'),
+    meta: { title: '阅读' },
+  },
+  {
     path: '/settings',
     name: 'settings',
     component: () => import('@/views/SettingsView.vue'),
