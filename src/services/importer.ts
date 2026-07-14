@@ -277,6 +277,9 @@ interface ReblockResult {
   starts: number[]
 }
 
+/** 补切过程中随题携带其「原文」（送 repair 阶段对照用），避免退化成仅题干 */
+type ReblockItem = { q: ParsedQuestion; blockText?: string }
+
 /**
  * 对体检标记的可疑块调用 AI 重新切题，然后重解析并回填到 hybrid.questions。
  * 失败时保留原块不动。
@@ -287,8 +290,15 @@ export async function reblockWithAI(
 ): Promise<HybridResult> {
   if (suspicious.length === 0) return hybrid
 
-  // 深拷贝 questions 以便回填修改
-  const questions: ParsedQuestion[] = hybrid.questions.map((q) => {
+  // 原始低置信块按题目索引建表，作为「原文」来源：repair 阶段靠它对照修复
+  // （补回漏读的答案/选项等）。绝不能退化成仅题干，否则源文信息丢失、修复失效。
+  const origBlockByIdx = new Map<number, string>()
+  hybrid.lowConfidenceIndices.forEach((qIdx, i) => {
+    origBlockByIdx.set(qIdx, hybrid.lowConfidenceBlocks[i])
+  })
+
+  // 深拷贝 questions，并给每题挂上其原文（未动的题沿用原块原文，可能为空）
+  const items: ReblockItem[] = hybrid.questions.map((q, idx) => {
     const copy: ParsedQuestion = {
       type: q.type,
       stem: q.stem,
@@ -298,11 +308,12 @@ export async function reblockWithAI(
       confidence: q.confidence,
     }
     if (q.options) copy.options = [...q.options]
-    return copy
+    return { q: copy, blockText: origBlockByIdx.get(idx) }
   })
 
   // 从后往前处理，避免前面的插入移动后续索引
   const sorted = [...suspicious].sort((a, b) => b.questionIndex - a.questionIndex)
+  let didSplice = false
 
   for (const block of sorted) {
     try {
@@ -329,44 +340,48 @@ export async function reblockWithAI(
         segments.push(lines.slice(start, end).join('\n').trim())
       }
 
-      // 每段单独重解析
-      const newQuestions: ParsedQuestion[] = []
+      // 每段单独重解析；新题的原文 = 其所属片段文本
+      const newItems: ReblockItem[] = []
       for (const seg of segments) {
         if (!seg.trim()) continue
         const parsed = parseWithRulesHybrid(seg)
-        newQuestions.push(...parsed.questions)
+        for (const nq of parsed.questions) newItems.push({ q: nq, blockText: seg })
       }
-      if (newQuestions.length < 2) continue
+      if (newItems.length < 2) continue
 
       // 回填：用 N 道新题替换原 1 道题
-      questions.splice(block.questionIndex, 1, ...newQuestions)
+      items.splice(block.questionIndex, 1, ...newItems)
+      didSplice = true
     } catch (e) {
       console.warn('[importer] reblock AI failed for block', block.questionIndex, e)
       // 保留原块不动
     }
   }
 
-  // reblock 改变了 questions 数组的长度和索引，必须重算 lowConfidence 数据，
-  // 否则下游 repair 阶段会拿旧索引操作已位移的数组，导致改错题或删错题。
+  // 实际没发生任何补切 → 原样返回，零副作用（不改动下游 lowConfidence 数据）
+  if (!didSplice) return hybrid
+
+  // 补切改变了数组长度与索引，必须重算 lowConfidence 数据，否则 repair 阶段会拿旧索引
+  // 操作已位移的数组。原文优先用块原文，仅在缺失时才退回题干。
   const lowConfidenceIndices: number[] = []
   const lowConfidenceBlocks: string[] = []
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i]
-    if ((q.confidence ?? 0) >= CONFIDENCE_THRESHOLD) continue
+  items.forEach((item, i) => {
+    const q = item.q
+    if ((q.confidence ?? 0) >= CONFIDENCE_THRESHOLD) return
     // 选项齐全但答案缺失的跳过（同 parseHybridInternal 逻辑）
     if (
       (q.type === 'single' || q.type === 'multiple') &&
       (q.options?.length ?? 0) >= 2 &&
       !hasAnswer(q.answer)
     )
-      continue
+      return
     lowConfidenceIndices.push(i)
-    lowConfidenceBlocks.push(q.stem)
-  }
+    lowConfidenceBlocks.push(item.blockText ?? q.stem)
+  })
 
   return {
     ...hybrid,
-    questions,
+    questions: items.map((it) => it.q),
     lowConfidenceBlocks,
     lowConfidenceIndices,
   }
