@@ -2,7 +2,8 @@ import { chatJson } from './ai'
 import type { QuestionType } from '@/types'
 import { db } from '@/db'
 import { sha256 } from '@/utils/hash'
-import { detectType, normalizeAnswer } from './rule-parser'
+import { detectType, normalizeAnswer, parseWithRulesHybrid } from './rule-parser'
+import type { HybridResult, SuspiciousBlock } from './rule-parser'
 
 /** AI 解析返回的单道题（中间结构） */
 export interface ParsedQuestion {
@@ -264,6 +265,99 @@ export async function repairWithAI(
 
 async function blockHash(text: string): Promise<string> {
   return sha256(`${CACHE_VERSION}\0${text}`)
+}
+
+// ===== AI 补切：对体检标记的可疑块重新切题 =====
+
+const REBLOCK_SYSTEM = `你是题库切题助手。给一段带行号的文本（可能包含多道粘连的题目），
+你只需要找出每道题的起始行号。不要返回任何题目内容，只返回行号数组。
+严格输出 JSON：{"starts":[0,5,11]}  // 每道题从第几行开始`
+
+interface ReblockResult {
+  starts: number[]
+}
+
+/**
+ * 对体检标记的可疑块调用 AI 重新切题，然后重解析并回填到 hybrid.questions。
+ * 失败时保留原块不动。
+ */
+export async function reblockWithAI(
+  hybrid: HybridResult,
+  suspicious: SuspiciousBlock[],
+): Promise<HybridResult> {
+  if (suspicious.length === 0) return hybrid
+
+  // 深拷贝 questions 以便回填修改
+  const questions: ParsedQuestion[] = hybrid.questions.map((q) => {
+    const copy: ParsedQuestion = {
+      type: q.type,
+      stem: q.stem,
+      answer: q.answer,
+      analysis: q.analysis,
+      imagePlaceholders: q.imagePlaceholders,
+      confidence: q.confidence,
+    }
+    if (q.options) copy.options = [...q.options]
+    return copy
+  })
+
+  // 从后往前处理，避免前面的插入移动后续索引
+  const sorted = [...suspicious].sort((a, b) => b.questionIndex - a.questionIndex)
+
+  for (const block of sorted) {
+    try {
+      const numberedLines = numberLines(block.text)
+      const res = await chatJson<ReblockResult>(
+        [
+          { role: 'system', content: REBLOCK_SYSTEM },
+          { role: 'user', content: numberedLines },
+        ],
+        { temperature: 0, maxTokens: 200, timeoutMs: 30000 },
+      )
+
+      // 校验 AI 返回：starts 必须是非空数组，至少 2 段才值得重切
+      if (!Array.isArray(res.starts) || res.starts.length < 2) continue
+      const lines = block.text.split('\n')
+      const validStarts = res.starts.filter((s) => s >= 0 && s < lines.length).sort((a, b) => a - b)
+      if (validStarts.length < 2) continue
+
+      // 按行号切分文本
+      const segments: string[] = []
+      for (let i = 0; i < validStarts.length; i++) {
+        const start = validStarts[i]
+        const end = i + 1 < validStarts.length ? validStarts[i + 1] : lines.length
+        segments.push(lines.slice(start, end).join('\n').trim())
+      }
+
+      // 每段单独重解析
+      const newQuestions: ParsedQuestion[] = []
+      for (const seg of segments) {
+        if (!seg.trim()) continue
+        const parsed = parseWithRulesHybrid(seg)
+        newQuestions.push(...parsed.questions)
+      }
+      if (newQuestions.length < 2) continue
+
+      // 回填：用 N 道新题替换原 1 道题
+      questions.splice(block.questionIndex, 1, ...newQuestions)
+    } catch (e) {
+      console.warn('[importer] reblock AI failed for block', block.questionIndex, e)
+      // 保留原块不动
+    }
+  }
+
+  return {
+    ...hybrid,
+    questions,
+  }
+}
+
+/** 给文本每行前加行号，用于 AI 切题输入 */
+function numberLines(text: string): string {
+  return text
+    .split('\n')
+    .map((line, i) => `${i}: ${line}`)
+    .join('\n')
 }
 
 // ===== 按需：为单题生成答案 + 解析（用户在预览页手动触发） =====
