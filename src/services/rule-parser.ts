@@ -129,7 +129,7 @@ function filterWatermarks(lines: string[]): string[] {
 
 // 常见中文标点（用于可读性判断）
 const RE_CN_PUNCT = /[。，、；：！？""''（）《》【】\-—…·]/g
-const CONFIDENCE_THRESHOLD = 0.6
+export const CONFIDENCE_THRESHOLD = 0.6
 
 const RE_ANSWER_KEY_ITEM =
   /^[\s　]*[(（]?(\d{1,3})[)）]?\s*[.、:：)]\s*(?:答案[:：]?\s*)?([A-Ha-h]+|[√✓×✗]|对|错|正确|错误|[TF])\b/
@@ -145,7 +145,7 @@ export interface SuspiciousBlock {
   /** 该块原始文本 */
   text: string
   /** 可疑原因 */
-  reason: 'multi-question-num' | 'multi-option-group' | 'length-outlier'
+  reason: 'multi-option-group' | 'length-outlier'
 }
 
 export interface HybridResult {
@@ -284,21 +284,14 @@ export function assessBlockHealth(blocks: RawBlock[]): {
     const text = block.lines.join('\n').trim()
     if (!text) continue
 
-    // 1. 块内多题号（强信号）：≥2 行行首匹配题号正则
-    const questionNumLines = block.lines.filter((l) => RE_QUESTION_NUM.test(l))
-    if (questionNumLines.length >= 2) {
-      suspicious.push({ blockIndex: i, text, reason: 'multi-question-num' })
-      continue
-    }
-
-    // 2. 块内多选项组（强信号）：≥2 处独立选项组（选项字母重置到 A）
+    // 1. 块内多选项组（强信号）：≥2 处独立选项组（选项字母重置到 A）
     const optionGroups = countOptionGroupStarts(block.lines)
     if (optionGroups >= 2) {
       suspicious.push({ blockIndex: i, text, reason: 'multi-option-group' })
       continue
     }
 
-    // 3. 块长离群（兜底）：字符数 > 中位数×3 且 > 400
+    // 2. 块长离群（兜底）：字符数 > 中位数×3 且 > 400
     if (medianLen > 0 && text.length > medianLen * 3 && text.length > 400) {
       suspicious.push({ blockIndex: i, text, reason: 'length-outlier' })
     }

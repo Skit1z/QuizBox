@@ -2,7 +2,7 @@ import { chatJson } from './ai'
 import type { QuestionType } from '@/types'
 import { db } from '@/db'
 import { sha256 } from '@/utils/hash'
-import { detectType, normalizeAnswer, parseWithRulesHybrid } from './rule-parser'
+import { detectType, normalizeAnswer, parseWithRulesHybrid, CONFIDENCE_THRESHOLD } from './rule-parser'
 import type { HybridResult, SuspiciousBlock } from './rule-parser'
 
 /** AI 解析返回的单道题（中间结构） */
@@ -346,10 +346,36 @@ export async function reblockWithAI(
     }
   }
 
+  // reblock 改变了 questions 数组的长度和索引，必须重算 lowConfidence 数据，
+  // 否则下游 repair 阶段会拿旧索引操作已位移的数组，导致改错题或删错题。
+  const lowConfidenceIndices: number[] = []
+  const lowConfidenceBlocks: string[] = []
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i]
+    if ((q.confidence ?? 0) >= CONFIDENCE_THRESHOLD) continue
+    // 选项齐全但答案缺失的跳过（同 parseHybridInternal 逻辑）
+    if (
+      (q.type === 'single' || q.type === 'multiple') &&
+      (q.options?.length ?? 0) >= 2 &&
+      !hasAnswer(q.answer)
+    )
+      continue
+    lowConfidenceIndices.push(i)
+    lowConfidenceBlocks.push(q.stem)
+  }
+
   return {
     ...hybrid,
     questions,
+    lowConfidenceBlocks,
+    lowConfidenceIndices,
   }
+}
+
+/** 检查题目是否有答案 */
+function hasAnswer(answer: ParsedQuestion['answer']): boolean {
+  if (Array.isArray(answer)) return answer.length > 0
+  return !!answer
 }
 
 /** 给文本每行前加行号，用于 AI 切题输入 */

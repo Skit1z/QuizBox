@@ -218,19 +218,6 @@ async function doParse() {
     // 否则索引会错位。空题干的过滤统一放在所有索引操作之后（见 finalizePreview）。
     let hybrid = parseWithRulesHybrid(result.text)
 
-    // 补切：对体检发现的粘连块调 AI 重新切题（规则解析 → 补切 → profile → repair）
-    if (
-      settingsStore.ai.apiKey &&
-      hybrid.suspiciousBlocks &&
-      hybrid.suspiciousBlocks.length > 0
-    ) {
-      try {
-        hybrid = await reblockWithAI(hybrid, hybrid.suspiciousBlocks)
-      } catch (e) {
-        console.warn('[import] reblock failed', e)
-      }
-    }
-
     if (settingsStore.ai.apiKey && shouldTryProfileParse(hybrid, result.text)) {
       try {
         const profiled = await parseWithDetectedProfile(result.text, (message) => {
@@ -241,6 +228,20 @@ async function doParse() {
         }
       } catch (e) {
         console.warn('[import] profile parse failed', e)
+      }
+    }
+
+    // 补切：在最终确定的解析结果上，对体检发现的粘连块调 AI 重新切题
+    // 放在 profile 之后，确保补切成果不会被 profile 全量重解析覆盖丢弃
+    if (
+      settingsStore.ai.apiKey &&
+      hybrid.suspiciousBlocks &&
+      hybrid.suspiciousBlocks.length > 0
+    ) {
+      try {
+        hybrid = await reblockWithAI(hybrid, hybrid.suspiciousBlocks)
+      } catch (e) {
+        console.warn('[import] reblock failed', e)
       }
     }
     let qs: ParsedQuestion[] = hybrid.questions
