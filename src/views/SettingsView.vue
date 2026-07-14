@@ -23,6 +23,16 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-14 21-29',
+    date: '2026-07-14',
+    logs: [
+      '新增「资料」功能:支持上传 Word/Markdown 文档在线阅读,文档云端存储跨设备共享',
+      '文档阅读零解析开销,上传时即解析为 HTML,图片单独存储自动加载',
+      '支持 GFM Markdown 语法与 KaTeX 数学公式渲染',
+      '本地缓存已渲染文档,二次打开秒开,断网也可阅读',
+    ],
+  },
+  {
     version: '2026-07-13 21-06',
     date: '2026-07-13',
     logs: [
