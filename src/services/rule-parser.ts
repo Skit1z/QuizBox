@@ -52,10 +52,12 @@ const RE_INLINE_OPT_SPLIT =
   /(?<=[\s。．])(?=[A-Ha-h][.、．)])|(?<=[A-Za-z\u4e00-\u9fff])(?=[A-Ha-h][.、．)])/
 
 // 答案标记（冒号可选，兼容「正确答案C」「答案：C」）
-const RE_ANSWER =
+// 注：改为 let，可被 profile 临时覆盖（解析后还原）
+let RE_ANSWER =
   /^[\s　•◦▪▪·●○■□*\-‑–—#]*(?:【?答案】?|答案|Answer|answer|正确答案|参考答案|答)\s*[:：]?\s*/i
 // 解析标记
-const RE_ANALYSIS = /^[\s　#]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
+// 注：改为 let，可被 profile 临时覆盖（解析后还原）
+let RE_ANALYSIS = /^[\s　#]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
 
 // 判断题改错格式：「错：零和博弈改为合作共赢」→ 答案=F，解析=改错内容
 const RE_JUDGE_CORRECTION = /^[\s　]*(对|错|正确|错误)\s*[：:]\s*(.*)/
@@ -203,12 +205,18 @@ export interface RuleProfile {
   questionStart?: string
   /** 选项开头正则（可含正文捕获，会被裁成仅匹配前缀） */
   optionStart?: string
+  /** 答案标记正则，覆盖默认 RE_ANSWER（如「参考答案」「答」） */
+  answerMarker?: string
+  /** 解析标记正则，覆盖默认 RE_ANALYSIS（如「详解」「分析」） */
+  analysisMarker?: string
 }
 
 export function parseWithRulesHybrid(text: string, profile?: RuleProfile): HybridResult {
   // 保存默认方言，按 profile 临时覆盖；解析为纯同步，无并发风险，finally 还原
   const savedQuestion = RE_QUESTION_NUM
   const savedOption = RE_OPTION_HEAD
+  const savedAnswer = RE_ANSWER
+  const savedAnalysis = RE_ANALYSIS
   if (profile?.questionStart) {
     const re = safeRegExp(profile.questionStart, 'm')
     if (re && hasCaptureGroup(re)) RE_QUESTION_NUM = re
@@ -217,11 +225,21 @@ export function parseWithRulesHybrid(text: string, profile?: RuleProfile): Hybri
     const re = safeRegExp(stripTrailingContentCapture(profile.optionStart), '')
     if (re) RE_OPTION_HEAD = re
   }
+  if (profile?.answerMarker) {
+    const re = safeRegExp(profile.answerMarker, 'i')
+    if (re) RE_ANSWER = re
+  }
+  if (profile?.analysisMarker) {
+    const re = safeRegExp(profile.analysisMarker, 'i')
+    if (re) RE_ANALYSIS = re
+  }
   try {
     return parseHybridInternal(text)
   } finally {
     RE_QUESTION_NUM = savedQuestion
     RE_OPTION_HEAD = savedOption
+    RE_ANSWER = savedAnswer
+    RE_ANALYSIS = savedAnalysis
   }
 }
 
