@@ -8,7 +8,7 @@ import { questionsRepo, questionSourceHash, type QuestionInput } from '@/db/ques
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS } from '@/services/file-parser'
 import { saveImages } from '@/services/docx-images'
 import type { ParsedImage } from '@/services/docx-images'
-import { repairWithAI, generateAnswer, type ParsedQuestion } from '@/services/importer'
+import { repairWithAI, generateAnswer, reblockWithAI, type ParsedQuestion } from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
 import {
   isProfileResultBetter,
@@ -217,6 +217,20 @@ async function doParse() {
     // 注意：lowConfidenceIndices 是基于此数组的位置索引，回填/删除完成前不可过滤，
     // 否则索引会错位。空题干的过滤统一放在所有索引操作之后（见 finalizePreview）。
     let hybrid = parseWithRulesHybrid(result.text)
+
+    // 补切：对体检发现的粘连块调 AI 重新切题（规则解析 → 补切 → profile → repair）
+    if (
+      settingsStore.ai.apiKey &&
+      hybrid.suspiciousBlocks &&
+      hybrid.suspiciousBlocks.length > 0
+    ) {
+      try {
+        hybrid = await reblockWithAI(hybrid, hybrid.suspiciousBlocks)
+      } catch (e) {
+        console.warn('[import] reblock failed', e)
+      }
+    }
+
     if (settingsStore.ai.apiKey && shouldTryProfileParse(hybrid, result.text)) {
       try {
         const profiled = await parseWithDetectedProfile(result.text, (message) => {
