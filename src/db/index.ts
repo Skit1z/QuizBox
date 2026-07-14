@@ -8,6 +8,7 @@ import type {
   ExamSession,
   Attachment,
   SyncMeta,
+  DocCacheRecord,
 } from '@/types'
 
 /**
@@ -24,6 +25,7 @@ export class QADatabase extends Dexie {
   attachments!: Table<Attachment, string>
   syncMeta!: Table<SyncMeta, string>
   parseCache!: Table<{ hash: string; value: string; createdAt: number }, string>
+  docsCache!: Table<DocCacheRecord, string>
 
   constructor() {
     super('QuizBoxDB')
@@ -77,6 +79,11 @@ export class QADatabase extends Dexie {
     // version 6：答题历史按题目 + 时间排序，保证裁剪时只删除最旧记录
     this.version(6).stores({
       attempts: 'id, questionId, mode, createdAt, isCorrect, [questionId+createdAt]',
+    })
+
+    // version 7：文档资料阅读器本地缓存（仅缓存已渲染 HTML，不参与同步）
+    this.version(7).stores({
+      docsCache: 'id, cachedAt',
     })
   }
 }
