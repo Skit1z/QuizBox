@@ -37,8 +37,8 @@ BOSS 确认的两个通用性痛点：
 
 ```ts
 interface SuspiciousBlock {
-  questionIndex: number  // 该块对应的题在 HybridResult.questions 中的位置
-  text: string           // 该块原始文本
+  questionIndex: number // 该块对应的题在 HybridResult.questions 中的位置
+  text: string // 该块原始文本
   reason: 'multi-question-num' | 'multi-option-group' | 'length-outlier'
 }
 ```
@@ -98,10 +98,10 @@ if (shouldTryProfileParse) → profile 重解析
 
 ```ts
 export interface RuleProfile {
-  questionStart?: string   // 已有
-  optionStart?: string     // 已有
-  answerMarker?: string    // 新增：覆盖 RE_ANSWER（答案标记，如「参考答案」「答」）
-  analysisMarker?: string  // 新增：覆盖 RE_ANALYSIS（解析标记，如「详解」「分析」）
+  questionStart?: string // 已有
+  optionStart?: string // 已有
+  answerMarker?: string // 新增：覆盖 RE_ANSWER（答案标记，如「参考答案」「答」）
+  analysisMarker?: string // 新增：覆盖 RE_ANALYSIS（解析标记，如「详解」「分析」）
 }
 ```
 
@@ -144,13 +144,13 @@ ImportView.vue handleParse
 
 ## 错误处理
 
-| 场景 | 行为 |
-|------|------|
-| 无 AI Key | 跳过 C 补切与 B profile，纯规则解析（当前行为） |
-| C AI 调用失败/超时 | 保留原分块，继续后续流程 |
-| C AI 返回非法边界 | 该块保留不动 |
-| B 某字段正则非法 | 该字段回退默认，其余字段仍生效 |
-| B profiled 结果更差 | `isProfileResultBetter` 拒绝采纳，保留原结果 |
+| 场景                | 行为                                            |
+| ------------------- | ----------------------------------------------- |
+| 无 AI Key           | 跳过 C 补切与 B profile，纯规则解析（当前行为） |
+| C AI 调用失败/超时  | 保留原分块，继续后续流程                        |
+| C AI 返回非法边界   | 该块保留不动                                    |
+| B 某字段正则非法    | 该字段回退默认，其余字段仍生效                  |
+| B profiled 结果更差 | `isProfileResultBetter` 拒绝采纳，保留原结果    |
 
 ## 测试策略
 

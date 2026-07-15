@@ -121,7 +121,13 @@ onMounted(async () => {
         :disabled="uploading || !hasWriteAuth()"
         @oversize="() => showFailToast('文件超过 4MB 限制')"
       >
-        <van-button icon="plus" type="primary" round :loading="uploading" :loading-text="uploadPhase">
+        <van-button
+          icon="plus"
+          type="primary"
+          round
+          :loading="uploading"
+          :loading-text="uploadPhase"
+        >
           上传文档
         </van-button>
       </van-uploader>
@@ -154,7 +160,13 @@ onMounted(async () => {
             </template>
           </van-cell>
           <template #right>
-            <van-button square type="danger" text="删除" class="del-btn" @click="removeDoc(doc.id)" />
+            <van-button
+              square
+              type="danger"
+              text="删除"
+              class="del-btn"
+              @click="removeDoc(doc.id)"
+            />
           </template>
         </van-swipe-cell>
       </div>

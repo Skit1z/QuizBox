@@ -2,7 +2,12 @@ import { chatJson } from './ai'
 import type { QuestionType } from '@/types'
 import { db } from '@/db'
 import { sha256 } from '@/utils/hash'
-import { detectType, normalizeAnswer, parseWithRulesHybrid, CONFIDENCE_THRESHOLD } from './rule-parser'
+import {
+  detectType,
+  normalizeAnswer,
+  parseWithRulesHybrid,
+  CONFIDENCE_THRESHOLD,
+} from './rule-parser'
 import type { HybridResult, SuspiciousBlock } from './rule-parser'
 
 /** AI 解析返回的单道题（中间结构） */

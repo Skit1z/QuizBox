@@ -17,24 +17,26 @@
 ## 文件结构
 
 ### 新建(8 个)
-| 文件 | 职责 |
-|------|------|
-| `api/docs.ts` | Vercel serverless:文档/图片 CRUD + multipart 解析 |
-| `src/types/docs.ts` | 文档相关类型(独立文件,避免 types/index.ts 膨胀) |
-| `src/db/docs.ts` | docsCache 表 repo |
-| `src/services/docs-api.ts` | 云端文档/图片 API 客户端 |
-| `src/services/doc-render.ts` | 上传时「解析 + 图片上传 + URL 替换」渲染器 |
-| `src/stores/docs.ts` | Pinia store |
-| `src/views/DocsView.vue` | 文档列表页 |
-| `src/views/DocReaderView.vue` | 阅读页 |
+
+| 文件                          | 职责                                              |
+| ----------------------------- | ------------------------------------------------- |
+| `api/docs.ts`                 | Vercel serverless:文档/图片 CRUD + multipart 解析 |
+| `src/types/docs.ts`           | 文档相关类型(独立文件,避免 types/index.ts 膨胀)   |
+| `src/db/docs.ts`              | docsCache 表 repo                                 |
+| `src/services/docs-api.ts`    | 云端文档/图片 API 客户端                          |
+| `src/services/doc-render.ts`  | 上传时「解析 + 图片上传 + URL 替换」渲染器        |
+| `src/stores/docs.ts`          | Pinia store                                       |
+| `src/views/DocsView.vue`      | 文档列表页                                        |
+| `src/views/DocReaderView.vue` | 阅读页                                            |
 
 ### 修改(5 个)
-| 文件 | 改动 |
-|------|------|
-| `src/db/index.ts` | bump version 7 + `docsCache` 表 + 类字段 + 类型 import |
-| `src/types/index.ts` | re-export docs 类型(保持单一类型入口约定) |
-| `src/router/index.ts` | 新增 `/docs`、`/docs/:id` 路由 |
-| `src/App.vue` | `navItems` 增加 docs 项(移动 tabbar + 桌面侧边栏) |
+
+| 文件                  | 改动                                                      |
+| --------------------- | --------------------------------------------------------- |
+| `src/db/index.ts`     | bump version 7 + `docsCache` 表 + 类字段 + 类型 import    |
+| `src/types/index.ts`  | re-export docs 类型(保持单一类型入口约定)                 |
+| `src/router/index.ts` | 新增 `/docs`、`/docs/:id` 路由                            |
+| `src/App.vue`         | `navItems` 增加 docs 项(移动 tabbar + 桌面侧边栏)         |
 | `src/utils/format.ts` | 新建,提取 `fmtSize`(DocsView 复用,避免与 ImportView 重复) |
 
 ---
@@ -57,6 +59,7 @@ Task 6 ──→ Task 7                                                         
 ## Task 1: 定义文档相关类型
 
 **Files:**
+
 - Create: `src/types/docs.ts`
 - Modify: `src/types/index.ts`(末尾追加 re-export)
 
@@ -135,9 +138,11 @@ git commit -m "feat(docs): 定义文档资料阅读器类型"
 ## Task 2: 实现 `api/docs.ts` (Vercel Serverless)
 
 **Files:**
+
 - Create: `api/docs.ts`
 
 **设计要点:**
+
 - 两个路由前缀:`/api/docs`(文档 CRUD,JSON body)+ `/api/docs/img`(图片上传,multipart)。
 - 文档主体 Blob:`access: 'private'`,经 serverless 读。
 - 图片 Blob:`access: 'public'`,浏览器 `<img src>` 直接加载。
@@ -196,9 +201,9 @@ interface DocsManifest {
 // ===== 通用 Blob 读写 =====
 
 async function readJson<T = any>(path: string): Promise<T | null> {
-  const blob = await get(path, { access: path.startsWith('docs/img/') ? 'public' : 'private' }).catch(
-    () => null,
-  )
+  const blob = await get(path, {
+    access: path.startsWith('docs/img/') ? 'public' : 'private',
+  }).catch(() => null)
   if (!blob?.stream) return null
   const text = await new Response(blob.stream).text()
   if (!text) return null
@@ -506,6 +511,7 @@ git commit -m "feat(docs): 新增文档云端 serverless api/docs.ts"
 ## Task 3: 数据库升级 + docsCache repo
 
 **Files:**
+
 - Modify: `src/db/index.ts`(version 7 + 类字段)
 - Create: `src/db/docs.ts`(repo)
 
@@ -537,10 +543,10 @@ import type {
 在 version 6 后(`src/db/index.ts:78-80` 之后、构造函数结束 `}` 之前)追加 version 7:
 
 ```ts
-    // version 7：文档资料阅读器本地缓存(仅缓存已渲染 HTML,不参与同步)
-    this.version(7).stores({
-      docsCache: 'id, cachedAt',
-    })
+// version 7：文档资料阅读器本地缓存(仅缓存已渲染 HTML,不参与同步)
+this.version(7).stores({
+  docsCache: 'id, cachedAt',
+})
 ```
 
 - [ ] **Step 2: 创建 `src/db/docs.ts`**
@@ -589,6 +595,7 @@ git commit -m "feat(docs): Dexie v7 新增 docsCache 表与 repo"
 ## Task 4: 提取 `fmtSize` 到 utils + 实现 docs-api 客户端
 
 **Files:**
+
 - Create: `src/utils/format.ts`
 - Create: `src/services/docs-api.ts`
 
@@ -716,9 +723,11 @@ git commit -m "feat(docs): 提取 fmtSize 工具并实现 docs-api 客户端"
 ## Task 5: 实现 doc-render(上传时解析 + 图片上传)
 
 **Files:**
+
 - Create: `src/services/doc-render.ts`
 
 **设计要点:**
+
 - `.docx`:mammoth.convertToHtml → 提取 base64 图片 → 转 Blob → uploadImage → URL 替换。
 - `.md`:marked.parse(GFM) → 后处理 `$...$` KaTeX(marked 不处理公式)。
 - md 内联 base64 图片(`![](data:...)`)同样走上传替换(罕见但仍处理)。
@@ -750,10 +759,7 @@ export type RenderProgress = (phase: 'parsing' | 'uploading-images', detail?: st
  * 解析文档并把图片上传到云端,返回 URL 已替换的 HTML。
  * @throws 解析失败或图片上传失败时抛出
  */
-export async function renderDoc(
-  file: File,
-  onProgress?: RenderProgress,
-): Promise<RenderResult> {
+export async function renderDoc(file: File, onProgress?: RenderProgress): Promise<RenderResult> {
   const ext = file.name.split('.').pop()?.toLowerCase()
   if (ext === 'docx') return renderDocx(file, onProgress)
   if (ext === 'md') return renderMd(file)
@@ -872,6 +878,7 @@ git commit -m "feat(docs): 实现文档渲染器(mammoth+marked,图片上传替�
 ## Task 6: 实现 Pinia store
 
 **Files:**
+
 - Create: `src/stores/docs.ts`
 
 - [ ] **Step 1: 创建 `src/stores/docs.ts`**
@@ -913,10 +920,7 @@ export const useDocsStore = defineStore('docs', {
      * 上传文档:解析 → 图片上传 → 主体上传 → 本地缓存 → 刷新清单
      * @throws 任一步骤失败时抛出,UI 层捕获提示
      */
-    async upload(
-      file: File,
-      onProgress?: RenderProgress,
-    ): Promise<void> {
+    async upload(file: File, onProgress?: RenderProgress): Promise<void> {
       const { html, meta: renderMeta } = await renderDoc(file, onProgress)
       const docMeta: DocMeta = {
         id: uid('doc_'),
@@ -998,9 +1002,11 @@ git commit -m "feat(docs): 实现 docs Pinia store"
 ## Task 7: 实现 DocsView(文档列表页)
 
 **Files:**
+
 - Create: `src/views/DocsView.vue`
 
 **设计要点:**
+
 - `defineOptions({ name: 'DocsView' })`(keep-alive 依赖)。
 - `van-uploader` + `:max-size="4*1024*1024"` + `@oversize`。
 - 上传过程展示 phase 文案(解析中 / 上传图片 n/m / 保存中)。
@@ -1141,7 +1147,13 @@ onMounted(async () => {
         :disabled="uploading"
         @oversize="() => showFailToast('文件超过 4MB 限制')"
       >
-        <van-button icon="plus" type="primary" round :loading="uploading" :loading-text="uploadPhase">
+        <van-button
+          icon="plus"
+          type="primary"
+          round
+          :loading="uploading"
+          :loading-text="uploadPhase"
+        >
           上传文档
         </van-button>
       </van-uploader>
@@ -1174,7 +1186,13 @@ onMounted(async () => {
             </template>
           </van-cell>
           <template #right>
-            <van-button square type="danger" text="删除" class="del-btn" @click="removeDoc(doc.id)" />
+            <van-button
+              square
+              type="danger"
+              text="删除"
+              class="del-btn"
+              @click="removeDoc(doc.id)"
+            />
           </template>
         </van-swipe-cell>
       </div>
@@ -1263,6 +1281,7 @@ git commit -m "feat(docs): 实现文档列表页 DocsView"
 ## Task 8: 实现 DocReaderView(阅读页)
 
 **Files:**
+
 - Create: `src/views/DocReaderView.vue`
 
 - [ ] **Step 1: 创建 `src/views/DocReaderView.vue`**
@@ -1302,18 +1321,10 @@ onBeforeUnmount(() => {
       @click-left="router.back()"
     />
     <div class="reader-body">
-      <van-loading
-        v-if="store.currentLoading"
-        class="reader-loading"
-        type="spinner"
-        vertical
-      >
+      <van-loading v-if="store.currentLoading" class="reader-loading" type="spinner" vertical>
         加载中…
       </van-loading>
-      <van-empty
-        v-else-if="!store.current"
-        description="文档无法显示"
-      />
+      <van-empty v-else-if="!store.current" description="文档无法显示" />
       <!-- 阅读零解析开销:HTML 已是渲染产物,图片 URL 浏览器自动加载 -->
       <!-- eslint-disable-next-line vue/no-v-html -->
       <div v-else class="doc-prose" v-html="store.current.html"></div>
@@ -1439,6 +1450,7 @@ git commit -m "feat(docs): 实现文档阅读页 DocReaderView"
 ## Task 9: 路由 + tabbar 集成
 
 **Files:**
+
 - Modify: `src/router/index.ts`
 - Modify: `src/App.vue`
 
@@ -1497,6 +1509,7 @@ git commit -m "feat(docs): 接入资料 tab 与阅读页路由"
 ## Task 10: 更新版本历史 + 最终验收
 
 **Files:**
+
 - Modify: `src/views/SettingsView.vue`(`updateHistory` 数组)
 
 - [ ] **Step 1: 在 SettingsView.vue 的 updateHistory 数组开头新增条目**
@@ -1548,6 +1561,7 @@ npm run lint         # 0 error
 ```
 
 功能验收(手动,部署到 Vercel 后):
+
 1. 「资料」tab 可见,点进入 DocsView。
 2. 上传一个 < 4MB 的 .md → 列表出现,imageCount=0,点开能阅读(GFM + KaTeX)。
 3. 上传一个带图片的 .docx → 图片显示正常,列表 imageCount 正确。

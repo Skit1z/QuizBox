@@ -20,11 +20,13 @@
 ### 核心架构决策:存渲染产物而非源文件
 
 **为什么不存源文件:**
+
 - 阅读页打开**零解析开销** —— 直接显示 HTML,无需在浏览器重跑 mammoth/marked。
 - 阅读页逻辑极简,不需要加载解析库、不需要 loading 等待解析。
 - docx/md 解析只在「上传」时发生一次,失败可以提前拒绝(用户知道哪个文件传不上去)。
 
 **代价(已接受):**
+
 - 上传链路更重(客户端解析 + 图片提取 + 多次上传),但这是**一次性**成本。
 - 原始文件不保留,无法「重新解析」或换渲染器(本期 YAGNI)。
 
@@ -41,18 +43,18 @@
 
 ## 2. 关键决策记录
 
-| 决策点 | 选择 | 理由 |
-|--------|------|------|
-| 核心用途 | 纯资料阅读器 | 与题库导入解耦,范围清晰 |
-| 文件上限 | **4 MB**(源文件) | 避开 Vercel serverless 4.5 MB 请求体硬限制;.md 几乎不超,docx 纯文本也基本够 |
-| **存储内容** | **解析后的 HTML + 图片** | 阅读零开销、秒开;源文件不保留 |
-| 上传编码 | **multipart/form-data** 直传二进制 | base64 膨胀 33% 会超限;multipart 无膨胀;HTML 文本走 JSON body |
-| 主存储 | Vercel Blob(云端) | 全局共享;云端为 source of truth,本地仅做读缓存 |
-| 图片存储 | **单独存为 Blob(public URL)+ HTML 内引用** | 避免 base64 内联导致 HTML 膨胀撞 4.5MB 墙;图片按内容 hash 去重 |
-| 鉴权 | **写需 `BANK_KEY` token,读开放** | 复用 `api/bank.ts` 的 `BANK_KEY`;防陌生人乱写,允许任何人查看 |
-| 入口位置 | tabbar 新增「资料」tab | 作为核心功能,一级入口最易发现;tabbar 从 3 项变 4 项 |
-| docx 渲染 | 简洁语义化 HTML(复用 mammoth) | 阅读体验干净统一;不做高保真还原(避免引入 docx-preview ~500 KB) |
-| 下载 | 不开放 | 用户明确要求 |
+| 决策点       | 选择                                       | 理由                                                                        |
+| ------------ | ------------------------------------------ | --------------------------------------------------------------------------- |
+| 核心用途     | 纯资料阅读器                               | 与题库导入解耦,范围清晰                                                     |
+| 文件上限     | **4 MB**(源文件)                           | 避开 Vercel serverless 4.5 MB 请求体硬限制;.md 几乎不超,docx 纯文本也基本够 |
+| **存储内容** | **解析后的 HTML + 图片**                   | 阅读零开销、秒开;源文件不保留                                               |
+| 上传编码     | **multipart/form-data** 直传二进制         | base64 膨胀 33% 会超限;multipart 无膨胀;HTML 文本走 JSON body               |
+| 主存储       | Vercel Blob(云端)                          | 全局共享;云端为 source of truth,本地仅做读缓存                              |
+| 图片存储     | **单独存为 Blob(public URL)+ HTML 内引用** | 避免 base64 内联导致 HTML 膨胀撞 4.5MB 墙;图片按内容 hash 去重              |
+| 鉴权         | **写需 `BANK_KEY` token,读开放**           | 复用 `api/bank.ts` 的 `BANK_KEY`;防陌生人乱写,允许任何人查看                |
+| 入口位置     | tabbar 新增「资料」tab                     | 作为核心功能,一级入口最易发现;tabbar 从 3 项变 4 项                         |
+| docx 渲染    | 简洁语义化 HTML(复用 mammoth)              | 阅读体验干净统一;不做高保真还原(避免引入 docx-preview ~500 KB)              |
+| 下载         | 不开放                                     | 用户明确要求                                                                |
 
 ---
 
@@ -104,6 +106,7 @@
 ```
 
 **三层职责分离:**
+
 1. **客户端解析(上传时一次性)** — 复用 mammoth + 新增 marked;提取 docx 图片为 Blob。
 2. **云端 (Vercel Blob)** — source of truth,存 HTML 主体 + 图片 + manifest。
 3. **阅读页** — 极简,只做 `v-html` 渲染 + 本地缓存读写。
@@ -127,17 +130,17 @@ docs/img/<hash>.<ext>     ← 图片(public access,被 HTML 内 <img src> 引用
 
 ```ts
 interface DocsManifest {
-  updatedAt: number        // 最后更新时间戳
+  updatedAt: number // 最后更新时间戳
   docs: DocMeta[]
 }
 
 interface DocMeta {
-  id: string               // uuid,同时是 doc_<id>.json 的 id
-  name: string             // 原始文件名,如 "复习笔记.docx"
-  ext: 'docx' | 'md'       // 类型(仅用于列表图标展示)
-  uploadedAt: number       // 上传时间戳
-  htmlSize: number         // HTML 字节数(用于列表展示大小)
-  imageCount: number       // 图片数量(用于列表展示)
+  id: string // uuid,同时是 doc_<id>.json 的 id
+  name: string // 原始文件名,如 "复习笔记.docx"
+  ext: 'docx' | 'md' // 类型(仅用于列表图标展示)
+  uploadedAt: number // 上传时间戳
+  htmlSize: number // HTML 字节数(用于列表展示大小)
+  imageCount: number // 图片数量(用于列表展示)
 }
 ```
 
@@ -145,19 +148,21 @@ interface DocMeta {
 
 **两个路由前缀,合并在一个 function 内:**
 
-| 操作 | 方法 | 路径 | 鉴权 | 入参 | 出参 |
-|------|------|------|------|------|------|
-| 读清单 | GET | `/api/docs` | 开放 | — | `{ ok, manifest }` |
-| 读文档 | GET | `/api/docs?id=xxx` | 开放 | `id` | `{ ok, doc: { meta, html } }` |
-| 上传文档 | POST | `/api/docs` | 需 `BANK_KEY` | JSON body: `{ meta, html }` | `{ ok, doc: DocMeta }` |
-| 删除文档 | DELETE | `/api/docs?id=xxx` | 需 `BANK_KEY` | `id` | `{ ok }` |
-| **上传图片** | POST | `/api/docs/img` | 需 `BANK_KEY` | multipart: `file` | `{ ok, url, hash, existed }` |
+| 操作         | 方法   | 路径               | 鉴权          | 入参                        | 出参                          |
+| ------------ | ------ | ------------------ | ------------- | --------------------------- | ----------------------------- |
+| 读清单       | GET    | `/api/docs`        | 开放          | —                           | `{ ok, manifest }`            |
+| 读文档       | GET    | `/api/docs?id=xxx` | 开放          | `id`                        | `{ ok, doc: { meta, html } }` |
+| 上传文档     | POST   | `/api/docs`        | 需 `BANK_KEY` | JSON body: `{ meta, html }` | `{ ok, doc: DocMeta }`        |
+| 删除文档     | DELETE | `/api/docs?id=xxx` | 需 `BANK_KEY` | `id`                        | `{ ok }`                      |
+| **上传图片** | POST   | `/api/docs/img`    | 需 `BANK_KEY` | multipart: `file`           | `{ ok, url, hash, existed }`  |
 
 **为什么图片走 `/api/docs/img`、文档走 `/api/docs`:**
+
 - 图片是二进制,必须 multipart;HTML 是文本,走 JSON 更简单且可复用 bank.ts 风格。
 - 图片上传是「步骤 1」,文档上传是「步骤 2」,两步串行:先传图拿到 URL,再带着 URL 替换后的 HTML 传文档。
 
 **鉴权细节:** 复用 `api/bank.ts:142-147` 的模式 —— 读 `process.env.BANK_KEY`,仅当环境变量存在时校验 `Authorization: Bearer <key>`。
+
 - `/api/docs` GET(读)→ 跳过校验
 - `/api/docs` POST/DELETE(写文档)→ 强制校验
 - `/api/docs/img` POST(写图片)→ 强制校验
@@ -166,6 +171,7 @@ interface DocMeta {
 **图片访问:** 图片 Blob 必须 `access: 'public'`(与 bank.ts 的 `private` 不同),因为浏览器 `<img src>` 直接加载 public URL,不经 serverless 中转。文档主体 Blob 保持 `access: 'private'`(经 serverless 读取)。
 
 **大小约束:**
+
 - 图片单张上限:2 MB(`MAX_IMAGE_BYTES`,防止超大图;正常文档插图远小于此)。
 - 文档 HTML body 上限:4 MB(`MAX_REQUEST_BYTES`,与 bank.ts 一致)。
 - 整个 multipart 请求体上限:4.5 MB(serverless 硬限制,在收集 body 前拦截)。
@@ -210,9 +216,9 @@ export interface DocRecord {
 
 /** IndexedDB docsCache 表记录 */
 export interface DocCacheRecord {
-  id: string            // 主键,等于 DocMeta.id
-  html: string          // 渲染好的 HTML(直接可 v-html)
-  meta: DocMeta         // 快照,便于离线展示列表项
+  id: string // 主键,等于 DocMeta.id
+  html: string // 渲染好的 HTML(直接可 v-html)
+  meta: DocMeta // 快照,便于离线展示列表项
   cachedAt: number
 }
 ```
@@ -247,9 +253,9 @@ async function uploadImage(img: Blob): Promise<{ url: string; hash: string }>
 /** 上传文档主体:HTML + meta,带 BANK_KEY */
 async function uploadDoc(meta: DocMeta, html: string): Promise<DocMeta>
 
-async function listDocs(): Promise<DocsManifest>          // GET /api/docs
-async function fetchDoc(id: string): Promise<DocRecord>   // GET /api/docs?id=xxx
-async function deleteDoc(id: string): Promise<void>       // DELETE,带 BANK_KEY
+async function listDocs(): Promise<DocsManifest> // GET /api/docs
+async function fetchDoc(id: string): Promise<DocRecord> // GET /api/docs?id=xxx
+async function deleteDoc(id: string): Promise<void> // DELETE,带 BANK_KEY
 ```
 
 **BANK_KEY 来源:** 复用 `src/stores/sync.ts` 中已有的从 `syncMeta` 表读取同步配置的机制(避免重复实现)。若未配置 `BANK_KEY`,上传按钮禁用并提示「请在设置页配置同步密钥」。
@@ -264,8 +270,9 @@ interface RenderInput {
 }
 
 interface RenderResult {
-  html: string           // 图片 URL 已替换完毕,可直接上传/渲染
-  meta: {                // 供构造 DocMeta 用
+  html: string // 图片 URL 已替换完毕,可直接上传/渲染
+  meta: {
+    // 供构造 DocMeta 用
     imageCount: number
     htmlSize: number
   }
@@ -279,12 +286,14 @@ async function renderAndUpload(file: File): Promise<RenderResult>
 ```
 
 **.docx 分支:**
+
 - 复用 `mammoth.convertToHtml({ arrayBuffer })`(已在 `docx-parser.ts:19` 验证可用)。
 - mammoth 输出的 HTML 里图片是 `data:image/...;base64,...` 内联形式。
 - 用正则提取所有 base64 图片 → 每张转 Blob → `docs-api.uploadImage(blob)` 拿到 public URL → 把 HTML 里的 base64 替换成 URL。
 - 与题库导入版(`docx-parser.ts:38-41`)的差异:**保留图片**(题库导入把图片替换成 `[IMG_n]` 占位,这里保留为真实 `<img src>`),且**上传到云端**。
 
 **.md 分支(新增能力):**
+
 - 新增依赖 **`marked`**(轻量 GFM,~30 KB gzip)。
 - `marked.parse(text, { gfm: true, breaks: true })`。
 - 数学公式:复用项目已有的 KaTeX 能力(题库 RichText.vue 已用),对 `$...$` / `$$...$$` 做后处理渲染。
@@ -345,7 +354,7 @@ export const useDocsStore = defineStore('docs', {
 const navItems = [
   { name: 'home', label: '首页', icon: 'wap-home-o' },
   { name: 'library', label: '题库', icon: 'bookmark-o' },
-  { name: 'docs', label: '资料', icon: 'description-o' },   // 新增
+  { name: 'docs', label: '资料', icon: 'description-o' }, // 新增
   { name: 'settings', label: '设置', icon: 'setting-o' },
 ]
 ```
@@ -413,28 +422,30 @@ const navItems = [
 
 ## 8. 错误处理矩阵
 
-| 场景 | 客户端表现 | 备注 |
-|------|-----------|------|
-| 文件 > 4 MB | Toast「文件超过 4 MB 限制」,不发请求 | `van-uploader` `@oversize` |
-| BANK_KEY 未配置 | 上传按钮置灰 + 提示「请在设置页配置同步密钥」 | 与同步功能前置条件一致 |
-| 解析失败(mammoth/marked 抛错) | Toast「文档格式无法解析」,不进入上传 | 上传时即暴露问题,优于阅读时才发现 |
-| 单张图片 > 2 MB | 该图片上传被服务端拒(413)→ 整个上传中止 + Toast | 防止超大图;正常插图远小于此 |
-| 文档 HTML body > 4 MB | 上传被服务端拒(413)→ Toast「渲染产物过大」 | 极少见;.md 几乎不可能,docx 纯文本也够 |
-| 图片上传部分失败 | 整个上传中止 + Toast「图片上传失败」 | 已传图片成孤儿(可接受,见 §7.1) |
-| 上传 401(密钥错) | Toast「同步密钥不正确」 | |
-| 上传 500 / 网络错 | Toast「上传失败,请重试」 | |
-| 拉清单失败 | 列表展示上次缓存(若有)+ 下拉刷新提示 | store.list 失败不清空旧值 |
-| 打开文档 - 取 HTML 失败 | Toast「无法获取文档,请检查网络」 | 命中本地缓存则不受影响 |
-| manifest 并发冲突 | 客户端重拉合并重试(最多 2 次) | last-write-wins |
+| 场景                          | 客户端表现                                      | 备注                                  |
+| ----------------------------- | ----------------------------------------------- | ------------------------------------- |
+| 文件 > 4 MB                   | Toast「文件超过 4 MB 限制」,不发请求            | `van-uploader` `@oversize`            |
+| BANK_KEY 未配置               | 上传按钮置灰 + 提示「请在设置页配置同步密钥」   | 与同步功能前置条件一致                |
+| 解析失败(mammoth/marked 抛错) | Toast「文档格式无法解析」,不进入上传            | 上传时即暴露问题,优于阅读时才发现     |
+| 单张图片 > 2 MB               | 该图片上传被服务端拒(413)→ 整个上传中止 + Toast | 防止超大图;正常插图远小于此           |
+| 文档 HTML body > 4 MB         | 上传被服务端拒(413)→ Toast「渲染产物过大」      | 极少见;.md 几乎不可能,docx 纯文本也够 |
+| 图片上传部分失败              | 整个上传中止 + Toast「图片上传失败」            | 已传图片成孤儿(可接受,见 §7.1)        |
+| 上传 401(密钥错)              | Toast「同步密钥不正确」                         |                                       |
+| 上传 500 / 网络错             | Toast「上传失败,请重试」                        |                                       |
+| 拉清单失败                    | 列表展示上次缓存(若有)+ 下拉刷新提示            | store.list 失败不清空旧值             |
+| 打开文档 - 取 HTML 失败       | Toast「无法获取文档,请检查网络」                | 命中本地缓存则不受影响                |
+| manifest 并发冲突             | 客户端重拉合并重试(最多 2 次)                   | last-write-wins                       |
 
 ---
 
 ## 9. 依赖变更
 
 **新增 (package.json):**
+
 - `marked` — Markdown → HTML 渲染(~30 KB gzip,GFM + breaks)
 
 **复用已有(无需新增):**
+
 - `mammoth` ^1.8.0 — docx 解析(已在 `package.json`)
 - `@vercel/blob` — 服务端存储(已在 `package.json`)
 - `dexie` ^4 — IndexedDB ORM(已在 `package.json`)
@@ -442,6 +453,7 @@ const navItems = [
 - `src/utils/hash.ts` 的 `sha256`
 
 **不引入:**
+
 - ❌ `markdown-it`(marked 更轻够用)
 - ❌ `docx-preview`(不做高保真还原)
 - ❌ 任何测试框架(遵循 AGENTS.md §0 硬规则)
@@ -451,25 +463,28 @@ const navItems = [
 ## 10. 受影响文件清单
 
 ### 新建(7 个)
-| 文件 | 职责 |
-|------|------|
-| `api/docs.ts` | Vercel serverless:文档 CRUD + 图片上传 + multipart 解析 |
-| `src/db/docs.ts` | docsCache 表 repo |
-| `src/services/docs-api.ts` | 云端文档/图片 API 客户端 |
-| `src/services/doc-render.ts` | 上传时的「解析 + 图片上传 + URL 替换」一体化渲染器 |
-| `src/stores/docs.ts` | Pinia store |
-| `src/views/DocsView.vue` | 文档列表页 |
-| `src/views/DocReaderView.vue` | 阅读页 |
+
+| 文件                          | 职责                                                    |
+| ----------------------------- | ------------------------------------------------------- |
+| `api/docs.ts`                 | Vercel serverless:文档 CRUD + 图片上传 + multipart 解析 |
+| `src/db/docs.ts`              | docsCache 表 repo                                       |
+| `src/services/docs-api.ts`    | 云端文档/图片 API 客户端                                |
+| `src/services/doc-render.ts`  | 上传时的「解析 + 图片上传 + URL 替换」一体化渲染器      |
+| `src/stores/docs.ts`          | Pinia store                                             |
+| `src/views/DocsView.vue`      | 文档列表页                                              |
+| `src/views/DocReaderView.vue` | 阅读页                                                  |
 
 ### 修改(4 个)
-| 文件 | 改动 |
-|------|------|
-| `src/db/index.ts` | bump version 7 + `docsCache` 表 + 类字段 |
-| `src/types/index.ts` | 追加 `DocMeta` / `DocsManifest` / `DocRecord` / `DocCacheRecord` |
-| `src/router/index.ts` | 新增 `/docs`、`/docs/:id` 路由 |
-| `src/App.vue` | `navItems` 增加 docs 项(移动端 tabbar + 桌面端侧边栏) |
+
+| 文件                  | 改动                                                             |
+| --------------------- | ---------------------------------------------------------------- |
+| `src/db/index.ts`     | bump version 7 + `docsCache` 表 + 类字段                         |
+| `src/types/index.ts`  | 追加 `DocMeta` / `DocsManifest` / `DocRecord` / `DocCacheRecord` |
+| `src/router/index.ts` | 新增 `/docs`、`/docs/:id` 路由                                   |
+| `src/App.vue`         | `navItems` 增加 docs 项(移动端 tabbar + 桌面端侧边栏)            |
 
 ### 不触碰
+
 - `src/services/sync.ts`、`api/bank.ts`、`src/services/file-parser.ts`、`src/services/docx-parser.ts`、`ImportView.vue` — **题库链路完全不动**。
 
 ---
@@ -485,6 +500,7 @@ npm run lint         # 0 error
 ```
 
 功能验收(手动):
+
 1. 在「资料」tab 上传一个 < 4 MB 的 .md → 列表出现该文档,imageCount=0。
 2. 上传一个带图片的 .docx → 图片单独上传到 `docs/img/`,HTML 内 `<img src>` 指向 public URL,阅读时图片正常显示。
 3. 上传一个 > 4 MB 文件 → 被拦截,提示超限。

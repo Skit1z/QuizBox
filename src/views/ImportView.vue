@@ -8,7 +8,12 @@ import { questionsRepo, questionSourceHash, type QuestionInput } from '@/db/ques
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS } from '@/services/file-parser'
 import { saveImages } from '@/services/docx-images'
 import type { ParsedImage } from '@/services/docx-images'
-import { repairWithAI, generateAnswer, reblockWithAI, type ParsedQuestion } from '@/services/importer'
+import {
+  repairWithAI,
+  generateAnswer,
+  reblockWithAI,
+  type ParsedQuestion,
+} from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
 import {
   isProfileResultBetter,
@@ -233,11 +238,7 @@ async function doParse() {
 
     // 补切：在最终确定的解析结果上，对体检发现的粘连块调 AI 重新切题
     // 放在 profile 之后，确保补切成果不会被 profile 全量重解析覆盖丢弃
-    if (
-      settingsStore.ai.apiKey &&
-      hybrid.suspiciousBlocks &&
-      hybrid.suspiciousBlocks.length > 0
-    ) {
+    if (settingsStore.ai.apiKey && hybrid.suspiciousBlocks && hybrid.suspiciousBlocks.length > 0) {
       try {
         hybrid = await reblockWithAI(hybrid, hybrid.suspiciousBlocks)
       } catch (e) {
