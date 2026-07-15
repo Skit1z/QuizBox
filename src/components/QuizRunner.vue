@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { showToast } from 'vant'
+import { showToast, showConfirmDialog } from 'vant'
 import QuestionCard from './QuestionCard.vue'
 import AnswerCard from './AnswerCard.vue'
 import RichText from './RichText.vue'
@@ -323,6 +323,33 @@ async function next() {
 async function prev() {
   await persistAnswersNow()
   if (idx.value > 0) idx.value--
+}
+
+/** 交卷按钮处理：classic 模式下有未答题时弹出确认 */
+async function onSubmit() {
+  if (!props.classic) {
+    void finishPractice()
+    return
+  }
+  const unanswered = props.questions.filter((q) => {
+    const ans = answers.value[q.id]
+    return !(ans != null && (!Array.isArray(ans) || ans.length > 0) && ans !== '')
+  }).length
+  if (unanswered === 0) {
+    void finishPractice()
+    return
+  }
+  try {
+    await showConfirmDialog({
+      title: '确认交卷',
+      message: `还有 ${unanswered} 题未作答，确定交卷吗？`,
+      confirmButtonText: '交卷',
+      cancelButtonText: '继续答题',
+    })
+    void finishPractice()
+  } catch {
+    // 用户取消
+  }
 }
 
 async function finishPractice(_auto = false) {
@@ -793,7 +820,7 @@ const isWrongOption = (letter: string) => {
           v-else
           type="success"
           round
-          @click="finishPractice()"
+          @click="onSubmit"
           class="quiz-action-btn quiz-action-btn--success"
         >
           {{ props.classic ? '交卷' : '完成' }} <van-icon name="passed" />

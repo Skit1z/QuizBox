@@ -52,10 +52,12 @@ const RE_INLINE_OPT_SPLIT =
   /(?<=[\s。．])(?=[A-Ha-h][.、．)])|(?<=[A-Za-z\u4e00-\u9fff])(?=[A-Ha-h][.、．)])/
 
 // 答案标记（冒号可选，兼容「正确答案C」「答案：C」）
-const RE_ANSWER =
+// 注：改为 let，可被 profile 临时覆盖（解析后还原）
+let RE_ANSWER =
   /^[\s　•◦▪▪·●○■□*\-‑–—#]*(?:【?答案】?|答案|Answer|answer|正确答案|参考答案|答)\s*[:：]?\s*/i
 // 解析标记
-const RE_ANALYSIS = /^[\s　#]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
+// 注：改为 let，可被 profile 临时覆盖（解析后还原）
+let RE_ANALYSIS = /^[\s　#]*(?:【?解析】?|解析|详解|Explanation|explanation)\s*[:：]?\s*/i
 
 // 判断题改错格式：「错：零和博弈改为合作共赢」→ 答案=F，解析=改错内容
 const RE_JUDGE_CORRECTION = /^[\s　]*(对|错|正确|错误)\s*[：:]\s*(.*)/
@@ -127,7 +129,7 @@ function filterWatermarks(lines: string[]): string[] {
 
 // 常见中文标点（用于可读性判断）
 const RE_CN_PUNCT = /[。，、；：！？""''（）《》【】\-—…·]/g
-const CONFIDENCE_THRESHOLD = 0.6
+export const CONFIDENCE_THRESHOLD = 0.6
 
 const RE_ANSWER_KEY_ITEM =
   /^[\s　]*[(（]?(\d{1,3})[)）]?\s*[.、:：)]\s*(?:答案[:：]?\s*)?([A-Ha-h]+|[√✓×✗]|对|错|正确|错误|[TF])\b/
@@ -136,12 +138,24 @@ const RE_MATERIAL_INTRO =
   /(阅读(?:下列)?材料|案例分析|根据(?:以下|下列|下面)(?:材料|资料|案例|图表)|材料[一二三四：:]|^[（(][一二三四五][）)])/
 const RE_SUB_QUESTION = /^[\s　]*[(（]?(?:\d{1,2}|[①②③④⑤⑥⑦⑧⑨⑩])[)）.、]/
 
+/** 体检标记的可疑块（可能多题粘连） */
+export interface SuspiciousBlock {
+  /** 该块对应的题在 questions 中的位置（仅标记一对一映射的块） */
+  questionIndex: number
+  /** 该块原始文本 */
+  text: string
+  /** 可疑原因 */
+  reason: 'multi-option-group' | 'length-outlier'
+}
+
 export interface HybridResult {
   questions: ParsedQuestion[]
   /** 需送 AI 判定的原始文本块（低结构完整度，规则不确定） */
   lowConfidenceBlocks: string[]
   /** 需送 AI 判定的块在 questions 中的索引 */
   lowConfidenceIndices: number[]
+  /** 体检标记的可疑块（多题粘连等），仅标记一对一映射的块 */
+  suspiciousBlocks?: SuspiciousBlock[]
 }
 
 /**
@@ -191,12 +205,18 @@ export interface RuleProfile {
   questionStart?: string
   /** 选项开头正则（可含正文捕获，会被裁成仅匹配前缀） */
   optionStart?: string
+  /** 答案标记正则，覆盖默认 RE_ANSWER（如「参考答案」「答」） */
+  answerMarker?: string
+  /** 解析标记正则，覆盖默认 RE_ANALYSIS（如「详解」「分析」） */
+  analysisMarker?: string
 }
 
 export function parseWithRulesHybrid(text: string, profile?: RuleProfile): HybridResult {
   // 保存默认方言，按 profile 临时覆盖；解析为纯同步，无并发风险，finally 还原
   const savedQuestion = RE_QUESTION_NUM
   const savedOption = RE_OPTION_HEAD
+  const savedAnswer = RE_ANSWER
+  const savedAnalysis = RE_ANALYSIS
   if (profile?.questionStart) {
     const re = safeRegExp(profile.questionStart, 'm')
     if (re && hasCaptureGroup(re)) RE_QUESTION_NUM = re
@@ -205,11 +225,21 @@ export function parseWithRulesHybrid(text: string, profile?: RuleProfile): Hybri
     const re = safeRegExp(stripTrailingContentCapture(profile.optionStart), '')
     if (re) RE_OPTION_HEAD = re
   }
+  if (profile?.answerMarker) {
+    const re = safeRegExp(profile.answerMarker, 'i')
+    if (re) RE_ANSWER = re
+  }
+  if (profile?.analysisMarker) {
+    const re = safeRegExp(profile.analysisMarker, 'i')
+    if (re) RE_ANALYSIS = re
+  }
   try {
     return parseHybridInternal(text)
   } finally {
     RE_QUESTION_NUM = savedQuestion
     RE_OPTION_HEAD = savedOption
+    RE_ANSWER = savedAnswer
+    RE_ANALYSIS = savedAnalysis
   }
 }
 
@@ -230,6 +260,62 @@ function hasCaptureGroup(re: RegExp): boolean {
  *  以兼容 parseBlock 用 .replace(RE_OPTION_HEAD,'') 剥前缀的语义 */
 function stripTrailingContentCapture(src: string): string {
   return src.replace(/\(\.\*\??\)\$?\s*$/, '').replace(/\s+$/, '')
+}
+
+/**
+ * 确定性分块体检：检测可能多题粘连的可疑块。
+ * 返回按 blockIndex 索引的可疑块列表（含原因）。
+ * 调用方负责将 blockIndex 映射到 questionIndex（一对一映射的块）。
+ */
+export function assessBlockHealth(blocks: RawBlock[]): {
+  blockIndex: number
+  text: string
+  reason: SuspiciousBlock['reason']
+}[] {
+  const suspicious: { blockIndex: number; text: string; reason: SuspiciousBlock['reason'] }[] = []
+
+  // 收集块文本用于长度离群检测
+  const blockTexts = blocks.map((b) => b.lines.join('\n').trim()).filter(Boolean)
+  const charLengths = blockTexts.map((t) => t.length)
+  const medianLen = median(charLengths)
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]
+    const text = block.lines.join('\n').trim()
+    if (!text) continue
+
+    // 1. 块内多选项组（强信号）：≥2 处独立选项组（选项字母重置到 A）
+    const optionGroups = countOptionGroupStarts(block.lines)
+    if (optionGroups >= 2) {
+      suspicious.push({ blockIndex: i, text, reason: 'multi-option-group' })
+      continue
+    }
+
+    // 2. 块长离群（兜底）：字符数 > 中位数×3 且 > 400
+    if (medianLen > 0 && text.length > medianLen * 3 && text.length > 400) {
+      suspicious.push({ blockIndex: i, text, reason: 'length-outlier' })
+    }
+  }
+
+  return suspicious
+}
+
+/** 统计块内选项组数量：以行首匹配选项正则且字母为 A 的次数为准 */
+function countOptionGroupStarts(lines: string[]): number {
+  let count = 0
+  for (const line of lines) {
+    const m = line.match(RE_OPTION_HEAD)
+    if (m && m[1].toUpperCase() === 'A') count++
+  }
+  return count
+}
+
+/** 数值数组中位数 */
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0
+  const sorted = [...nums].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
 function parseHybridInternal(text: string): HybridResult {
@@ -307,7 +393,32 @@ function parseHybridInternal(text: string): HybridResult {
     lowConfidenceIndices.push(idx)
   })
 
-  return { questions, lowConfidenceBlocks, lowConfidenceIndices }
+  // 体检：标记可一对一映射到题目的可疑块（多题粘连）
+  const suspiciousBlocks: SuspiciousBlock[] = []
+  const blockHealth = assessBlockHealth(blocks)
+  if (blockHealth.length > 0) {
+    // 建立 RawBlock → questionIndex 的映射（仅一对一映射，跳过材料分组的子题）
+    const blockToQIdx = new Map<RawBlock, number>()
+    groupedEntries.forEach((entry, qIdx) => {
+      // 材料子题的 stem 以【材料】开头，其块与题不是一对一，跳过
+      if (!entry.q.stem.startsWith('【材料】')) {
+        blockToQIdx.set(entry.block, qIdx)
+      }
+    })
+    for (const s of blockHealth) {
+      const qIdx = blockToQIdx.get(blocks[s.blockIndex])
+      if (qIdx !== undefined) {
+        suspiciousBlocks.push({ questionIndex: qIdx, text: s.text, reason: s.reason })
+      }
+    }
+  }
+
+  return {
+    questions,
+    lowConfidenceBlocks,
+    lowConfidenceIndices,
+    suspiciousBlocks: suspiciousBlocks.length > 0 ? suspiciousBlocks : undefined,
+  }
 }
 
 /** 选项齐全(≥2)但答案为空的选择题——结构完整，只缺答案 */

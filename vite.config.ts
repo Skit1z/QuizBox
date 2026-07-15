@@ -101,9 +101,10 @@ export default defineConfig({
       output: {
         // mammoth（.docx 解析）体积大，把它的几个重依赖拆成独立 vendor 块。
         // 这些库仅被懒加载的 docx-parser 引用，拆分后各块仍按需加载、单块不再超 500KB。
-        manualChunks: {
-          'vendor-jszip': ['jszip'],
-          'vendor-xmldom': ['@xmldom/xmldom'],
+        // Vite 8(rolldown)不再支持 manualChunks 对象简写，改用函数形式。
+        manualChunks(id: string) {
+          if (id.includes('node_modules/jszip')) return 'vendor-jszip'
+          if (id.includes('node_modules/@xmldom/xmldom')) return 'vendor-xmldom'
         },
       },
     },

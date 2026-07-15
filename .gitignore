@@ -25,3 +25,7 @@ pnpm-debug.log*
 
 # claude-mem
 AGENTS.md
+
+# AI 工具目录
+.workbuddy/
+.zcode/

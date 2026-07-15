@@ -67,7 +67,7 @@ function htmlToText(html: string): string {
   )
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64)
   const len = bin.length
   const bytes = new Uint8Array(len)

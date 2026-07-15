@@ -2,7 +2,13 @@ import { chatJson } from './ai'
 import type { QuestionType } from '@/types'
 import { db } from '@/db'
 import { sha256 } from '@/utils/hash'
-import { detectType, normalizeAnswer } from './rule-parser'
+import {
+  detectType,
+  normalizeAnswer,
+  parseWithRulesHybrid,
+  CONFIDENCE_THRESHOLD,
+} from './rule-parser'
+import type { HybridResult, SuspiciousBlock } from './rule-parser'
 
 /** AI 解析返回的单道题（中间结构） */
 export interface ParsedQuestion {
@@ -264,6 +270,140 @@ export async function repairWithAI(
 
 async function blockHash(text: string): Promise<string> {
   return sha256(`${CACHE_VERSION}\0${text}`)
+}
+
+// ===== AI 补切：对体检标记的可疑块重新切题 =====
+
+const REBLOCK_SYSTEM = `你是题库切题助手。给一段带行号的文本（可能包含多道粘连的题目），
+你只需要找出每道题的起始行号。不要返回任何题目内容，只返回行号数组。
+严格输出 JSON：{"starts":[0,5,11]}  // 每道题从第几行开始`
+
+interface ReblockResult {
+  starts: number[]
+}
+
+/** 补切过程中随题携带其「原文」（送 repair 阶段对照用），避免退化成仅题干 */
+type ReblockItem = { q: ParsedQuestion; blockText?: string }
+
+/**
+ * 对体检标记的可疑块调用 AI 重新切题，然后重解析并回填到 hybrid.questions。
+ * 失败时保留原块不动。
+ */
+export async function reblockWithAI(
+  hybrid: HybridResult,
+  suspicious: SuspiciousBlock[],
+): Promise<HybridResult> {
+  if (suspicious.length === 0) return hybrid
+
+  // 原始低置信块按题目索引建表，作为「原文」来源：repair 阶段靠它对照修复
+  // （补回漏读的答案/选项等）。绝不能退化成仅题干，否则源文信息丢失、修复失效。
+  const origBlockByIdx = new Map<number, string>()
+  hybrid.lowConfidenceIndices.forEach((qIdx, i) => {
+    origBlockByIdx.set(qIdx, hybrid.lowConfidenceBlocks[i])
+  })
+
+  // 深拷贝 questions，并给每题挂上其原文（未动的题沿用原块原文，可能为空）
+  const items: ReblockItem[] = hybrid.questions.map((q, idx) => {
+    const copy: ParsedQuestion = {
+      type: q.type,
+      stem: q.stem,
+      answer: q.answer,
+      analysis: q.analysis,
+      imagePlaceholders: q.imagePlaceholders,
+      confidence: q.confidence,
+    }
+    if (q.options) copy.options = [...q.options]
+    return { q: copy, blockText: origBlockByIdx.get(idx) }
+  })
+
+  // 从后往前处理，避免前面的插入移动后续索引
+  const sorted = [...suspicious].sort((a, b) => b.questionIndex - a.questionIndex)
+  let didSplice = false
+
+  for (const block of sorted) {
+    try {
+      const numberedLines = numberLines(block.text)
+      const res = await chatJson<ReblockResult>(
+        [
+          { role: 'system', content: REBLOCK_SYSTEM },
+          { role: 'user', content: numberedLines },
+        ],
+        { temperature: 0, maxTokens: 200, timeoutMs: 30000 },
+      )
+
+      // 校验 AI 返回：starts 必须是非空数组，至少 2 段才值得重切
+      if (!Array.isArray(res.starts) || res.starts.length < 2) continue
+      const lines = block.text.split('\n')
+      const validStarts = res.starts.filter((s) => s >= 0 && s < lines.length).sort((a, b) => a - b)
+      if (validStarts.length < 2) continue
+
+      // 按行号切分文本
+      const segments: string[] = []
+      for (let i = 0; i < validStarts.length; i++) {
+        const start = validStarts[i]
+        const end = i + 1 < validStarts.length ? validStarts[i + 1] : lines.length
+        segments.push(lines.slice(start, end).join('\n').trim())
+      }
+
+      // 每段单独重解析；新题的原文 = 其所属片段文本
+      const newItems: ReblockItem[] = []
+      for (const seg of segments) {
+        if (!seg.trim()) continue
+        const parsed = parseWithRulesHybrid(seg)
+        for (const nq of parsed.questions) newItems.push({ q: nq, blockText: seg })
+      }
+      if (newItems.length < 2) continue
+
+      // 回填：用 N 道新题替换原 1 道题
+      items.splice(block.questionIndex, 1, ...newItems)
+      didSplice = true
+    } catch (e) {
+      console.warn('[importer] reblock AI failed for block', block.questionIndex, e)
+      // 保留原块不动
+    }
+  }
+
+  // 实际没发生任何补切 → 原样返回，零副作用（不改动下游 lowConfidence 数据）
+  if (!didSplice) return hybrid
+
+  // 补切改变了数组长度与索引，必须重算 lowConfidence 数据，否则 repair 阶段会拿旧索引
+  // 操作已位移的数组。原文优先用块原文，仅在缺失时才退回题干。
+  const lowConfidenceIndices: number[] = []
+  const lowConfidenceBlocks: string[] = []
+  items.forEach((item, i) => {
+    const q = item.q
+    if ((q.confidence ?? 0) >= CONFIDENCE_THRESHOLD) return
+    // 选项齐全但答案缺失的跳过（同 parseHybridInternal 逻辑）
+    if (
+      (q.type === 'single' || q.type === 'multiple') &&
+      (q.options?.length ?? 0) >= 2 &&
+      !hasAnswer(q.answer)
+    )
+      return
+    lowConfidenceIndices.push(i)
+    lowConfidenceBlocks.push(item.blockText ?? q.stem)
+  })
+
+  return {
+    ...hybrid,
+    questions: items.map((it) => it.q),
+    lowConfidenceBlocks,
+    lowConfidenceIndices,
+  }
+}
+
+/** 检查题目是否有答案 */
+function hasAnswer(answer: ParsedQuestion['answer']): boolean {
+  if (Array.isArray(answer)) return answer.length > 0
+  return !!answer
+}
+
+/** 给文本每行前加行号，用于 AI 切题输入 */
+function numberLines(text: string): string {
+  return text
+    .split('\n')
+    .map((line, i) => `${i}: ${line}`)
+    .join('\n')
 }
 
 // ===== 按需：为单题生成答案 + 解析（用户在预览页手动触发） =====

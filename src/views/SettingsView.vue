@@ -23,6 +23,16 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-14 21-29',
+    date: '2026-07-14',
+    logs: [
+      '新增「资料」功能:支持上传 Word/Markdown 文档在线阅读,文档云端存储跨设备共享',
+      '文档阅读零解析开销,上传时即解析为 HTML,图片单独存储自动加载',
+      '支持 GFM Markdown 语法与 KaTeX 数学公式渲染',
+      '本地缓存已渲染文档,二次打开秒开,断网也可阅读',
+    ],
+  },
+  {
     version: '2026-07-13 21-06',
     date: '2026-07-13',
     logs: [
@@ -280,7 +290,6 @@ const popupStyle = computed(() => {
 
 interface LogDetail {
   text: string
-  hash: string
   type: 'feat' | 'fix' | 'refactor' | 'style' | 'other'
   typeLabel: string
   typeColor: string
@@ -288,13 +297,7 @@ interface LogDetail {
 }
 
 function parseLog(log: string): LogDetail {
-  const hashMatch = log.match(/（([a-f0-9]+)）$/)
-  let text = log
-  let hash = ''
-  if (hashMatch) {
-    text = log.replace(/（[a-f0-9]+）$/, '').trim()
-    hash = hashMatch[1]
-  }
+  const text = log.replace(/（[a-f0-9]+）$/, '').trim()
 
   let type: 'feat' | 'fix' | 'refactor' | 'style' | 'other' = 'other'
   let typeLabel = '更改'
@@ -327,7 +330,7 @@ function parseLog(log: string): LogDetail {
     typeBg = 'var(--brand-soft)'
   }
 
-  return { text, hash, type, typeLabel, typeColor, typeBg }
+  return { text, type, typeLabel, typeColor, typeBg }
 }
 
 // ===== 管理密码 =====
@@ -1013,9 +1016,6 @@ onMounted(async () => {
                       {{ parseLog(log).typeLabel }}
                     </span>
                     <span class="log-text">{{ parseLog(log).text }}</span>
-                    <span v-if="parseLog(log).hash" class="log-hash">
-                      {{ parseLog(log).hash }}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -1439,18 +1439,5 @@ onMounted(async () => {
 .log-text {
   flex: 1;
   word-break: break-all;
-}
-.log-hash {
-  font-size: 11px;
-  font-family: monospace;
-  color: var(--text-3);
-  background: var(--surface-2);
-  padding: 1px 4px;
-  border-radius: 3px;
-  margin-left: 6px;
-  flex-shrink: 0;
-  align-self: flex-start;
-  margin-top: 1px;
-  border: 1px solid var(--border);
 }
 </style>

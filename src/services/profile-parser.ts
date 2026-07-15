@@ -16,17 +16,24 @@ import type { HybridResult, RuleProfile } from './rule-parser'
 interface ParseProfile {
   questionStart?: string
   optionStart?: string
+  answerMarker?: string
+  analysisMarker?: string
 }
 
-const PROFILE_SYSTEM = `你是题库格式识别助手。用户给你一份题库片段，你只需识别两条稳定排版规则并输出 JSON：
+const PROFILE_SYSTEM = `你是题库格式识别助手。用户给你一份题库片段，你只需识别排版规则并输出 JSON：
 - questionStart：匹配每道题开头的正则，必须用第 1 个捕获组捕获题号数字。
 - optionStart：匹配每个选项开头的正则，第 1 个捕获组为选项字母（只需匹配"A."这样的前缀，不必捕获选项正文）。
+- answerMarker：匹配答案标记的正则（如"参考答案""答案""答"），不要求捕获组。
+- analysisMarker：匹配解析标记的正则（如"解析""详解""分析"），不要求捕获组。
 只输出 JSON，不要解释。示例：
-{"questionStart":"^\\\\s*(\\\\d{1,4})[.、．)]\\\\s*","optionStart":"^\\\\s*([A-Ha-h])[.、．)]\\\\s*"}`
+{"questionStart":"^\\\\s*(\\\\d{1,4})[.、．)]\\\\s*","optionStart":"^\\\\s*([A-Ha-h])[.、．)]\\\\s*","answerMarker":"^\\\\s*答案\\\\s*[:：]?","analysisMarker":"^解析\\\\s*[:：]?"}`
 
 const DEFAULT_PROFILE: Required<ParseProfile> = {
   questionStart: '^\\s*[(（【\\[]?(\\d{1,4})[)）】\\]]?[.、．)]\\s*',
   optionStart: '^\\s*[(（【\\[]?([A-Ha-h])[)）】\\]]?[.、．)]\\s*',
+  answerMarker:
+    '^[\\s　•◦▪·●○■□*\\-‑–—#]*(?:【?答案】?|答案|Answer|answer|正确答案|参考答案|答)\\s*[:：]?',
+  analysisMarker: '^[\\s　#]*(?:【?解析】?|解析|详解|Explanation|explanation)\\s*[:：]?',
 }
 
 export function shouldTryProfileParse(hybrid: HybridResult, text: string): boolean {
@@ -78,6 +85,8 @@ export async function parseWithDetectedProfile(
   const ruleProfile: RuleProfile = {
     questionStart: profile.questionStart,
     optionStart: profile.optionStart,
+    answerMarker: profile.answerMarker,
+    analysisMarker: profile.analysisMarker,
   }
   return parseWithRulesHybrid(text, ruleProfile)
 }
@@ -94,6 +103,8 @@ async function detectProfile(text: string): Promise<ParseProfile> {
   return {
     questionStart: profile.questionStart || DEFAULT_PROFILE.questionStart,
     optionStart: profile.optionStart || DEFAULT_PROFILE.optionStart,
+    answerMarker: profile.answerMarker || DEFAULT_PROFILE.answerMarker,
+    analysisMarker: profile.analysisMarker || DEFAULT_PROFILE.analysisMarker,
   }
 }
 

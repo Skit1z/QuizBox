@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showDialog, showFailToast, showSuccessToast } from 'vant'
+import { showDialog, showFailToast, showSuccessToast, showToast } from 'vant'
 import { useSubjectsStore } from '@/stores/subjects'
 import { useSettingsStore } from '@/stores/settings'
 import { questionsRepo, questionSourceHash, type QuestionInput } from '@/db/questions'
 import { parseFile, getFileExt, ACCEPT_EXTENSIONS } from '@/services/file-parser'
 import { saveImages } from '@/services/docx-images'
 import type { ParsedImage } from '@/services/docx-images'
-import { repairWithAI, generateAnswer, type ParsedQuestion } from '@/services/importer'
+import {
+  repairWithAI,
+  generateAnswer,
+  reblockWithAI,
+  type ParsedQuestion,
+} from '@/services/importer'
 import { parseWithRulesHybrid } from '@/services/rule-parser'
 import {
   isProfileResultBetter,
@@ -217,6 +222,7 @@ async function doParse() {
     // 注意：lowConfidenceIndices 是基于此数组的位置索引，回填/删除完成前不可过滤，
     // 否则索引会错位。空题干的过滤统一放在所有索引操作之后（见 finalizePreview）。
     let hybrid = parseWithRulesHybrid(result.text)
+
     if (settingsStore.ai.apiKey && shouldTryProfileParse(hybrid, result.text)) {
       try {
         const profiled = await parseWithDetectedProfile(result.text, (message) => {
@@ -227,6 +233,16 @@ async function doParse() {
         }
       } catch (e) {
         console.warn('[import] profile parse failed', e)
+      }
+    }
+
+    // 补切：在最终确定的解析结果上，对体检发现的粘连块调 AI 重新切题
+    // 放在 profile 之后，确保补切成果不会被 profile 全量重解析覆盖丢弃
+    if (settingsStore.ai.apiKey && hybrid.suspiciousBlocks && hybrid.suspiciousBlocks.length > 0) {
+      try {
+        hybrid = await reblockWithAI(hybrid, hybrid.suspiciousBlocks)
+      } catch (e) {
+        console.warn('[import] reblock failed', e)
       }
     }
     let qs: ParsedQuestion[] = hybrid.questions
@@ -385,7 +401,7 @@ async function batchGenAnswers() {
       batchProgress.done++
     }
     if (failed === 0) showSuccessToast(`已补全 ${success} 题`)
-    else showFailToast(`成功 ${success} 题，失败 ${failed} 题`)
+    else showToast(`已补 ${success} 题，${failed} 题失败`)
   } finally {
     batchAi.value = false
   }
