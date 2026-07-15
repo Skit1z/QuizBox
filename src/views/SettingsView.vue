@@ -23,6 +23,17 @@ const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 const showHistory = ref(false)
 const updateHistory = [
   {
+    version: '2026-07-15 10-09',
+    date: '2026-07-15',
+    logs: [
+      '修复「资料」带图片的 Word 文档无法上传的问题,图片现可正常上传与显示',
+      '修复网络波动时文档列表可能被清空的问题,清单读取异常不再覆盖已有文档',
+      '修复 Markdown 代码块内 $ 符号被误渲染为数学公式的问题',
+      '未配置同步密钥时上传按钮自动置灰,文档解析失败给出明确提示',
+      '升级 Vite / Vue Router 等底层依赖至最新版,优化构建与运行体验',
+    ],
+  },
+  {
     version: '2026-07-14 21-29',
     date: '2026-07-14',
     logs: [
