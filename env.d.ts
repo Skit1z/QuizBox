@@ -22,10 +22,11 @@ declare module 'virtual:pwa-register' {
 }
 
 declare module 'vue-virtual-scroller' {
-  import type { DefineComponent } from 'vue'
-  export const DynamicScroller: DefineComponent<any, any, any>
-  export const DynamicScrollerItem: DefineComponent<any, any, any>
-  export const RecycleScroller: DefineComponent<any, any, any>
+  // 第三方组件无官方类型;vue-tsc 3 下 DefineComponent<any,any,any> 的 slots 会解析为 {},
+  // 导致 #default 作用域插槽报错。用 any 关闭该组件的类型/插槽检查(逃生舱)。
+  export const DynamicScroller: any
+  export const DynamicScrollerItem: any
+  export const RecycleScroller: any
 }
 
 declare module 'word-extractor' {
