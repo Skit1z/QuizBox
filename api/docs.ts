@@ -8,7 +8,7 @@
 // 鉴权:写操作(POST/DELETE)需 BANK_KEY;读操作(GET)开放。
 // 与 api/bank.ts 的 BANK_KEY 机制一致,密钥共享。
 
-import { del, get, put } from '@vercel/blob'
+import { del, get, put, BlobNotFoundError } from '@vercel/blob'
 import type { IncomingMessage, ServerResponse } from 'http'
 
 interface VercelRequest extends IncomingMessage {
@@ -46,15 +46,20 @@ interface DocsManifest {
 
 async function readJson<T = any>(path: string): Promise<T | null> {
   const access = path.startsWith('docs/img/') ? 'public' : 'private'
-  const blob = await get(path, { access }).catch(() => null)
+  let blob: Awaited<ReturnType<typeof get>> | null
+  try {
+    blob = await get(path, { access })
+  } catch (e) {
+    // 仅「文件不存在」视为空;网络异常、权限异常等必须上抛(→500),
+    // 否则会被当成空清单,进而用空清单覆盖历史文档,造成数据丢失。
+    if (e instanceof BlobNotFoundError) return null
+    throw e
+  }
   if (!blob?.stream) return null
   const text = await new Response(blob.stream).text()
   if (!text) return null
-  try {
-    return JSON.parse(text) as T
-  } catch {
-    return null
-  }
+  // JSON 损坏同样上抛,而非静默返回 null —— 同理防止用空清单覆盖历史数据。
+  return JSON.parse(text) as T
 }
 
 async function writeJson(path: string, body: string) {
@@ -100,7 +105,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const url = req.url || ''
-    const isImgRoute = url.startsWith('/api/docs/img')
+    // 图片上传统一走 /api/docs?action=upload-image(单文件函数分流,避免 Vercel
+    // 需要为 /api/docs/img 单独建函数入口);兼容旧的 /api/docs/img 子路径写法。
+    const isImgRoute =
+      url.includes('action=upload-image') ||
+      url.startsWith('/api/docs/img') ||
+      req.query?.action === 'upload-image'
 
     if (req.method === 'GET') {
       return await handleGet(req, res)
@@ -175,12 +185,14 @@ async function handleUploadDoc(req: VercelRequest, res: VercelResponse) {
     return
   }
 
+  // 先读清单:读失败(非「不存在」)会上抛→500,避免写入主体后再用空清单回写导致列表丢失。
+  const manifest = (await readJson<DocsManifest>(MANIFEST_PATH)) || { updatedAt: 0, docs: [] }
+
   // 写文档主体
   const docPath = `${PREFIX}doc_${meta.id}.json`
   await writeJson(docPath, JSON.stringify({ meta, html }))
 
   // 更新清单(last-write-wins;文档场景并发概率极低,无服务端乐观锁)
-  const manifest = (await readJson<DocsManifest>(MANIFEST_PATH)) || { updatedAt: 0, docs: [] }
   const idx = manifest.docs.findIndex((d) => d.id === meta.id)
   if (idx >= 0) manifest.docs[idx] = meta
   else manifest.docs.unshift(meta)
@@ -195,9 +207,12 @@ async function handleUploadDoc(req: VercelRequest, res: VercelResponse) {
 async function handleUploadImage(req: VercelRequest, res: VercelResponse) {
   // Vercel 对 multipart 不会自动解析 req.body,需手动收集原始字节流
   const chunks: Buffer[] = []
+  let total = 0
   for await (const chunk of req) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer))
-    if (Buffer.concat(chunks).length > MAX_IMAGE_BYTES + 1024) {
+    const c = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer)
+    chunks.push(c)
+    total += c.length
+    if (total > MAX_IMAGE_BYTES + 1024) {
       res.status(413).json({ error: '图片超过 2MB 限制' })
       return
     }
@@ -228,7 +243,8 @@ async function handleUploadImage(req: VercelRequest, res: VercelResponse) {
   // 去重:已存在则直接返回现有 URL
   const existed = await get(imgPath, { access: 'public' }).catch(() => null)
   if (existed) {
-    res.status(200).json({ ok: true, url: existed.url, hash, existed: true })
+    // 下载 URL 位于 result.blob.url,而非顶层 .url
+    res.status(200).json({ ok: true, url: existed.blob.url, hash, existed: true })
     return
   }
 
@@ -278,9 +294,11 @@ function parseMultipartFile(
     if (headerEnd < 0) continue
     const header = part.slice(0, headerEnd).toString('utf8')
     if (!/name="file"/i.test(header)) continue
-    const body = part.slice(headerEnd + 4)
-    // 去掉尾部的 \r\n
-    const trimmed = body.endsWith('\r\n') ? body.slice(0, -2) : body
+    const body = part.subarray(headerEnd + 4)
+    // 去掉尾部的 \r\n(Buffer 继承自 Uint8Array,无 String.endsWith,须按字节判断)
+    const n = body.length
+    const trimmed =
+      n >= 2 && body[n - 2] === 0x0d && body[n - 1] === 0x0a ? body.subarray(0, n - 2) : body
     const fname = header.match(/filename="([^"]*)"/i)?.[1] || ''
     const ctype = header.match(/content-type:\s*([^\r\n]+)/i)?.[1].trim() || ''
     return { data: trimmed, filename: fname, contentType: ctype }

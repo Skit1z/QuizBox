@@ -1,15 +1,16 @@
 import { useSettingsStore } from '@/stores/settings'
-import { sha256 } from '@/utils/hash'
 import type { DocMeta, DocRecord, DocsManifest } from '@/types'
 
 /**
  * 文档资料云端 API 客户端。
- * 路由:/api/docs(文档 CRUD)+ /api/docs/img(图片上传)。
+ * 路由:/api/docs(文档 CRUD)+ /api/docs?action=upload-image(图片上传)。
  * 写操作带 BANK_KEY(Authorization: Bearer),复用 settings.bankSync.key。
  */
 
 const DOCS_ENDPOINT = '/api/docs'
-const IMG_ENDPOINT = '/api/docs/img'
+// 图片走同一函数 + query 分流:Vercel 文件路由下 /api/docs.ts 只匹配 /api/docs,
+// 子路径 /api/docs/img 无对应函数入口会 404,故用 query 参数在同一函数内分流。
+const IMG_ENDPOINT = '/api/docs?action=upload-image'
 
 /** 获取写操作鉴权头;未配置 BANK_KEY 时返回空对象(此时服务端也开放写) */
 function authHeaders(): Record<string, string> {
@@ -29,9 +30,8 @@ async function readError(res: Response): Promise<string> {
   return data?.error || data?.message || res.statusText || `HTTP ${res.status}`
 }
 
-/** 上传单张图片,返回 public URL(图片按 hash 去重) */
-export async function uploadImage(img: Blob): Promise<{ url: string; hash: string }> {
-  const hash = await sha256(img)
+/** 上传单张图片,返回 public URL(服务端按 hash 去重,客户端无需算 hash) */
+export async function uploadImage(img: Blob): Promise<string> {
   const form = new FormData()
   form.append('file', img, `img.${guessExt(img.type)}`)
   const res = await fetch(IMG_ENDPOINT, {
@@ -41,7 +41,7 @@ export async function uploadImage(img: Blob): Promise<{ url: string; hash: strin
   })
   if (!res.ok) throw new Error(await readError(res))
   const data = await res.json()
-  return { url: data.url, hash }
+  return data.url as string
 }
 
 /** 上传文档主体:已渲染 HTML + meta */

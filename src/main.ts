@@ -5,6 +5,8 @@ import { registerSW } from 'virtual:pwa-register'
 // 函数式 API（showToast / showConfirmDialog 等）需注册对应插件。
 import { Toast, Dialog, Notify, ImagePreview } from 'vant'
 import 'vant/lib/index.css'
+// KaTeX 字体/样式作为项目级基线(题库富文本与文档阅读页共用,避免按需 chunk 漏样式)
+import 'katex/dist/katex.min.css'
 
 import App from './App.vue'
 import router from './router'

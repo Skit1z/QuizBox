@@ -118,7 +118,7 @@ onMounted(async () => {
         :max-size="MAX_SIZE"
         accept=".docx,.md"
         :max-count="1"
-        :disabled="uploading"
+        :disabled="uploading || !hasWriteAuth()"
         @oversize="() => showFailToast('文件超过 4MB 限制')"
       >
         <van-button icon="plus" type="primary" round :loading="uploading" :loading-text="uploadPhase">
